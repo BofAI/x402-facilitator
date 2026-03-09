@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import asyncio
+import hashlib
 import secrets
 import sys
 from pathlib import Path
@@ -44,7 +45,8 @@ async def register_seller(api_key: str) -> None:
 
     async with async_session() as session:
         seller = Seller(seller_id=seller_id)
-        api_key_record = APIKey(seller_id=seller_id, key=api_key)
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        api_key_record = APIKey(seller_id=seller_id, key=key_hash)
         session.add(seller)
         session.add(api_key_record)
         try:

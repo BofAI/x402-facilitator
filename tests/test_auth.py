@@ -1,15 +1,15 @@
 
 import pytest
-from auth import _constant_time_key_check, get_dynamic_key_func, API_KEY_CACHE
+from auth import _constant_time_key_check, _hash_api_key, get_dynamic_key_func, API_KEY_CACHE
 from fastapi import Request
 from unittest.mock import MagicMock
 
 def test_constant_time_key_check():
-    """Verify constant-time comparison for API Keys"""
+    """Verify constant-time comparison for API Keys (cache stores hashes)"""
     global API_KEY_CACHE
     API_KEY_CACHE.clear()
-    API_KEY_CACHE.add("valid-key-123")
-    
+    API_KEY_CACHE.add(_hash_api_key("valid-key-123"))
+
     assert _constant_time_key_check("valid-key-123") is True
     assert _constant_time_key_check("wrong-key") is False
 

@@ -31,6 +31,7 @@ from bankofai.x402.types import (
 from config import config
 from database import (
     init_database,
+    dispose_engine,
     get_payment_by_id,
     get_payment_by_tx_hash,
     save_payment_record,
@@ -93,6 +94,10 @@ async def lifespan(app: FastAPI):
 
     # Initialize facilitator per network (each has its own fee_to_address, base_fee, private_key)
     for network in config.networks:
+        if network not in to_internal_network:
+            logger.warning(f"Unknown network mapping: {network}, skipping")
+            continue
+        internal_network = to_internal_network[network]
         private_key = await config.get_private_key(network)
         fee_to = config.get_fee_to_address(network)
         base_fee = config.get_base_fee(network)
@@ -103,11 +108,11 @@ async def lifespan(app: FastAPI):
                 fee_to=fee_to,
                 base_fee=base_fee,
             )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
+            x402_facilitator.register([internal_network], facilitator_mechanism)
             facilitator_mechanism = ExactTronFacilitatorMechanism(
                 facilitator_signer,
             )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
+            x402_facilitator.register([internal_network], facilitator_mechanism)
             logger.info(f"Facilitator registered for {network}")
         elif is_bsc_network(network) or is_eth_network(network):
             facilitator_signer = EvmFacilitatorSigner.from_private_key(private_key=private_key)
@@ -116,12 +121,12 @@ async def lifespan(app: FastAPI):
                 fee_to=fee_to,
                 base_fee=base_fee,
             )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
+            x402_facilitator.register([internal_network], facilitator_mechanism)
 
             facilitator_mechanism = ExactEvmFacilitatorMechanism(
                 facilitator_signer,
             )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
+            x402_facilitator.register([internal_network], facilitator_mechanism)
 
             logger.info(f"Facilitator registered for {network}")
         else:
@@ -136,6 +141,7 @@ async def lifespan(app: FastAPI):
         await refresher_task
     except asyncio.CancelledError:
         pass
+    await dispose_engine()
     logger.info("Shutting down...")
 
 # Init app
@@ -282,7 +288,7 @@ def main():
     print("Starting X402 Facilitator Server")
     config.load_from_yaml()
     uvicorn.run(
-        app,
+        "main:app",
         host=config.server_host,
         port=config.server_port,
         log_level="info",

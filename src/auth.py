@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import asyncio
 import secrets
@@ -21,10 +22,17 @@ _current_request: ContextVar[Optional[Request]] = ContextVar("current_request", 
 API_KEY_CACHE: Set[str] = set()
 
 
+def _hash_api_key(key: str) -> str:
+    """Return the SHA-256 hex digest of an API key."""
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
 def _constant_time_key_check(api_key: str) -> bool:
-    """Check API key against cache using constant-time comparison to mitigate timing attacks."""
+    """Check API key against cache using constant-time comparison to mitigate timing attacks.
+    The cache stores hashed keys; the incoming key is hashed before comparison."""
+    hashed = _hash_api_key(api_key)
     for cached in API_KEY_CACHE:
-        if secrets.compare_digest(api_key, cached):
+        if secrets.compare_digest(hashed, cached):
             return True
     return False
 
