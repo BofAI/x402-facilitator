@@ -22,8 +22,11 @@ from bankofai.x402.mechanisms.tron.exact_permit.facilitator import ExactPermitTr
 from bankofai.x402.mechanisms.evm.exact_permit.facilitator import ExactPermitEvmFacilitatorMechanism
 from bankofai.x402.mechanisms.tron.exact.facilitator import ExactTronFacilitatorMechanism
 from bankofai.x402.mechanisms.evm.exact.facilitator import ExactEvmFacilitatorMechanism
+from bankofai.x402.mechanisms.tron.exact_gasfree.facilitator import ExactGasFreeFacilitatorMechanism
+from bankofai.x402.utils.gasfree import GasFreeAPIClient
 from bankofai.x402.signers.facilitator import TronFacilitatorSigner, EvmFacilitatorSigner
 from bankofai.x402.facilitator.x402_facilitator import X402Facilitator
+from bankofai.x402.config import NetworkConfig
 from bankofai.x402.types import (
     VerifyResponse,
     SettleResponse,
@@ -113,6 +116,20 @@ async def lifespan(app: FastAPI):
                 facilitator_signer,
             )
             x402_facilitator.register([internal_network], facilitator_mechanism)
+            # GasFree mechanism
+            try:
+                gasfree_client = GasFreeAPIClient(
+                    NetworkConfig.get_gasfree_api_base_url(network)
+                )
+                gasfree_mechanism = ExactGasFreeFacilitatorMechanism(
+                    facilitator_signer,
+                    clients={network: gasfree_client},
+                    base_fee=base_fee,
+                )
+                x402_facilitator.register([internal_network], gasfree_mechanism)
+                logger.info(f"GasFree mechanism registered for {network}")
+            except Exception as e:
+                logger.warning(f"GasFree mechanism not available for {network}: {e}")
             logger.info(f"Facilitator registered for {network}")
         elif is_bsc_network(network) or is_eth_network(network):
             facilitator_signer = EvmFacilitatorSigner.from_private_key(private_key=private_key)

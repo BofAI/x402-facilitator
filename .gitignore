@@ -92,3 +92,6 @@ facilitator.config.yaml
 
 # Private
 _private/
+
+CLAUDE.md
+.claude/

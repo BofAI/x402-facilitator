@@ -5,7 +5,7 @@ Database module for payment record persistence
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import String, DateTime, BigInteger, select
+from sqlalchemy import Boolean, String, DateTime, BigInteger, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -43,7 +43,10 @@ class APIKey(Base):
     __tablename__ = "api_keys"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     seller_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    wallet_address: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False, default="default")
     key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -128,12 +131,14 @@ def get_session() -> AsyncSession:
 async def get_all_api_keys() -> list[str]:
     """
     Get all active API keys from database.
-    
+
     Returns:
-        List of API key strings
+        List of API key strings (only active keys)
     """
     async with get_session() as session:
-        result = await session.execute(select(APIKey.key))
+        result = await session.execute(
+            select(APIKey.key).where(APIKey.is_active == True)
+        )
         return [row[0] for row in result.all()]
 
 
@@ -203,14 +208,12 @@ async def get_payment_by_tx_hash(tx_hash: str, seller_id: str | None = None) -> 
 
 async def get_api_key_by_key(api_key: str) -> APIKey | None:
     """Get APIKey row by plaintext key.
-    Hashes the key with SHA-256 before querying, since only hashes are stored.
     Returns the APIKey instance, or None if not found.
     """
-    import hashlib
-    hashed = hashlib.sha256(api_key.encode()).hexdigest()
     async with get_session() as session:
         result = await session.execute(
             select(APIKey)
-            .where(APIKey.key == hashed)
+            .where(APIKey.key == api_key)
+            .where(APIKey.is_active == True)
         )
         return result.scalar_one_or_none()
