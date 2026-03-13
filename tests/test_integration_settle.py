@@ -221,11 +221,11 @@ async def integration_client(mocker, integration_db_url):
 @pytest.mark.asyncio
 async def test_settle_integration_first_request_success(integration_client, mocker):
     """With payment_id: settle first -> save_payment_record -> 200, record in DB with success."""
-    from bankofai.x402.types import SettleResponse
+    from bankofai.x402.schemas import SettleResponse
 
     async def mock_settle_success(*args, **kwargs):
         await asyncio.sleep(1)
-        return SettleResponse(success=True, transaction="0xintegration_success")
+        return SettleResponse(success=True, transaction="0xintegration_success", network="tron:mainnet")
 
     mocker.patch("main.x402_facilitator.settle", new_callable=AsyncMock, side_effect=mock_settle_success)
 
@@ -253,7 +253,7 @@ async def test_settle_integration_first_request_success(integration_client, mock
 @pytest.mark.asyncio
 async def test_settle_integration_same_payment_id_twice(integration_client, mocker):
     """Same payment_id twice: both 200; two records in DB; GET returns latest."""
-    from bankofai.x402.types import SettleResponse
+    from bankofai.x402.schemas import SettleResponse
 
     tx_hashes = ["0xintegration_dup_1", "0xintegration_dup_2"]
     call_idx = [0]
@@ -262,7 +262,7 @@ async def test_settle_integration_same_payment_id_twice(integration_client, mock
         await asyncio.sleep(0.1)
         i = call_idx[0]
         call_idx[0] += 1
-        return SettleResponse(success=True, transaction=tx_hashes[min(i, len(tx_hashes) - 1)])
+        return SettleResponse(success=True, transaction=tx_hashes[min(i, len(tx_hashes) - 1)], network="tron:mainnet")
 
     mocker.patch("main.x402_facilitator.settle", new_callable=AsyncMock, side_effect=mock_settle_success)
 
@@ -292,7 +292,7 @@ async def test_settle_integration_same_payment_id_twice(integration_client, mock
 @pytest.mark.asyncio
 async def test_settle_integration_concurrent_same_payment_id(integration_client, mocker):
     """Concurrent requests with same payment_id: all 200, settle called n times, n records; GET returns latest."""
-    from bankofai.x402.types import SettleResponse
+    from bankofai.x402.schemas import SettleResponse
 
     settle_call_count = 0
 
@@ -300,7 +300,7 @@ async def test_settle_integration_concurrent_same_payment_id(integration_client,
         nonlocal settle_call_count
         settle_call_count += 1
         await asyncio.sleep(0.1)
-        return SettleResponse(success=True, transaction=f"0xconcurrent_{settle_call_count}")
+        return SettleResponse(success=True, transaction=f"0xconcurrent_{settle_call_count}", network="tron:mainnet")
 
     mocker.patch("main.x402_facilitator.settle", new_callable=AsyncMock, side_effect=mock_settle_count)
 

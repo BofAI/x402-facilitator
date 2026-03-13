@@ -30,9 +30,8 @@ class DailyRotatingFileHandler(TimedRotatingFileHandler):
 
     def _get_current_path(self) -> str:
         """Log file path with date and time (new file each start)."""
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        time_str = datetime.now().strftime("%H-%M-%S")
-        return os.path.join(self._log_dir, f"{self._base_name}.{date_str}_{time_str}.log")
+        now = datetime.now()
+        return os.path.join(self._log_dir, f"{self._base_name}.{now:%Y-%m-%d_%H-%M-%S}.log")
 
 def setup_logging(logging_config=None):
     """

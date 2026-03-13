@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, Field
-from bankofai.x402.types import (
+from bankofai.x402.schemas import (
     PaymentPayload,
     PaymentRequirements,
 )
