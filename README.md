@@ -105,16 +105,16 @@ Each record includes:
 
 ## API Key Authentication
 
-Callers must include `X-API-KEY` in request headers, matching a key in the `api_keys` table. Authenticated requests use `rate_limit_authenticated`; anonymous requests use `rate_limit_anonymous`.
+Callers must include `X-API-KEY` in request headers, matching a key in the `api_keys_plus` table. Authenticated requests use `rate_limit_authenticated`; anonymous requests use `rate_limit_anonymous`.
 
 ### Adding an API Key
 
-The `sellers` and `api_keys` tables are created automatically on first startup.
+The `sellers` and `api_keys_plus` tables are created automatically on first startup.
 
 To onboard a new client:
 
 1. Insert a row into `sellers` with a unique `seller_id`.
-2. Insert one or more rows into `api_keys` with the same `seller_id` and distinct `key` values.
+2. Insert one or more rows into `api_keys_plus` with the same `seller_id` and distinct `key` values.
 
 Payment query endpoints will automatically scope results to the `seller_id` associated with the provided `X-API-KEY`.
 
@@ -143,7 +143,7 @@ Logs are written to `logs/x402-facilitator.{date}_{time}.log`, with a new file p
 Servers that call the facilitator (e.g. resource servers using X402) must configure:
 
 - `FACILITATOR_URL`: Facilitator URL, **use https** 
-- `FACILITATOR_API_KEY`: Key that exists in the facilitator's `api_keys` table
+- `FACILITATOR_API_KEY`: Key that exists in the facilitator's `api_keys_plus` table
 
 ## Project Structure
 

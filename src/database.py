@@ -40,7 +40,7 @@ class PaymentRecord(Base):
 class APIKey(Base):
     """API Key Model"""
     
-    __tablename__ = "api_keys"
+    __tablename__ = "api_keys_plus"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     seller_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     wallet_address: Mapped[str] = mapped_column(String(128), nullable=False)
