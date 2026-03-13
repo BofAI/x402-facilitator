@@ -5,7 +5,7 @@ Database module for payment record persistence
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import String, DateTime, BigInteger
+from sqlalchemy import Boolean, String, DateTime, BigInteger, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -40,10 +40,13 @@ class PaymentRecord(Base):
 class APIKey(Base):
     """API Key Model"""
     
-    __tablename__ = "api_keys"
+    __tablename__ = "api_keys_plus"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    seller_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    key: Mapped[str] = mapped_column(String(64), nullable=False)
+    seller_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    wallet_address: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False, default="default")
+    key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -55,9 +58,9 @@ class Seller(Base):
     """Seller Model"""
     
     __tablename__ = "sellers"
-    
+
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    seller_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    seller_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -102,6 +105,14 @@ async def init_database(
         await conn.run_sync(Base.metadata.create_all)
 
 
+async def dispose_engine() -> None:
+    """Dispose the database engine and release all connections."""
+    global _engine
+    if _engine:
+        await _engine.dispose()
+        _engine = None
+
+
 def get_session() -> AsyncSession:
     """
     Get a new database session.
@@ -120,13 +131,14 @@ def get_session() -> AsyncSession:
 async def get_all_api_keys() -> list[str]:
     """
     Get all active API keys from database.
-    
+
     Returns:
-        List of API key strings
+        List of API key strings (only active keys)
     """
-    from sqlalchemy import select
     async with get_session() as session:
-        result = await session.execute(select(APIKey.key))
+        result = await session.execute(
+            select(APIKey.key).where(APIKey.is_active == True)
+        )
         return [row[0] for row in result.all()]
 
 
@@ -171,7 +183,6 @@ async def get_payment_by_id(payment_id: str, seller_id: str | None = None) -> li
     If seller_id is provided, results are additionally filtered by seller_id.
     Results are ordered by id descending (latest first).
     """
-    from sqlalchemy import select
     async with get_session() as session:
         stmt = select(PaymentRecord).where(PaymentRecord.payment_id == payment_id)
         if seller_id is not None:
@@ -187,7 +198,6 @@ async def get_payment_by_tx_hash(tx_hash: str, seller_id: str | None = None) -> 
     If seller_id is provided, results are additionally filtered by seller_id.
     Results are ordered by id descending (latest first).
     """
-    from sqlalchemy import select
     async with get_session() as session:
         stmt = select(PaymentRecord).where(PaymentRecord.tx_hash == tx_hash)
         if seller_id is not None:
@@ -197,13 +207,13 @@ async def get_payment_by_tx_hash(tx_hash: str, seller_id: str | None = None) -> 
         return list(result.scalars().all())
 
 async def get_api_key_by_key(api_key: str) -> APIKey | None:
-    """Get APIKey row by key.
+    """Get APIKey row by plaintext key.
     Returns the APIKey instance, or None if not found.
     """
-    from sqlalchemy import select
     async with get_session() as session:
         result = await session.execute(
             select(APIKey)
             .where(APIKey.key == api_key)
+            .where(APIKey.is_active == True)
         )
         return result.scalar_one_or_none()
