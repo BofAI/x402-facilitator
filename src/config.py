@@ -178,6 +178,24 @@ class Config:
             return {"USDT": int(val)}
         return {}
 
+    def get_rpc_url(self, network_id: str) -> str:
+        """
+        Get RPC URL for a network.
+        YAML: networks.<id>.rpc_url
+        Falls back to DEFAULT_RPC_URLS from helper module if not set.
+        """
+        url = self._network_config(network_id).get("rpc_url", "")
+        if url:
+            return url
+        from helper import DEFAULT_RPC_URLS
+        default = DEFAULT_RPC_URLS.get(network_id, "")
+        if not default:
+            raise ValueError(
+                f"rpc_url for {network_id} is not configured and has no default. "
+                f"Please set facilitator.networks.{network_id}.rpc_url in config."
+            )
+        return default
+
     @property
     def networks(self) -> list[str]:
         """Get list of network ids (all keys in facilitator.networks; listed = enabled)."""

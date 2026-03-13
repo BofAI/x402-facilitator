@@ -52,19 +52,23 @@ facilitator:
         USDT: 100              # 0.0001 USDT (6 decimals)
         USDD: 100000000000000  # 0.0001 USDD (18 decimals)
       private_key: ""          # or use 1Password: onepassword.<network> = "vault/item/field"
+      # rpc_url: ""            # optional, defaults to https://nile.trongrid.io
     tron:mainnet:
       fee_to_address: ""
       base_fee:
         USDT: 100
         USDD: 100000000000000
       private_key: ""
+      # rpc_url: ""            # optional, defaults to https://api.trongrid.io
     bsc:testnet:
       fee_to_address: ""
       base_fee:
         USDC: 100
       private_key: ""
+      # rpc_url: ""            # optional, defaults to https://data-seed-prebsc-1-s1.binance.org:8545
     bsc:mainnet:
       fee_to_address: ""
       base_fee:
         EPS: 100
       private_key: ""
+      # rpc_url: ""            # optional, defaults to https://bsc-dataseed1.binance.org

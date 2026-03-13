@@ -18,13 +18,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from bankofai.x402.mechanisms.tron.exact_permit.facilitator import ExactPermitTronFacilitatorMechanism
-from bankofai.x402.mechanisms.evm.exact_permit.facilitator import ExactPermitEvmFacilitatorMechanism
-from bankofai.x402.mechanisms.tron.exact.facilitator import ExactTronFacilitatorMechanism
-from bankofai.x402.mechanisms.evm.exact.facilitator import ExactEvmFacilitatorMechanism
-from bankofai.x402.signers.facilitator import TronFacilitatorSigner, EvmFacilitatorSigner
-from bankofai.x402.facilitator.x402_facilitator import X402Facilitator
-from bankofai.x402.types import (
+from bankofai.x402.mechanisms.tron.exact import ExactTronFacilitatorScheme
+from bankofai.x402.mechanisms.tron.signers import FacilitatorTronSigner
+from bankofai.x402.mechanisms.evm.exact import ExactEvmFacilitatorScheme
+from bankofai.x402.mechanisms.evm.signers import FacilitatorWeb3Signer
+from bankofai.x402 import x402Facilitator
+from bankofai.x402.schemas import (
     VerifyResponse,
     SettleResponse,
 )
@@ -46,7 +45,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 # Global facilitator instance
-x402_facilitator = X402Facilitator()
+x402_facilitator = x402Facilitator()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -94,36 +93,27 @@ async def lifespan(app: FastAPI):
     # Initialize facilitator per network (each has its own fee_to_address, base_fee, private_key)
     for network in config.networks:
         private_key = await config.get_private_key(network)
-        fee_to = config.get_fee_to_address(network)
-        base_fee = config.get_base_fee(network)
+        rpc_url = config.get_rpc_url(network)
+        caip_network = to_internal_network.get(network)
+        if not caip_network:
+            logger.warning(f"Unsupported network: {network}")
+            continue
         if is_tron_network(network):
-            facilitator_signer = TronFacilitatorSigner.from_private_key(private_key=private_key)
-            facilitator_mechanism = ExactPermitTronFacilitatorMechanism(
-                facilitator_signer,
-                fee_to=fee_to,
-                base_fee=base_fee,
+            facilitator_signer = FacilitatorTronSigner(
+                private_key=private_key,
+                full_node=rpc_url,
             )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
-            facilitator_mechanism = ExactTronFacilitatorMechanism(
-                facilitator_signer,
-            )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
-            logger.info(f"Facilitator registered for {network}")
+            facilitator_scheme = ExactTronFacilitatorScheme(facilitator_signer)
+            x402_facilitator.register([caip_network], facilitator_scheme)
+            logger.info(f"Facilitator registered for {network} -> {caip_network}")
         elif is_bsc_network(network) or is_eth_network(network):
-            facilitator_signer = EvmFacilitatorSigner.from_private_key(private_key=private_key)
-            facilitator_mechanism = ExactPermitEvmFacilitatorMechanism(
-                facilitator_signer,
-                fee_to=fee_to,
-                base_fee=base_fee,
+            facilitator_signer = FacilitatorWeb3Signer(
+                private_key=private_key,
+                rpc_url=rpc_url,
             )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
-
-            facilitator_mechanism = ExactEvmFacilitatorMechanism(
-                facilitator_signer,
-            )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
-
-            logger.info(f"Facilitator registered for {network}")
+            facilitator_scheme = ExactEvmFacilitatorScheme(facilitator_signer)
+            x402_facilitator.register([caip_network], facilitator_scheme)
+            logger.info(f"Facilitator registered for {network} -> {caip_network}")
         else:
             logger.warning(f"Unsupported network: {network}")
             continue
@@ -169,15 +159,14 @@ async def health():
 @app.get("/supported")
 async def supported(request: Request):
     """Get supported capabilities"""
-    return x402_facilitator.supported(pricing="flat")
+    return x402_facilitator.get_supported()
 
 @app.post("/fee/quote")
 async def fee_quote(request: Request, request_data: FeeQuoteRequest):
     """Get fee quote for payment requirements"""
-    return await x402_facilitator.fee_quote(
-        request_data.accepts,
-        request_data.paymentPermitContext
-    )
+    # TODO: x402 SDK v2 removed fee_quote from x402Facilitator.
+    # Implement custom fee quoting logic or remove this endpoint.
+    raise HTTPException(status_code=501, detail="Fee quote not implemented in v2")
 
 @app.post("/verify", response_model=VerifyResponse)
 async def verify(request: Request, verify_request: VerifyRequest):
@@ -193,8 +182,20 @@ async def verify(request: Request, verify_request: VerifyRequest):
 def _get_payment_id_from_request(request_data: SettleRequest) -> str | None:
     """Safely extract payment_id from request; returns None if structure is invalid."""
     try:
-        return request_data.paymentPayload.payload.payment_permit.meta.payment_id
-    except AttributeError:
+        # v2: payload is dict[str, Any]
+        payload = request_data.paymentPayload.payload
+        if isinstance(payload, dict):
+            # Try v1-style nested path first
+            meta = payload.get("paymentPermit", {}).get("meta", {})
+            pid = meta.get("paymentId") or meta.get("payment_id")
+            if pid:
+                return pid
+            # Try v2-style: nonce as identifier
+            auth = payload.get("authorization", {})
+            return auth.get("nonce")
+        # v1: payload is an object with attributes
+        return payload.payment_permit.meta.payment_id
+    except (AttributeError, TypeError, KeyError):
         return None
 
 def _get_network_from_request(request_data: SettleRequest) -> str | None:
