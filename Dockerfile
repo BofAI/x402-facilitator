@@ -15,8 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-ARG PIP_INSTALL_CACHE_BUST=static
-
 # Copy dependency file first for better layer caching
 COPY requirements.txt .
 
@@ -25,7 +23,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY src/ ./src/
-COPY config/ ./config/
 
 # Create logs directory (config may write here)
 RUN mkdir -p logs && chmod 755 logs
