@@ -24,10 +24,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY src/ ./src/
 
+# Create non-root user for running the application
+RUN useradd -r -s /bin/false appuser
+
 # Create logs directory (config may write here)
-RUN mkdir -p logs && chmod 755 logs
+RUN mkdir -p logs && chown appuser:appuser logs
 
 EXPOSE 8001 9001
+
+USER appuser
 
 # Default: run facilitator. Override CMD for custom entry.
 CMD ["python", "src/main.py"]

@@ -44,6 +44,11 @@ facilitator:
   # Shared across all networks (same level as networks)
   trongrid_api_key: ""
 
+  # GasFree API credentials for TRON gasless transactions (optional).
+  # Set via environment variables:
+  #   GASFREE_API_KEY / GASFREE_API_SECRET          (global)
+  #   GASFREE_API_KEY_NILE / GASFREE_API_SECRET_NILE (per-network)
+
   # Per-network config. Key = network id; listed = enabled. Each has fee_to_address, base_fee, private_key.
   networks:
     tron:nile:
