@@ -307,8 +307,7 @@ class Config:
                 )
                 return self._trongrid_api_key
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"Failed to load TronGrid API Key from 1Password: {e}")
+                logger.warning(f"Failed to load TronGrid API Key from 1Password: {e}")
         
         return None
 

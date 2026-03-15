@@ -5,10 +5,10 @@ name: Docker Build
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, dev/apikey]
     tags: ["v*"]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, dev/apikey]
 
 jobs:
   build:
@@ -36,11 +36,7 @@ jobs:
         with:
           images: bankofai/x402-tron-facilitator
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=
+            type=raw,value=dev
 
       - name: Build and push
         uses: docker/build-push-action@v6

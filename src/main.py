@@ -31,6 +31,7 @@ from bankofai.x402.types import (
 from config import config
 from database import (
     init_database,
+    dispose_engine,
     get_payment_by_id,
     get_payment_by_tx_hash,
     save_payment_record,
@@ -136,6 +137,7 @@ async def lifespan(app: FastAPI):
         await refresher_task
     except asyncio.CancelledError:
         pass
+    await dispose_engine()
     logger.info("Shutting down...")
 
 # Init app

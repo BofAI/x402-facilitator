@@ -5,11 +5,11 @@ from fastapi import Request
 from unittest.mock import MagicMock
 
 def test_constant_time_key_check():
-    """Verify constant-time comparison for API Keys"""
+    """Verify constant-time comparison for API Keys (cache stores plaintext)"""
     global API_KEY_CACHE
     API_KEY_CACHE.clear()
     API_KEY_CACHE.add("valid-key-123")
-    
+
     assert _constant_time_key_check("valid-key-123") is True
     assert _constant_time_key_check("wrong-key") is False
 

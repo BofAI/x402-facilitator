@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from bankofai.x402.types import (
     PaymentPayload,
     PaymentRequirements,
@@ -25,10 +25,9 @@ class FeeQuoteRequest(BaseModel):
 
 class PaymentRecordResponse(BaseModel):
     """Payment record response model"""
-    payment_id: str = Field(alias="paymentId")
+    model_config = ConfigDict(populate_by_name=True)
+
+    payment_id: str | None = Field(alias="paymentId")
     tx_hash: str = Field(alias="txHash")
     status: str
     created_at: datetime = Field(alias="createdAt")
-    
-    class Config:
-        populate_by_name = True
