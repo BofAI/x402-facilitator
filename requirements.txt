@@ -2,7 +2,7 @@ fastapi
 uvicorn
 pydantic-settings
 pydantic>=2.7.0
-bankofai-x402[tron,fastapi] @ git+https://github.com/BofAI/x402@v0.4.1#subdirectory=python/x402
+bankofai-x402[tron,fastapi] @ git+https://github.com/BofAI/x402@v0.4.4#subdirectory=python/x402
 httpx
 
 tronpy>=0.4.0
