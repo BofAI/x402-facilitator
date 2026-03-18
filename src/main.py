@@ -171,7 +171,7 @@ async def health():
 @app.get("/supported")
 async def supported(request: Request):
     """Get supported capabilities"""
-    return x402_facilitator.supported(pricing="flat")
+    return x402_facilitator.supported()
 
 @app.post("/fee/quote")
 async def fee_quote(request: Request, request_data: FeeQuoteRequest):

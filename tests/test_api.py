@@ -3,6 +3,7 @@ import pytest
 import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
+from bankofai.x402.types import SupportedKind, SupportedResponse
 
 # Minimal valid settle request body (matches bankofai.x402 SettleRequest / PaymentPayload shape)
 SETTLE_BODY = {
@@ -56,22 +57,33 @@ async def test_health(client):
 
 
 @pytest.mark.asyncio
-async def test_health(client):
-    """Test /health endpoint (no rate limit)"""
-    response = await client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-
-
-@pytest.mark.asyncio
 async def test_get_supported(client, mocker):
     """Test /supported endpoint"""
-    # Mock x402_facilitator.supported
-    mock_supported = mocker.patch("main.x402_facilitator.supported", return_value={"pricing": "flat"})
-    
+    mock_supported = mocker.patch(
+        "main.x402_facilitator.supported",
+        return_value=SupportedResponse(
+            kinds=[
+                SupportedKind(
+                    x402_version=2,
+                    scheme="exact",
+                    network="tron:nile",
+                )
+            ]
+        ),
+    )
+
     response = await client.get("/supported")
     assert response.status_code == 200
-    assert response.json() == {"pricing": "flat"}
+    assert response.json() == {
+        "kinds": [
+            {
+                "x402Version": 2,
+                "scheme": "exact",
+                "network": "tron:nile",
+            }
+        ]
+    }
+    mock_supported.assert_called_once_with()
 
 @pytest.mark.asyncio
 async def test_get_payment_success(client, mock_db):

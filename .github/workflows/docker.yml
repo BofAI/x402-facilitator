@@ -5,10 +5,10 @@ name: Docker Build
 
 on:
   push:
-    branches: [main, master, dev/apikey]
+    branches: [main, master, dev/suppported]
     tags: ["v*"]
   pull_request:
-    branches: [main, master, dev/apikey]
+    branches: [main, master, dev/suppported]
 
 jobs:
   build:
