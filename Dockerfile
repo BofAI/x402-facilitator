@@ -21,11 +21,18 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Create a non-root runtime user
+RUN useradd -r -s /bin/false ec2-user && \
+    groupmod -g 1000 ec2-user && \
+    usermod -u 1000 -g 1000 ec2-user
+
 # Copy application code
 COPY src/ ./src/
 
 # Create logs directory (config may write here)
-RUN mkdir -p logs && chmod 755 logs
+RUN mkdir -p logs && chown -R ec2-user:ec2-user /app
+
+USER ec2-user
 
 EXPOSE 8001 9001
 
