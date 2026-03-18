@@ -68,6 +68,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      IMAGE_TAG: ${{ startsWith(github.ref_name, 'test-v') && 'test' || github.ref_name }}
 
     steps:
       - name: Checkout
@@ -90,7 +92,7 @@ jobs:
         with:
           images: bankofai/x402-tron-facilitator
           tags: |
-            type=raw,value=${{ github.ref_name }}
+            type=raw,value=${{ env.IMAGE_TAG }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
