@@ -14,7 +14,6 @@ from helper import (
     is_eth_network,
 )
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -188,7 +187,7 @@ async def verify(request: Request, verify_request: VerifyRequest):
         return await x402_facilitator.verify(verify_request.paymentPayload, verify_request.paymentRequirements)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
         logger.exception("Verify failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 

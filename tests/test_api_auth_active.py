@@ -2,7 +2,6 @@
 import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
-from database import APIKey
 
 @pytest.mark.asyncio
 async def test_get_payment_with_disabled_api_key(client, mocker):

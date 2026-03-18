@@ -1,6 +1,5 @@
 
 import pytest
-import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 from bankofai.x402.types import SupportedKind, SupportedResponse

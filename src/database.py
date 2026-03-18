@@ -3,7 +3,6 @@ Database module for payment record persistence
 """
 
 from datetime import datetime, timezone
-from typing import Optional
 
 from sqlalchemy import Boolean, String, DateTime, BigInteger, select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -137,7 +136,7 @@ async def get_all_api_keys() -> list[str]:
     """
     async with get_session() as session:
         result = await session.execute(
-            select(APIKey.key).where(APIKey.is_active == True)
+            select(APIKey.key).where(APIKey.is_active.is_(True))
         )
         return [row[0] for row in result.all()]
 
@@ -214,6 +213,6 @@ async def get_api_key_by_key(api_key: str) -> APIKey | None:
         result = await session.execute(
             select(APIKey)
             .where(APIKey.key == api_key)
-            .where(APIKey.is_active == True)
+            .where(APIKey.is_active.is_(True))
         )
         return result.scalar_one_or_none()

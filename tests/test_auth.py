@@ -1,5 +1,3 @@
-
-import pytest
 from auth import _constant_time_key_check, get_dynamic_key_func, API_KEY_CACHE
 from fastapi import Request
 from unittest.mock import MagicMock

@@ -2,7 +2,6 @@
 Logging setup - daily log files with date+time in filename (new file each start).
 """
 
-import glob
 import logging
 import os
 import sys
@@ -72,4 +71,3 @@ def setup_logging(logging_config=None):
             logging.info(f"File logging enabled: {file_handler.baseFilename} (Level: {level_str})")
         except Exception as e:
             logging.error(f"Failed to setup file logging: {e}")
-

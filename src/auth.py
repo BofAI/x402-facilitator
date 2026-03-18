@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import secrets
+from contextvars import ContextVar
 from typing import Optional, Set
 from fastapi import Request
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -11,8 +12,6 @@ from config import config
 from database import get_all_api_keys
 
 logger = logging.getLogger(__name__)
-
-from contextvars import ContextVar
 
 # Context variable to store the current request for the rate limit provider
 _current_request: ContextVar[Optional[Request]] = ContextVar("current_request", default=None)
