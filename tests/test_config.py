@@ -22,20 +22,31 @@ def test_env_priority(monkeypatch):
     
     assert config.onepassword_token == "env-token"
 
-@pytest.mark.asyncio
-async def test_private_key_fallback(monkeypatch):
-    """Verify private key retrieval: per-network key in YAML over 1Password fallback"""
+def test_validate_required_allows_networks_without_private_key():
+    """Wallets are now provided externally, so private_key is no longer required."""
     config = Config()
     config._config = {
+        "database": {"url": "postgresql+asyncpg://user@localhost/db"},
         "facilitator": {
             "networks": {
-                "tron:nile": {"fee_to_address": "T...", "private_key": "direct-key"},
+                "tron:nile": {},
             }
         },
-        "onepassword": {"token": "op-token", "vault": "V", "item": "I"},
     }
-    key = await config.get_private_key("tron:nile")
-    assert key == "direct-key"
+    config._validate_required()
+
+def test_validate_required_allows_networks_without_fee_to_address():
+    """fee_to_address is no longer required and defaults to the signer address."""
+    config = Config()
+    config._config = {
+        "database": {"url": "postgresql+asyncpg://user@localhost/db"},
+        "facilitator": {
+            "networks": {
+                "tron:nile": {},
+            }
+        },
+    }
+    config._validate_required()
 
 @pytest.mark.asyncio
 async def test_trongrid_api_key_env_priority(monkeypatch):

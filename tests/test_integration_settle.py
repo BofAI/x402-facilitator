@@ -14,7 +14,7 @@ import subprocess
 import time
 import pytest
 from httpx import AsyncClient, ASGITransport
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy import delete
 
 import sys
@@ -167,9 +167,7 @@ def _minimal_config(db_url: str) -> dict:
             "trongrid_api_key": "",
             "networks": {
                 "tron:mainnet": {
-                    "fee_to_address": "TXxx0000000000000000000000000000000",
                     "base_fee": {"USDT": 0},
-                    "private_key": "0" * 64,
                 },
             },
         },
@@ -187,8 +185,8 @@ async def integration_client(mocker, integration_db_url):
 
     mocker.patch.object(config_module, "_config", _minimal_config(integration_db_url))
     mocker.patch("main.config.load_from_yaml", return_value=None)
-    mocker.patch("main.config.get_private_key", new_callable=AsyncMock, return_value="0" * 64)
     mocker.patch("main.config.get_trongrid_api_key", new_callable=AsyncMock, return_value=None)
+    mocker.patch("main.TronFacilitatorSigner.create", new_callable=AsyncMock, return_value=MagicMock())
 
     # Unique IP per request; base from 100 so integration tests don't share rate-limit with unit tests (127.0.0.1–5)
     _integration_test_ip_base[0] += 1

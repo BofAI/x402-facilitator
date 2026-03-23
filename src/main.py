@@ -17,10 +17,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+from bankofai.x402.config import NetworkConfig
 from bankofai.x402.mechanisms.tron.exact_permit.facilitator import ExactPermitTronFacilitatorMechanism
+from bankofai.x402.mechanisms.tron.exact_gasfree.facilitator import ExactGasFreeFacilitatorMechanism
 from bankofai.x402.mechanisms.evm.exact_permit.facilitator import ExactPermitEvmFacilitatorMechanism
 from bankofai.x402.mechanisms.tron.exact.facilitator import ExactTronFacilitatorMechanism
 from bankofai.x402.mechanisms.evm.exact.facilitator import ExactEvmFacilitatorMechanism
+from bankofai.x402.utils.gasfree import GasFreeAPIClient
 from bankofai.x402.signers.facilitator import TronFacilitatorSigner, EvmFacilitatorSigner
 from bankofai.x402.facilitator.x402_facilitator import X402Facilitator
 from bankofai.x402.types import (
@@ -91,16 +94,19 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("TronGrid API Key not configured. Using default rate limits for blockchain requests.")
 
-    # Initialize facilitator per network (each has its own fee_to_address, base_fee, private_key)
+    # Initialize facilitator per network (wallets come from the configured provider)
     for network in config.networks:
-        private_key = await config.get_private_key(network)
-        fee_to = config.get_fee_to_address(network)
         base_fee = config.get_base_fee(network)
         if is_tron_network(network):
-            facilitator_signer = TronFacilitatorSigner.from_private_key(private_key=private_key)
+            try:
+                facilitator_signer = await TronFacilitatorSigner.create()
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to initialize facilitator signer for {network}. "
+                    "Ensure an active wallet provider is configured for tron."
+                ) from exc
             facilitator_mechanism = ExactPermitTronFacilitatorMechanism(
                 facilitator_signer,
-                fee_to=fee_to,
                 base_fee=base_fee,
             )
             x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
@@ -108,12 +114,36 @@ async def lifespan(app: FastAPI):
                 facilitator_signer,
             )
             x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
+            internal_net = to_internal_network[network]
+            gf_key, gf_secret = await config.get_gasfree_api_credentials(internal_net)
+            if gf_key and gf_secret:
+                gasfree_client = GasFreeAPIClient(
+                    NetworkConfig.get_gasfree_api_base_url(internal_net),
+                    api_key=gf_key,
+                    api_secret=gf_secret,
+                )
+                gasfree_mechanism = ExactGasFreeFacilitatorMechanism(
+                    facilitator_signer,
+                    clients={internal_net: gasfree_client},
+                    base_fee=base_fee,
+                )
+                x402_facilitator.register([internal_net], gasfree_mechanism)
+            else:
+                logger.info(
+                    "GasFree API credentials not configured for %s; exact_gasfree not registered.",
+                    network,
+                )
             logger.info(f"Facilitator registered for {network}")
         elif is_bsc_network(network) or is_eth_network(network):
-            facilitator_signer = EvmFacilitatorSigner.from_private_key(private_key=private_key)
+            try:
+                facilitator_signer = await EvmFacilitatorSigner.create()
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to initialize facilitator signer for {network}. "
+                    "Ensure an active wallet provider is configured for eip155."
+                ) from exc
             facilitator_mechanism = ExactPermitEvmFacilitatorMechanism(
                 facilitator_signer,
-                fee_to=fee_to,
                 base_fee=base_fee,
             )
             x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)

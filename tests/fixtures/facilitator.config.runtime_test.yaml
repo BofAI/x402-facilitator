@@ -8,10 +8,6 @@ database:
   max_life_time: 300
 
 onepassword:
-  tron_nile_private_key: "test-vault/test-privatekey-item/hex_key"
-  tron_mainnet_private_key: "test-vault/mainnet-privatekey-item/private_key"
-  bsc_testnet_private_key: "test-vault/bsc-testnet-key-item/private_key"
-  bsc_mainnet_private_key: "test-vault/bsc-mainnet-key-item/private_key"
   database_password: "test-vault/db-pwd-item/password"
   trongrid_api_key: "test-vault/trongrid-item/api_key"
 
@@ -38,23 +34,15 @@ facilitator:
   trongrid_api_key: "test-trongrid-key-from-yaml"
   networks:
     tron:nile:
-      fee_to_address: "TNileFeeTo123456789012345678901234"
       base_fee:
         USDT: 200
         USDD: 200000000000000
-      private_key: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
     tron:mainnet:
-      fee_to_address: "TMainnetFeeTo12345678901234567890"
       base_fee:
         USDT: 150
-      private_key: "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4"
     bsc:testnet:
-      fee_to_address: "0xBscTestnetFeeTo123456789012345678901"
       base_fee:
         DHLU: 100
-      private_key: "b1b2b3b4b5b6b1b2b3b4b5b6b1b2b3b4b5b6b1b2b3b4b5b6b1b2b3b4b5b6b1b2b3b4"
     bsc:mainnet:
-      fee_to_address: "0xBscMainnetFeeTo12345678901234567890"
       base_fee:
         EPS: 200
-      private_key: "c1c2c3c4c5c6c1c2c3c4c5c6c1c2c3c4c5c6c1c2c3c4c5c6c1c2c3c4c5c6c1c2c3c4"

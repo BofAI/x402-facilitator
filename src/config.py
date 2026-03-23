@@ -17,9 +17,11 @@ class Config:
     
     def __init__(self):
         self._config: dict = {}
-        self._private_key_cache: dict[str, str] = {}  # network_id -> key (from 1Password or direct)
         self._trongrid_api_key: Optional[str] = None
         self._database_password: Optional[str] = None
+        self._gasfree_1p_attempted: bool = False
+        self._gasfree_1p_key: Optional[str] = None
+        self._gasfree_1p_secret: Optional[str] = None
         self._loaded: bool = False
         
     def load_from_yaml(self, config_path: Optional[str] = None) -> None:
@@ -77,24 +79,6 @@ class Config:
         networks_cfg = fac.get("networks")
         if not networks_cfg or not isinstance(networks_cfg, dict):
             errors.append("facilitator.networks is required and must be a non-empty dict (network_id -> config)")
-        else:
-            op_cfg = self._config.get("onepassword", {}) or {}
-            token_ok = bool(
-                self.onepassword_token
-                and self.onepassword_token not in ("your-op-token", "your-service-account-token")
-            )
-            for nid, nc in networks_cfg.items():
-                nc = nc or {}
-                if not nc.get("fee_to_address"):
-                    errors.append(f"facilitator.networks.{nid}.fee_to_address is required")
-                op_key = self._op_private_key_key(nid)
-                ref = op_cfg.get(op_key) if isinstance(op_cfg.get(op_key), str) else ""
-                has_op = bool(token_ok and ref.strip() and self._parse_op_ref(ref.strip()))
-                if not nc.get("private_key") and not has_op:
-                    errors.append(
-                        f"facilitator.networks.{nid}.private_key is required, "
-                        f"or configure onepassword.{op_key} as 'vault/item/field'"
-                    )
         if errors:
             raise ValueError(
                 "Configuration validation failed. " + " ".join(errors)
@@ -135,13 +119,8 @@ class Config:
             return None
         return (parts[0].strip(), parts[1].strip(), parts[2].strip())
 
-    @staticmethod
-    def _op_private_key_key(network_id: str) -> str:
-        """Map network_id (e.g. tron:nile) to onepassword key (e.g. tron_nile_private_key)."""
-        return network_id.replace(":", "_") + "_private_key"
-
     def _get_op_ref(self, key: str) -> str:
-        """Get 1Password secret reference string for key (e.g. tron_nile_private_key, database_password, trongrid_api_key)."""
+        """Get 1Password secret reference string for key (e.g. database_password, trongrid_api_key)."""
         val = self._config.get("onepassword", {}).get(key)
         return (val or "").strip() if isinstance(val, str) else ""
         
@@ -161,10 +140,6 @@ class Config:
     def _network_config(self, network_id: str) -> dict:
         """Get raw config dict for a network (facilitator.networks[network_id])."""
         return self._config.get("facilitator", {}).get("networks", {}).get(network_id) or {}
-
-    def get_fee_to_address(self, network_id: str) -> str:
-        """Get fee recipient address for a network."""
-        return self._network_config(network_id).get("fee_to_address", "")
 
     def get_base_fee(self, network_id: str) -> dict[str, int]:
         """
@@ -231,42 +206,6 @@ class Config:
         """Get monitoring endpoint path"""
         return self._config.get("monitoring", {}).get("endpoint", "/metrics")
 
-    async def get_private_key(self, network_id: str) -> str:
-        """
-        Get private key for a network.
-        Priority:
-        1. Cached value for this network (from 1Password)
-        2. This network's private_key in YAML (facilitator.networks.<id>.private_key)
-        3. 1Password retrieval (cached as fallback for all networks missing a key)
-
-        Returns:
-            Private key string
-        """
-        nc = self._network_config(network_id)
-        direct_key = (nc.get("private_key") or "").strip()
-        if direct_key:
-            return direct_key
-
-        # Fallback: per-network 1Password key (cached in _private_key_cache)
-        if network_id in self._private_key_cache:
-            return self._private_key_cache[network_id]
-
-        token = self.onepassword_token
-        op_key = self._op_private_key_key(network_id)
-        ref = self._get_op_ref(op_key)
-        parsed = self._parse_op_ref(ref) if ref else None
-        if not token or token == "your-op-token" or token == "your-service-account-token" or not parsed:
-            raise ValueError(
-                f"Facilitator Private Key for {network_id} is not configured.\n\n"
-                "Set facilitator.networks.<network_id>.private_key in config, "
-                f"or configure onepassword.{op_key} as 'vault/item/field'."
-            )
-        from onepassword_client import get_secret_from_1password
-        vault, item, field = parsed
-        key = await get_secret_from_1password(vault=vault, item=item, field=field, token=token)
-        self._private_key_cache[network_id] = key
-        return key
-
     async def get_trongrid_api_key(self) -> Optional[str]:
         """
         Get TronGrid API Key.
@@ -310,6 +249,56 @@ class Config:
                 logger.warning(f"Failed to load TronGrid API Key from 1Password: {e}")
         
         return None
+
+    async def _load_gasfree_from_1password_once(self) -> None:
+        """Fetch GasFree API key/secret from 1Password at most once per process."""
+        if self._gasfree_1p_attempted:
+            return
+        self._gasfree_1p_attempted = True
+        token = self.onepassword_token
+        if not token or token in ("your-op-token", "your-service-account-token"):
+            return
+
+        async def _fetch(config_key: str) -> Optional[str]:
+            ref = self._get_op_ref(config_key)
+            parsed = self._parse_op_ref(ref) if ref else None
+            if not parsed:
+                return None
+            try:
+                from onepassword_client import get_secret_from_1password
+
+                vault, item, field = parsed
+                return await get_secret_from_1password(
+                    vault=vault, item=item, field=field, token=token,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to load onepassword.{config_key} for GasFree: {e}")
+                return None
+
+        self._gasfree_1p_key = await _fetch("gasfree_api_key")
+        self._gasfree_1p_secret = await _fetch("gasfree_api_secret")
+
+    async def get_gasfree_api_credentials(self, network: str) -> tuple[Optional[str], Optional[str]]:
+        """
+        Resolve GasFree Open API credentials for a canonical network id (e.g. tron:nile).
+        Priority per field: GASFREE_API_KEY_<SUFFIX> or GASFREE_API_KEY, then 1Password (onepassword.gasfree_api_*).
+        Does not write os.environ; pass the result to GasFreeAPIClient(api_key=..., api_secret=...).
+        """
+        suffix = network.split(":")[-1].upper()
+        key = (
+            (os.getenv(f"GASFREE_API_KEY_{suffix}") or os.getenv("GASFREE_API_KEY") or "").strip() or None
+        )
+        secret = (
+            (os.getenv(f"GASFREE_API_SECRET_{suffix}") or os.getenv("GASFREE_API_SECRET") or "").strip()
+            or None
+        )
+        if key and secret:
+            return key, secret
+
+        await self._load_gasfree_from_1password_once()
+        key = key or ((self._gasfree_1p_key or "").strip() or None)
+        secret = secret or ((self._gasfree_1p_secret or "").strip() or None)
+        return key, secret
 
     async def get_database_password(self) -> Optional[str]:
         """

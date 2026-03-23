@@ -17,7 +17,7 @@ X402 Facilitator is a production-ready, multi-chain service for handling **HTTP 
 
 - Python 3.10+
 - PostgreSQL
-- Settlement private key per enabled network
+- An active external wallet provider resolvable by `x402` / `agent-wallet`
 - Optional: 1Password service account token (`OP_SERVICE_ACCOUNT_TOKEN`)
 
 ### Install and Run
@@ -41,9 +41,6 @@ Main config file:
 
 1. `database.url`
 2. `facilitator.networks` (must include at least one network)
-3. For each enabled network:
-- `fee_to_address`
-- `private_key` or corresponding 1Password secret reference
 
 ### Optional Configuration
 
@@ -58,6 +55,7 @@ Main config file:
 - `rate_limit.*`
 - `monitoring.*`
 - `facilitator.trongrid_api_key` (TRON use cases)
+- TRON **GasFree** (`exact_gasfree`): credentials are read at startup from `GASFREE_API_KEY` / `GASFREE_API_SECRET` (or per-network `GASFREE_API_KEY_NILE`, etc.) and/or 1Password refs `gasfree_api_key` / `gasfree_api_secret`, then passed explicitly to `GasFreeAPIClient` (process environment is not modified for GasFree).
 
 ### Example (Minimal Shape)
 
@@ -68,10 +66,8 @@ database:
 facilitator:
   networks:
     tron:nile:
-      fee_to_address: "T..."
       base_fee:
         USDT: 100
-      private_key: "hex_private_key"
 
 rate_limit:
   api_key_refresh_interval: 60
@@ -92,9 +88,20 @@ When using 1Password, set:
 
 Typical 1Password keys include:
 
-- Per-network private key: `<network_id_with_colon_replaced>_private_key`
 - `database_password`
 - `trongrid_api_key`
+- `gasfree_api_key` / `gasfree_api_secret` (used when the corresponding `GASFREE_API_*` environment variables are not set for that network)
+
+## Wallet Provider Prerequisite
+
+This service no longer manages settlement private keys directly.
+
+Before startup, make sure an active wallet is available through the default `x402` wallet provider resolution flow. In practice that means configuring an `agent-wallet` compatible provider through environment variables or wallet config so that:
+
+- TRON networks can resolve an active `tron` wallet
+- BSC / EVM networks can resolve an active `eip155` wallet
+
+If no active wallet is available, the service will fail during startup while initializing facilitator signers. The signer address is also used as the default `feeTo` address for permit-based fee quotes and settlement.
 
 ## API Key Authentication and Access Behavior
 
@@ -169,6 +176,7 @@ For onboarding, create seller and API key records that match your client managem
 docker build -t x402-facilitator .
 
 docker run -p 8001:8001 \
+  -e AGENT_WALLET_PRIVATE_KEY="" \
   -e OP_SERVICE_ACCOUNT_TOKEN="" \
   -v $(pwd)/config/facilitator.config.yaml:/app/config/facilitator.config.yaml:ro \
   -v $(pwd)/logs:/app/logs \
