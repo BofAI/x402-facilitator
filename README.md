@@ -55,7 +55,7 @@ Main config file:
 - `rate_limit.*`
 - `monitoring.*`
 - `facilitator.trongrid_api_key` (TRON use cases)
-- TRON **GasFree** (`exact_gasfree`): credentials are read at startup from `GASFREE_API_KEY` / `GASFREE_API_SECRET` (or per-network `GASFREE_API_KEY_NILE`, etc.) and/or 1Password refs `gasfree_api_key` / `gasfree_api_secret`, then passed explicitly to `GasFreeAPIClient` (process environment is not modified for GasFree).
+- TRON **GasFree** (`exact_gasfree`): credentials are read at startup from `GASFREE_API_KEY` / `GASFREE_API_SECRET` (or per-network `GASFREE_API_KEY_NILE`, `GASFREE_API_KEY_MAINNET`, etc.) and/or 1Password refs `gasfree_api_key_nile`, `gasfree_api_secret_nile`, `gasfree_api_key_mainnet`, `gasfree_api_secret_mainnet` (with global `gasfree_api_key` / `gasfree_api_secret` as fallback), then passed explicitly to `GasFreeAPIClient` (process environment is not modified for GasFree).
 
 ### Example (Minimal Shape)
 
@@ -90,7 +90,9 @@ Typical 1Password keys include:
 
 - `database_password`
 - `trongrid_api_key`
-- `gasfree_api_key` / `gasfree_api_secret` (used when the corresponding `GASFREE_API_*` environment variables are not set for that network)
+- `gasfree_api_key_nile` / `gasfree_api_secret_nile`
+- `gasfree_api_key_mainnet` / `gasfree_api_secret_mainnet`
+- `gasfree_api_key` / `gasfree_api_secret` as a global fallback
 
 ## Wallet Provider Prerequisite
 

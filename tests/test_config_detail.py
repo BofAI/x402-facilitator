@@ -2,6 +2,7 @@
 Detailed unit tests for config behavior around network metadata and validation.
 """
 import pytest
+from unittest.mock import AsyncMock
 
 from config import Config
 
@@ -208,6 +209,46 @@ def test_validate_required_allows_placeholder_op_token():
     }
     config._validate_required()
 
+
+# ---- get_gasfree_api_credentials ----
+@pytest.mark.asyncio
+async def test_get_gasfree_api_credentials_uses_network_specific_onepassword_refs(mocker, monkeypatch):
+    config = Config()
+    config._config = {
+        "onepassword": {
+            "token": "real-op-token",
+            "gasfree_api_key_nile": "nile-vault/gasfree-nile-item/api_key",
+            "gasfree_api_secret_nile": "nile-vault/gasfree-nile-item/api_secret",
+            "gasfree_api_key": "global-vault/gasfree-global-item/api_key",
+            "gasfree_api_secret": "global-vault/gasfree-global-item/api_secret",
+        }
+    }
+    monkeypatch.delenv("GASFREE_API_KEY_NILE", raising=False)
+    monkeypatch.delenv("GASFREE_API_SECRET_NILE", raising=False)
+    monkeypatch.delenv("GASFREE_API_KEY", raising=False)
+    monkeypatch.delenv("GASFREE_API_SECRET", raising=False)
+    mock_get_secret = mocker.patch(
+        "onepassword_client.get_secret_from_1password",
+        new_callable=AsyncMock,
+        side_effect=["nile-key", "nile-secret"],
+    )
+
+    key, secret = await config.get_gasfree_api_credentials("tron:nile")
+
+    assert (key, secret) == ("nile-key", "nile-secret")
+    assert mock_get_secret.await_count == 2
+    assert mock_get_secret.await_args_list[0].kwargs == {
+        "vault": "nile-vault",
+        "item": "gasfree-nile-item",
+        "field": "api_key",
+        "token": "real-op-token",
+    }
+    assert mock_get_secret.await_args_list[1].kwargs == {
+        "vault": "nile-vault",
+        "item": "gasfree-nile-item",
+        "field": "api_secret",
+        "token": "real-op-token",
+    }
 
 # ---- networks property (list of keys) ----
 def test_networks_returns_list_of_keys():

@@ -19,9 +19,7 @@ class Config:
         self._config: dict = {}
         self._trongrid_api_key: Optional[str] = None
         self._database_password: Optional[str] = None
-        self._gasfree_1p_attempted: bool = False
-        self._gasfree_1p_key: Optional[str] = None
-        self._gasfree_1p_secret: Optional[str] = None
+        self._gasfree_1p_cache: dict[str, tuple[Optional[str], Optional[str]]] = {}
         self._loaded: bool = False
         
     def load_from_yaml(self, config_path: Optional[str] = None) -> None:
@@ -250,14 +248,14 @@ class Config:
         
         return None
 
-    async def _load_gasfree_from_1password_once(self) -> None:
-        """Fetch GasFree API key/secret from 1Password at most once per process."""
-        if self._gasfree_1p_attempted:
-            return
-        self._gasfree_1p_attempted = True
+    async def _load_gasfree_from_1password(self, suffix: str) -> tuple[Optional[str], Optional[str]]:
+        """Fetch GasFree API key/secret from 1Password for a given network suffix."""
+        if suffix in self._gasfree_1p_cache:
+            return self._gasfree_1p_cache[suffix]
         token = self.onepassword_token
         if not token or token in ("your-op-token", "your-service-account-token"):
-            return
+            self._gasfree_1p_cache[suffix] = (None, None)
+            return self._gasfree_1p_cache[suffix]
 
         async def _fetch(config_key: str) -> Optional[str]:
             ref = self._get_op_ref(config_key)
@@ -275,13 +273,16 @@ class Config:
                 logger.warning(f"Failed to load onepassword.{config_key} for GasFree: {e}")
                 return None
 
-        self._gasfree_1p_key = await _fetch("gasfree_api_key")
-        self._gasfree_1p_secret = await _fetch("gasfree_api_secret")
+        key = await _fetch(f"gasfree_api_key_{suffix.lower()}") or await _fetch("gasfree_api_key")
+        secret = await _fetch(f"gasfree_api_secret_{suffix.lower()}") or await _fetch("gasfree_api_secret")
+        self._gasfree_1p_cache[suffix] = (key, secret)
+        return self._gasfree_1p_cache[suffix]
 
     async def get_gasfree_api_credentials(self, network: str) -> tuple[Optional[str], Optional[str]]:
         """
         Resolve GasFree Open API credentials for a canonical network id (e.g. tron:nile).
-        Priority per field: GASFREE_API_KEY_<SUFFIX> or GASFREE_API_KEY, then 1Password (onepassword.gasfree_api_*).
+        Priority per field: GASFREE_API_KEY_<SUFFIX> or GASFREE_API_KEY, then 1Password
+        (onepassword.gasfree_api_<suffix> or global onepassword.gasfree_api_* fallback).
         Does not write os.environ; pass the result to GasFreeAPIClient(api_key=..., api_secret=...).
         """
         suffix = network.split(":")[-1].upper()
@@ -295,9 +296,9 @@ class Config:
         if key and secret:
             return key, secret
 
-        await self._load_gasfree_from_1password_once()
-        key = key or ((self._gasfree_1p_key or "").strip() or None)
-        secret = secret or ((self._gasfree_1p_secret or "").strip() or None)
+        op_key, op_secret = await self._load_gasfree_from_1password(suffix.lower())
+        key = key or ((op_key or "").strip() or None)
+        secret = secret or ((op_secret or "").strip() or None)
         return key, secret
 
     async def get_database_password(self) -> Optional[str]:

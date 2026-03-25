@@ -15,8 +15,10 @@ database:
 onepassword:
   database_password: ""
   trongrid_api_key: ""
-  gasfree_api_key: ""
-  gasfree_api_secret: ""
+  gasfree_api_key_nile: ""
+  gasfree_api_secret_nile: ""
+  gasfree_api_key_mainnet: ""
+  gasfree_api_secret_mainnet: ""
 
 server:
   host: "0.0.0.0"
