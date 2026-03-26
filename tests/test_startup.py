@@ -118,6 +118,7 @@ async def test_lifespan_uses_tron_wallet_provider(mocker):
     monkeypatch.undo()
     main.config.inject_agent_wallet_password_env.assert_awaited_once_with()
     create_mock.assert_awaited_once_with()
+    main.config.get_gasfree_api_credentials.assert_awaited_once_with("tron:nile")
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], permit_mechanism)
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], exact_mechanism)
     gasfree_client_cls.assert_not_called()
@@ -158,6 +159,7 @@ async def test_lifespan_registers_gasfree_when_credentials_present(mocker):
         pass
 
     create_mock.assert_awaited_once_with()
+    main.config.get_gasfree_api_credentials.assert_awaited_once_with("tron:nile")
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], permit_mechanism)
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], exact_mechanism)
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], gasfree_mechanism)
@@ -211,3 +213,57 @@ async def test_lifespan_reports_wallet_provider_error(mocker):
     ):
         async with main.lifespan(main.app):
             pass
+
+
+@pytest.mark.asyncio
+async def test_lifespan_reuses_signers_across_same_chain_type(mocker):
+    import main
+
+    _patch_lifespan_dependencies(
+        mocker,
+        main,
+        ["tron:nile", "tron:mainnet", "bsc:testnet", "bsc:mainnet"],
+    )
+
+    tron_signer = MagicMock()
+    evm_signer = MagicMock()
+    tron_permit_mechanism = MagicMock()
+    tron_permit_mechanism.scheme.return_value = "exact_permit"
+    tron_exact_mechanism = MagicMock()
+    tron_exact_mechanism.scheme.return_value = "exact"
+    evm_permit_mechanism = MagicMock()
+    evm_permit_mechanism.scheme.return_value = "exact_permit"
+    evm_exact_mechanism = MagicMock()
+    evm_exact_mechanism.scheme.return_value = "exact"
+
+    tron_create_mock = mocker.patch.object(
+        main.TronFacilitatorSigner,
+        "create",
+        new_callable=AsyncMock,
+        return_value=tron_signer,
+    )
+    evm_create_mock = mocker.patch.object(
+        main.EvmFacilitatorSigner,
+        "create",
+        new_callable=AsyncMock,
+        return_value=evm_signer,
+    )
+    mocker.patch.object(main, "ExactPermitTronFacilitatorMechanism", return_value=tron_permit_mechanism)
+    mocker.patch.object(main, "ExactTronFacilitatorMechanism", return_value=tron_exact_mechanism)
+    mocker.patch.object(main, "ExactPermitEvmFacilitatorMechanism", return_value=evm_permit_mechanism)
+    mocker.patch.object(main, "ExactEvmFacilitatorMechanism", return_value=evm_exact_mechanism)
+    register_mock = mocker.patch.object(main.x402_facilitator, "register", return_value=main.x402_facilitator)
+
+    async with main.lifespan(main.app):
+        pass
+
+    tron_create_mock.assert_awaited_once_with()
+    evm_create_mock.assert_awaited_once_with()
+    register_mock.assert_any_call([main.to_internal_network["tron:nile"]], tron_permit_mechanism)
+    register_mock.assert_any_call([main.to_internal_network["tron:nile"]], tron_exact_mechanism)
+    register_mock.assert_any_call([main.to_internal_network["tron:mainnet"]], tron_permit_mechanism)
+    register_mock.assert_any_call([main.to_internal_network["tron:mainnet"]], tron_exact_mechanism)
+    register_mock.assert_any_call([main.to_internal_network["bsc:testnet"]], evm_permit_mechanism)
+    register_mock.assert_any_call([main.to_internal_network["bsc:testnet"]], evm_exact_mechanism)
+    register_mock.assert_any_call([main.to_internal_network["bsc:mainnet"]], evm_permit_mechanism)
+    register_mock.assert_any_call([main.to_internal_network["bsc:mainnet"]], evm_exact_mechanism)
