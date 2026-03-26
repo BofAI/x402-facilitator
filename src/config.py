@@ -19,6 +19,7 @@ class Config:
         self._config: dict = {}
         self._trongrid_api_key: Optional[str] = None
         self._database_password: Optional[str] = None
+        self._agent_wallet_password: Optional[str] = None
         self._gasfree_1p_cache: dict[str, tuple[Optional[str], Optional[str]]] = {}
         self._loaded: bool = False
         
@@ -134,7 +135,55 @@ class Config:
         if env_token:
             return env_token
         return self._config.get("onepassword", {}).get("token")
-    
+
+    async def get_agent_wallet_password(self) -> Optional[str]:
+        """
+        Get the agent wallet password.
+        Priority:
+        1. Cached value
+        2. Environment variable AGENT_WALLET_PASSWORD
+        3. 1Password retrieval (when onepassword.agent_wallet_password is set)
+        """
+        if self._agent_wallet_password is not None:
+            return self._agent_wallet_password
+
+        env_password = os.getenv("AGENT_WALLET_PASSWORD")
+        if env_password:
+            self._agent_wallet_password = env_password
+            return self._agent_wallet_password
+
+        ref = self._get_op_ref("agent_wallet_password")
+        token = self.onepassword_token
+        parsed = self._parse_op_ref(ref) if ref else None
+        if not parsed or not token or token in ("your-op-token", "your-service-account-token"):
+            return None
+
+        from onepassword_client import get_secret_from_1password
+
+        vault, item, field = parsed
+        try:
+            self._agent_wallet_password = await get_secret_from_1password(
+                vault=vault,
+                item=item,
+                field=field,
+                token=token,
+            )
+            return self._agent_wallet_password
+        except Exception as e:
+            logger.warning(f"Failed to load agent wallet password from 1Password: {e}")
+            return None
+
+    async def inject_agent_wallet_password_env(self) -> Optional[str]:
+        """
+        Resolve the agent wallet password and inject it into AGENT_WALLET_PASSWORD.
+
+        Returns the resolved password when available, or None if no secret is configured.
+        """
+        password = await self.get_agent_wallet_password()
+        if password and not os.getenv("AGENT_WALLET_PASSWORD"):
+            os.environ["AGENT_WALLET_PASSWORD"] = password
+        return password
+        
     def _network_config(self, network_id: str) -> dict:
         """Get raw config dict for a network (facilitator.networks[network_id])."""
         return self._config.get("facilitator", {}).get("networks", {}).get(network_id) or {}

@@ -1,3 +1,5 @@
+import asyncio
+import os
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
@@ -5,6 +7,12 @@ import pytest
 
 def _patch_lifespan_dependencies(mocker, main_module, networks):
     mocker.patch.object(main_module.config, "load_from_yaml", return_value=None)
+    mocker.patch.object(
+        main_module.config,
+        "inject_agent_wallet_password_env",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
     mocker.patch.object(main_module, "setup_logging", return_value=None)
     mocker.patch("monitoring.start_monitoring_server", return_value=None)
     mocker.patch.object(main_module, "init_database", new_callable=AsyncMock)
@@ -27,11 +35,50 @@ def _patch_lifespan_dependencies(mocker, main_module, networks):
     mocker.patch.object(main_module.config, "get_base_fee", return_value={"USDT": 100})
 
 
+def test_main_injects_agent_wallet_password_before_uvicorn_run(mocker, monkeypatch):
+    import main
+
+    monkeypatch.delenv("AGENT_WALLET_PASSWORD", raising=False)
+    mocker.patch.object(main.config, "load_from_yaml", return_value=None)
+
+    async def inject_password():
+        os.environ["AGENT_WALLET_PASSWORD"] = "wallet-pass"
+
+    mocker.patch.object(
+        main.config,
+        "inject_agent_wallet_password_env",
+        new_callable=AsyncMock,
+        side_effect=inject_password,
+    )
+
+    def run_coroutine(coro):
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    mocker.patch.object(main.asyncio, "run", side_effect=run_coroutine)
+
+    def run_uvicorn(*args, **kwargs):
+        assert os.getenv("AGENT_WALLET_PASSWORD") == "wallet-pass"
+
+    uvicorn_run = mocker.patch.object(main.uvicorn, "run", side_effect=run_uvicorn)
+
+    main.main()
+
+    uvicorn_run.assert_called_once()
+    main.config.inject_agent_wallet_password_env.assert_awaited_once_with()
+
+
 @pytest.mark.asyncio
 async def test_lifespan_uses_tron_wallet_provider(mocker):
     import main
 
     _patch_lifespan_dependencies(mocker, main, ["tron:nile"])
+    injected_password = "wallet-pass"
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.delenv("AGENT_WALLET_PASSWORD", raising=False)
     tron_signer = MagicMock()
     permit_mechanism = MagicMock()
     permit_mechanism.scheme.return_value = "exact_permit"
@@ -39,11 +86,27 @@ async def test_lifespan_uses_tron_wallet_provider(mocker):
     exact_mechanism.scheme.return_value = "exact"
     gasfree_client_cls = mocker.patch.object(main, "GasFreeAPIClient")
 
+    async def inject_password():
+        import os
+        os.environ["AGENT_WALLET_PASSWORD"] = injected_password
+
+    mocker.patch.object(
+        main.config,
+        "inject_agent_wallet_password_env",
+        new_callable=AsyncMock,
+        side_effect=inject_password,
+    )
+
+    async def create_tron_signer():
+        import os
+        assert os.getenv("AGENT_WALLET_PASSWORD") == injected_password
+        return tron_signer
+
     create_mock = mocker.patch.object(
         main.TronFacilitatorSigner,
         "create",
         new_callable=AsyncMock,
-        return_value=tron_signer,
+        side_effect=create_tron_signer,
     )
     mocker.patch.object(main, "ExactPermitTronFacilitatorMechanism", return_value=permit_mechanism)
     mocker.patch.object(main, "ExactTronFacilitatorMechanism", return_value=exact_mechanism)
@@ -52,6 +115,8 @@ async def test_lifespan_uses_tron_wallet_provider(mocker):
     async with main.lifespan(main.app):
         pass
 
+    monkeypatch.undo()
+    main.config.inject_agent_wallet_password_env.assert_awaited_once_with()
     create_mock.assert_awaited_once_with()
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], permit_mechanism)
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], exact_mechanism)

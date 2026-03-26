@@ -90,6 +90,7 @@ Typical 1Password keys include:
 
 - `database_password`
 - `trongrid_api_key`
+- `agent_wallet_password` (loaded on startup into `AGENT_WALLET_PASSWORD`)
 - `gasfree_api_key_nile` / `gasfree_api_secret_nile`
 - `gasfree_api_key_mainnet` / `gasfree_api_secret_mainnet`
 - `gasfree_api_key` / `gasfree_api_secret` as a global fallback

@@ -59,6 +59,7 @@ async def lifespan(app: FastAPI):
     
     # Load configuration
     config.load_from_yaml()
+    await config.inject_agent_wallet_password_env()
     logger.info("Configuration loaded")
     
     # Re-setup logging with configuration (file logging)
@@ -312,6 +313,7 @@ def main():
     """Start the facilitator server"""
     print("Starting X402 Facilitator Server")
     config.load_from_yaml()
+    asyncio.run(config.inject_agent_wallet_password_env())
     uvicorn.run(
         app,
         host=config.server_host,

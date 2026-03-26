@@ -1,5 +1,9 @@
+import os
+
+from unittest.mock import AsyncMock
 
 import pytest
+
 from config import Config
 
 def test_config_default_values():
@@ -56,3 +60,31 @@ async def test_trongrid_api_key_env_priority(monkeypatch):
     
     key = await config.get_trongrid_api_key()
     assert key == "env-trongrid-key"
+
+
+@pytest.mark.asyncio
+async def test_agent_wallet_password_is_injected_from_onepassword(monkeypatch, mocker):
+    config = Config()
+    config._config = {
+        "onepassword": {
+            "token": "real-op-token",
+            "agent_wallet_password": "wallet-vault/wallet-item/password",
+        }
+    }
+    monkeypatch.delenv("AGENT_WALLET_PASSWORD", raising=False)
+    mock_get_secret = mocker.patch(
+        "onepassword_client.get_secret_from_1password",
+        new_callable=AsyncMock,
+        return_value="agent-wallet-secret",
+    )
+
+    password = await config.inject_agent_wallet_password_env()
+
+    assert password == "agent-wallet-secret"
+    assert os.getenv("AGENT_WALLET_PASSWORD") == "agent-wallet-secret"
+    mock_get_secret.assert_awaited_once_with(
+        vault="wallet-vault",
+        item="wallet-item",
+        field="password",
+        token="real-op-token",
+    )
