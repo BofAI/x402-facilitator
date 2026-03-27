@@ -17,10 +17,10 @@ import uuid
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker  # noqa: E402
 
-from config import config
-from database import APIKey, Seller, _ssl_for_asyncpg
+from config import config  # noqa: E402
+from database import APIKey, Seller, _ssl_for_asyncpg  # noqa: E402
 
 
 async def register_seller(api_key: str) -> None:

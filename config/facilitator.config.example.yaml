@@ -13,12 +13,14 @@ database:
 
 # 1Password: each value is "vault/item/field" (op:// style). Set OP_SERVICE_ACCOUNT_TOKEN when using.
 onepassword:
-  tron_nile_private_key: ""
-  tron_mainnet_private_key: ""
-  bsc_testnet_private_key: ""
-  bsc_mainnet_private_key: ""
   database_password: ""
   trongrid_api_key: ""
+  # Loaded at startup into AGENT_WALLET_PASSWORD for agent-wallet-compatible providers.
+  agent_wallet_password: ""
+  gasfree_api_key_nile: ""
+  gasfree_api_secret_nile: ""
+  gasfree_api_key_mainnet: ""
+  gasfree_api_secret_mainnet: ""
 
 server:
   host: "0.0.0.0"
@@ -44,27 +46,20 @@ facilitator:
   # Shared across all networks (same level as networks)
   trongrid_api_key: ""
 
-  # Per-network config. Key = network id; listed = enabled. Each has fee_to_address, base_fee, private_key.
+  # Per-network config. Key = network id; listed = enabled. Each has base_fee.
+  # Settlement wallets are resolved externally through x402 / agent-wallet providers.
   networks:
     tron:nile:
-      fee_to_address: ""
       base_fee:
         USDT: 100              # 0.0001 USDT (6 decimals)
         USDD: 100000000000000  # 0.0001 USDD (18 decimals)
-      private_key: ""          # or use 1Password: onepassword.<network> = "vault/item/field"
     tron:mainnet:
-      fee_to_address: ""
       base_fee:
         USDT: 100
         USDD: 100000000000000
-      private_key: ""
     bsc:testnet:
-      fee_to_address: ""
       base_fee:
         USDC: 100
-      private_key: ""
     bsc:mainnet:
-      fee_to_address: ""
       base_fee:
         EPS: 100
-      private_key: ""

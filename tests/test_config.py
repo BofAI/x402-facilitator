@@ -1,6 +1,9 @@
-
 import os
+
+from unittest.mock import AsyncMock
+
 import pytest
+
 from config import Config
 
 def test_config_default_values():
@@ -23,20 +26,31 @@ def test_env_priority(monkeypatch):
     
     assert config.onepassword_token == "env-token"
 
-@pytest.mark.asyncio
-async def test_private_key_fallback(monkeypatch):
-    """Verify private key retrieval: per-network key in YAML over 1Password fallback"""
+def test_validate_required_allows_networks_without_private_key():
+    """Wallets are now provided externally, so private_key is no longer required."""
     config = Config()
     config._config = {
+        "database": {"url": "postgresql+asyncpg://user@localhost/db"},
         "facilitator": {
             "networks": {
-                "tron:nile": {"fee_to_address": "T...", "private_key": "direct-key"},
+                "tron:nile": {},
             }
         },
-        "onepassword": {"token": "op-token", "vault": "V", "item": "I"},
     }
-    key = await config.get_private_key("tron:nile")
-    assert key == "direct-key"
+    config._validate_required()
+
+def test_validate_required_allows_networks_without_fee_to_address():
+    """fee_to_address is no longer required and defaults to the signer address."""
+    config = Config()
+    config._config = {
+        "database": {"url": "postgresql+asyncpg://user@localhost/db"},
+        "facilitator": {
+            "networks": {
+                "tron:nile": {},
+            }
+        },
+    }
+    config._validate_required()
 
 @pytest.mark.asyncio
 async def test_trongrid_api_key_env_priority(monkeypatch):
@@ -46,3 +60,31 @@ async def test_trongrid_api_key_env_priority(monkeypatch):
     
     key = await config.get_trongrid_api_key()
     assert key == "env-trongrid-key"
+
+
+@pytest.mark.asyncio
+async def test_agent_wallet_password_is_injected_from_onepassword(monkeypatch, mocker):
+    config = Config()
+    config._config = {
+        "onepassword": {
+            "token": "real-op-token",
+            "agent_wallet_password": "wallet-vault/wallet-item/password",
+        }
+    }
+    monkeypatch.delenv("AGENT_WALLET_PASSWORD", raising=False)
+    mock_get_secret = mocker.patch(
+        "onepassword_client.get_secret_from_1password",
+        new_callable=AsyncMock,
+        return_value="agent-wallet-secret",
+    )
+
+    password = await config.inject_agent_wallet_password_env()
+
+    assert password == "agent-wallet-secret"
+    assert os.getenv("AGENT_WALLET_PASSWORD") == "agent-wallet-secret"
+    mock_get_secret.assert_awaited_once_with(
+        vault="wallet-vault",
+        item="wallet-item",
+        field="password",
+        token="real-op-token",
+    )

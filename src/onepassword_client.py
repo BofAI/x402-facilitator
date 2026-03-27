@@ -2,7 +2,6 @@
 1Password client for secure secret retrieval
 """
 
-import os
 from typing import Optional
 
 

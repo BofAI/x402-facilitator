@@ -1,9 +1,8 @@
 """
-Detailed unit tests for config changes: _network_config, get_fee_to_address,
-get_base_fee, _validate_required, get_private_key (per-network + 1Password fallback).
+Detailed unit tests for config behavior around network metadata and validation.
 """
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from config import Config
 
@@ -26,7 +25,7 @@ def test_network_config_returns_empty_when_network_id_unknown():
     config._config = {
         "facilitator": {
             "networks": {
-                "tron:nile": {"fee_to_address": "T..."},
+                "tron:nile": {},
             }
         }
     }
@@ -52,35 +51,12 @@ def test_network_config_returns_dict_when_present():
     config._config = {
         "facilitator": {
             "networks": {
-                "tron:nile": {"fee_to_address": "TNile123", "base_fee": {"USDT": 100}},
+                "tron:nile": {"base_fee": {"USDT": 100}},
             }
         }
     }
     out = config._network_config("tron:nile")
-    assert out == {"fee_to_address": "TNile123", "base_fee": {"USDT": 100}}
-
-
-# ---- get_fee_to_address ----
-def test_get_fee_to_address_returns_empty_for_unknown_network():
-    config = Config()
-    config._config = {"facilitator": {"networks": {"tron:nile": {"fee_to_address": "T..."}}}}
-    assert config.get_fee_to_address("tron:mainnet") == ""
-
-
-def test_get_fee_to_address_returns_default_empty_when_key_missing():
-    config = Config()
-    config._config = {"facilitator": {"networks": {"tron:nile": {"base_fee": {}}}}}
-    assert config.get_fee_to_address("tron:nile") == ""
-
-
-def test_get_fee_to_address_returns_value_when_present():
-    config = Config()
-    config._config = {
-        "facilitator": {
-            "networks": {"tron:nile": {"fee_to_address": "TNileFeeTo123456789012345678901234"}}
-        }
-    }
-    assert config.get_fee_to_address("tron:nile") == "TNileFeeTo123456789012345678901234"
+    assert out == {"base_fee": {"USDT": 100}}
 
 
 # ---- get_base_fee ----
@@ -92,7 +68,7 @@ def test_get_base_fee_returns_empty_dict_for_unknown_network():
 
 def test_get_base_fee_returns_empty_dict_when_base_fee_missing():
     config = Config()
-    config._config = {"facilitator": {"networks": {"tron:nile": {"fee_to_address": "T..."}}}}
+    config._config = {"facilitator": {"networks": {"tron:nile": {}}}}
     assert config.get_base_fee("tron:nile") == {}
 
 
@@ -131,7 +107,7 @@ def test_validate_required_raises_when_database_url_missing():
         "database": {},
         "facilitator": {
             "networks": {
-                "tron:nile": {"fee_to_address": "T...", "private_key": "x" * 64},
+                "tron:nile": {"base_fee": {"USDT": 100}},
             }
         },
     }
@@ -174,37 +150,17 @@ def test_validate_required_raises_when_networks_empty_dict():
     assert "facilitator.networks" in str(exc_info.value)
 
 
-def test_validate_required_raises_when_network_missing_fee_to_address():
+def test_validate_required_passes_without_private_key():
     config = Config()
     config._config = {
         "database": {"url": "postgresql://localhost/db"},
         "facilitator": {
             "networks": {
-                "tron:nile": {"fee_to_address": "", "private_key": "a" * 64},
+                "tron:nile": {},
             }
         },
     }
-    with pytest.raises(ValueError) as exc_info:
-        config._validate_required()
-    assert "fee_to_address" in str(exc_info.value)
-    assert "tron:nile" in str(exc_info.value)
-
-
-def test_validate_required_raises_when_network_missing_private_key_and_no_op():
-    config = Config()
-    config._config = {
-        "database": {"url": "postgresql://localhost/db"},
-        "facilitator": {
-            "networks": {
-                "tron:nile": {"fee_to_address": "T...", "private_key": ""},
-            }
-        },
-        "onepassword": {},
-    }
-    with pytest.raises(ValueError) as exc_info:
-        config._validate_required()
-    assert "private_key" in str(exc_info.value)
-    assert "tron:nile" in str(exc_info.value)
+    config._validate_required()
 
 
 def test_validate_required_passes_when_all_required_present():
@@ -213,20 +169,20 @@ def test_validate_required_passes_when_all_required_present():
         "database": {"url": "postgresql://localhost/db"},
         "facilitator": {
             "networks": {
-                "tron:nile": {"fee_to_address": "TNile123", "private_key": "a" * 64},
+                "tron:nile": {},
             }
         },
     }
     config._validate_required()  # no raise
 
 
-def test_validate_required_passes_when_network_no_private_key_but_has_op():
+def test_validate_required_ignores_onepassword_private_key_metadata():
     config = Config()
     config._config = {
         "database": {"url": "postgresql://localhost/db"},
         "facilitator": {
             "networks": {
-                "tron:nile": {"fee_to_address": "TNile123", "private_key": ""},
+                "tron:nile": {},
             }
         },
         "onepassword": {
@@ -237,13 +193,13 @@ def test_validate_required_passes_when_network_no_private_key_but_has_op():
     config._validate_required()  # no raise
 
 
-def test_validate_required_raises_when_op_token_placeholder():
+def test_validate_required_allows_placeholder_op_token():
     config = Config()
     config._config = {
         "database": {"url": "postgresql://localhost/db"},
         "facilitator": {
             "networks": {
-                "tron:nile": {"fee_to_address": "T...", "private_key": ""},
+                "tron:nile": {},
             }
         },
         "onepassword": {
@@ -251,93 +207,48 @@ def test_validate_required_raises_when_op_token_placeholder():
             "tron_nile_private_key": "V/Item/private_key",
         },
     }
-    with pytest.raises(ValueError) as exc_info:
-        config._validate_required()
-    assert "private_key" in str(exc_info.value)
+    config._validate_required()
 
 
-# ---- get_private_key: per-network + fallback ----
+# ---- get_gasfree_api_credentials ----
 @pytest.mark.asyncio
-async def test_get_private_key_returns_network_key_when_present():
+async def test_get_gasfree_api_credentials_uses_network_specific_onepassword_refs(mocker, monkeypatch):
     config = Config()
     config._config = {
-        "facilitator": {
-            "networks": {
-                "tron:nile": {"fee_to_address": "T...", "private_key": "  my-hex-key  "},
-            }
+        "onepassword": {
+            "token": "real-op-token",
+            "gasfree_api_key_nile": "nile-vault/gasfree-nile-item/api_key",
+            "gasfree_api_secret_nile": "nile-vault/gasfree-nile-item/api_secret",
+            "gasfree_api_key": "global-vault/gasfree-global-item/api_key",
+            "gasfree_api_secret": "global-vault/gasfree-global-item/api_secret",
         }
     }
-    key = await config.get_private_key("tron:nile")
-    assert key == "my-hex-key"
+    monkeypatch.delenv("GASFREE_API_KEY_NILE", raising=False)
+    monkeypatch.delenv("GASFREE_API_SECRET_NILE", raising=False)
+    monkeypatch.delenv("GASFREE_API_KEY", raising=False)
+    monkeypatch.delenv("GASFREE_API_SECRET", raising=False)
+    mock_get_secret = mocker.patch(
+        "onepassword_client.get_secret_from_1password",
+        new_callable=AsyncMock,
+        side_effect=["nile-key", "nile-secret"],
+    )
 
+    key, secret = await config.get_gasfree_api_credentials("tron:nile")
 
-@pytest.mark.asyncio
-async def test_get_private_key_returns_cached_fallback_after_first_op_fetch():
-    config = Config()
-    config._config = {
-        "facilitator": {
-            "networks": {
-                "tron:nile": {"fee_to_address": "T...", "private_key": "key-nile"},
-                "tron:mainnet": {"fee_to_address": "T...", "private_key": ""},
-            }
-        },
-        "onepassword": {"token": "t", "tron_mainnet_private_key": "V/I/private_key"},
+    assert (key, secret) == ("nile-key", "nile-secret")
+    assert mock_get_secret.await_count == 2
+    assert mock_get_secret.await_args_list[0].kwargs == {
+        "vault": "nile-vault",
+        "item": "gasfree-nile-item",
+        "field": "api_key",
+        "token": "real-op-token",
     }
-    with patch("onepassword_client.get_secret_from_1password", new_callable=AsyncMock, return_value="op-fetched-key"):
-        key_mainnet = await config.get_private_key("tron:mainnet")
-    assert key_mainnet == "op-fetched-key"
-    # Second call for same network uses cache
-    key_mainnet2 = await config.get_private_key("tron:mainnet")
-    assert key_mainnet2 == "op-fetched-key"
-
-
-@pytest.mark.asyncio
-async def test_get_private_key_raises_when_no_key_and_no_op():
-    config = Config()
-    config._config = {
-        "facilitator": {
-            "networks": {
-                "tron:nile": {"fee_to_address": "T...", "private_key": ""},
-            }
-        },
-        "onepassword": {},
+    assert mock_get_secret.await_args_list[1].kwargs == {
+        "vault": "nile-vault",
+        "item": "gasfree-nile-item",
+        "field": "api_secret",
+        "token": "real-op-token",
     }
-    with pytest.raises(ValueError) as exc_info:
-        await config.get_private_key("tron:nile")
-    assert "tron:nile" in str(exc_info.value)
-    assert "not configured" in str(exc_info.value).lower()
-
-
-@pytest.mark.asyncio
-async def test_get_private_key_raises_when_token_is_placeholder():
-    config = Config()
-    config._config = {
-        "facilitator": {
-            "networks": {
-                "tron:nile": {"fee_to_address": "T...", "private_key": ""},
-            }
-        },
-        "onepassword": {"token": "your-op-token", "tron_nile_private_key": "V/I/private_key"},
-    }
-    with pytest.raises(ValueError) as exc_info:
-        await config.get_private_key("tron:nile")
-    assert "not configured" in str(exc_info.value).lower()
-
-
-@pytest.mark.asyncio
-async def test_get_private_key_per_network_takes_precedence_over_cached_op():
-    config = Config()
-    config._private_key_cache["tron:nile"] = "cached-op-key"
-    config._config = {
-        "facilitator": {
-            "networks": {
-                "tron:nile": {"fee_to_address": "T...", "private_key": "nile-direct-key"},
-            }
-        },
-    }
-    key = await config.get_private_key("tron:nile")
-    assert key == "nile-direct-key"
-
 
 # ---- networks property (list of keys) ----
 def test_networks_returns_list_of_keys():
@@ -345,8 +256,8 @@ def test_networks_returns_list_of_keys():
     config._config = {
         "facilitator": {
             "networks": {
-                "tron:nile": {"fee_to_address": "T..."},
-                "tron:mainnet": {"fee_to_address": "T..."},
+                "tron:nile": {},
+                "tron:mainnet": {},
             }
         }
     }

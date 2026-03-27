@@ -14,14 +14,16 @@ from helper import (
     is_eth_network,
 )
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+from bankofai.x402.config import NetworkConfig
 from bankofai.x402.mechanisms.tron.exact_permit.facilitator import ExactPermitTronFacilitatorMechanism
+from bankofai.x402.mechanisms.tron.exact_gasfree.facilitator import ExactGasFreeFacilitatorMechanism
 from bankofai.x402.mechanisms.evm.exact_permit.facilitator import ExactPermitEvmFacilitatorMechanism
 from bankofai.x402.mechanisms.tron.exact.facilitator import ExactTronFacilitatorMechanism
 from bankofai.x402.mechanisms.evm.exact.facilitator import ExactEvmFacilitatorMechanism
+from bankofai.x402.utils.gasfree import GasFreeAPIClient
 from bankofai.x402.signers.facilitator import TronFacilitatorSigner, EvmFacilitatorSigner
 from bankofai.x402.facilitator.x402_facilitator import X402Facilitator
 from bankofai.x402.types import (
@@ -49,6 +51,82 @@ logger = logging.getLogger(__name__)
 # Global facilitator instance
 x402_facilitator = X402Facilitator()
 
+async def _get_tron_signer(network: str, tron_signer):
+    """Create a TRON facilitator signer once and reuse it across TRON networks."""
+    if tron_signer is not None:
+        return tron_signer
+
+    try:
+        return await TronFacilitatorSigner.create()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to initialize facilitator signer for {network}. "
+            "Ensure an active wallet provider is configured for tron."
+        ) from exc
+
+
+async def _get_evm_signer(network: str, evm_signer):
+    """Create an EVM facilitator signer once and reuse it across EVM networks."""
+    if evm_signer is not None:
+        return evm_signer
+
+    try:
+        return await EvmFacilitatorSigner.create()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to initialize facilitator signer for {network}. "
+            "Ensure an active wallet provider is configured for eip155."
+        ) from exc
+
+
+async def _register_tron_facilitator(network: str, base_fee: dict, signer) -> None:
+    """Register TRON facilitator mechanisms for a canonical network."""
+    internal_net = to_internal_network[network]
+    facilitator_mechanism = ExactPermitTronFacilitatorMechanism(
+        signer,
+        base_fee=base_fee,
+    )
+    x402_facilitator.register([internal_net], facilitator_mechanism)
+
+    facilitator_mechanism = ExactTronFacilitatorMechanism(
+        signer,
+    )
+    x402_facilitator.register([internal_net], facilitator_mechanism)
+
+    gf_key, gf_secret = await config.get_gasfree_api_credentials(network)
+    if gf_key and gf_secret:
+        gasfree_client = GasFreeAPIClient(
+            NetworkConfig.get_gasfree_api_base_url(internal_net),
+            api_key=gf_key,
+            api_secret=gf_secret,
+        )
+        gasfree_mechanism = ExactGasFreeFacilitatorMechanism(
+            signer,
+            clients={internal_net: gasfree_client},
+            base_fee=base_fee,
+        )
+        x402_facilitator.register([internal_net], gasfree_mechanism)
+    else:
+        logger.info(
+            "GasFree API credentials not configured for %s; exact_gasfree not registered.",
+            network,
+        )
+
+
+def _register_evm_facilitator(network: str, base_fee: dict, signer) -> None:
+    """Register EVM facilitator mechanisms for a canonical network."""
+    internal_net = to_internal_network[network]
+    facilitator_mechanism = ExactPermitEvmFacilitatorMechanism(
+        signer,
+        base_fee=base_fee,
+    )
+    x402_facilitator.register([internal_net], facilitator_mechanism)
+
+    facilitator_mechanism = ExactEvmFacilitatorMechanism(
+        signer,
+    )
+    x402_facilitator.register([internal_net], facilitator_mechanism)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
@@ -57,6 +135,7 @@ async def lifespan(app: FastAPI):
     
     # Load configuration
     config.load_from_yaml()
+    await config.inject_agent_wallet_password_env()
     logger.info("Configuration loaded")
     
     # Re-setup logging with configuration (file logging)
@@ -83,7 +162,7 @@ async def lifespan(app: FastAPI):
     # Start API key refresher task
     refresher_task = asyncio.create_task(api_key_refresher())
     logger.info("API key refresher task started")
-    
+
     # TronGrid API Key (shared across networks) — set in environment for the underlying library
     trongrid_api_key = await config.get_trongrid_api_key()
     if trongrid_api_key:
@@ -92,38 +171,19 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("TronGrid API Key not configured. Using default rate limits for blockchain requests.")
 
-    # Initialize facilitator per network (each has its own fee_to_address, base_fee, private_key)
+    tron_signer = None
+    evm_signer = None
+
+    # Initialize facilitator per network (wallets come from the configured provider)
     for network in config.networks:
-        private_key = await config.get_private_key(network)
-        fee_to = config.get_fee_to_address(network)
         base_fee = config.get_base_fee(network)
         if is_tron_network(network):
-            facilitator_signer = TronFacilitatorSigner.from_private_key(private_key=private_key)
-            facilitator_mechanism = ExactPermitTronFacilitatorMechanism(
-                facilitator_signer,
-                fee_to=fee_to,
-                base_fee=base_fee,
-            )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
-            facilitator_mechanism = ExactTronFacilitatorMechanism(
-                facilitator_signer,
-            )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
+            tron_signer = await _get_tron_signer(network, tron_signer)
+            await _register_tron_facilitator(network, base_fee, tron_signer)
             logger.info(f"Facilitator registered for {network}")
         elif is_bsc_network(network) or is_eth_network(network):
-            facilitator_signer = EvmFacilitatorSigner.from_private_key(private_key=private_key)
-            facilitator_mechanism = ExactPermitEvmFacilitatorMechanism(
-                facilitator_signer,
-                fee_to=fee_to,
-                base_fee=base_fee,
-            )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
-
-            facilitator_mechanism = ExactEvmFacilitatorMechanism(
-                facilitator_signer,
-            )
-            x402_facilitator.register([to_internal_network[network]], facilitator_mechanism)
-
+            evm_signer = await _get_evm_signer(network, evm_signer)
+            _register_evm_facilitator(network, base_fee, evm_signer)
             logger.info(f"Facilitator registered for {network}")
         else:
             logger.warning(f"Unsupported network: {network}")
@@ -171,7 +231,7 @@ async def health():
 @app.get("/supported")
 async def supported(request: Request):
     """Get supported capabilities"""
-    return x402_facilitator.supported(pricing="flat")
+    return x402_facilitator.supported()
 
 @app.post("/fee/quote")
 async def fee_quote(request: Request, request_data: FeeQuoteRequest):
@@ -188,7 +248,7 @@ async def verify(request: Request, verify_request: VerifyRequest):
         return await x402_facilitator.verify(verify_request.paymentPayload, verify_request.paymentRequirements)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
         logger.exception("Verify failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -283,6 +343,7 @@ def main():
     """Start the facilitator server"""
     print("Starting X402 Facilitator Server")
     config.load_from_yaml()
+    asyncio.run(config.inject_agent_wallet_password_env())
     uvicorn.run(
         app,
         host=config.server_host,

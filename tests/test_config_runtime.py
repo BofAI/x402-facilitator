@@ -44,12 +44,6 @@ def test_runtime_database_pool(runtime_config):
 
 # ---- 1Password (YAML: vault/item/field per key; no token so no fetch) ----
 def test_runtime_onepassword_metadata(runtime_config):
-    assert runtime_config._op_private_key_key("tron:nile") == "tron_nile_private_key"
-    assert runtime_config._op_private_key_key("bsc:testnet") == "bsc_testnet_private_key"
-    assert runtime_config._get_op_ref("tron_nile_private_key") == "test-vault/test-privatekey-item/hex_key"
-    assert runtime_config._get_op_ref("tron_mainnet_private_key") == "test-vault/mainnet-privatekey-item/private_key"
-    assert runtime_config._get_op_ref("bsc_testnet_private_key") == "test-vault/bsc-testnet-key-item/private_key"
-    assert runtime_config._get_op_ref("bsc_mainnet_private_key") == "test-vault/bsc-mainnet-key-item/private_key"
     assert runtime_config._get_op_ref("database_password") == "test-vault/db-pwd-item/password"
     assert runtime_config._get_op_ref("trongrid_api_key") == "test-vault/trongrid-item/api_key"
     assert runtime_config._parse_op_ref("V/I/f") == ("V", "I", "f")
@@ -101,15 +95,6 @@ def test_runtime_networks_list(runtime_config):
     assert len(nets) == 4
 
 
-# ---- Per-network: fee_to_address ----
-def test_runtime_per_network_fee_to_address(runtime_config):
-    assert runtime_config.get_fee_to_address("tron:nile") == "TNileFeeTo123456789012345678901234"
-    assert runtime_config.get_fee_to_address("tron:mainnet") == "TMainnetFeeTo12345678901234567890"
-    assert runtime_config.get_fee_to_address("bsc:testnet") == "0xBscTestnetFeeTo123456789012345678901"
-    assert runtime_config.get_fee_to_address("bsc:mainnet") == "0xBscMainnetFeeTo12345678901234567890"
-    assert runtime_config.get_fee_to_address("unknown:net") == ""
-
-
 # ---- Per-network: base_fee ----
 def test_runtime_per_network_base_fee(runtime_config):
     nile_fee = runtime_config.get_base_fee("tron:nile")
@@ -119,20 +104,6 @@ def test_runtime_per_network_base_fee(runtime_config):
     assert runtime_config.get_base_fee("bsc:testnet") == {"DHLU": 100}
     assert runtime_config.get_base_fee("bsc:mainnet") == {"EPS": 200}
     assert runtime_config.get_base_fee("unknown:net") == {}
-
-
-# ---- Per-network: private_key (async) ----
-@pytest.mark.asyncio
-async def test_runtime_per_network_private_key(runtime_config):
-    """Each network has its own private_key in YAML; no 1Password."""
-    nile_key = await runtime_config.get_private_key("tron:nile")
-    assert nile_key == "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
-    mainnet_key = await runtime_config.get_private_key("tron:mainnet")
-    assert mainnet_key == "f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4c3b2a1f6e5d4"
-    bsc_testnet_key = await runtime_config.get_private_key("bsc:testnet")
-    assert bsc_testnet_key == "b1b2b3b4b5b6b1b2b3b4b5b6b1b2b3b4b5b6b1b2b3b4b5b6b1b2b3b4b5b6b1b2b3b4"
-    bsc_mainnet_key = await runtime_config.get_private_key("bsc:mainnet")
-    assert bsc_mainnet_key == "c1c2c3c4c5c6c1c2c3c4c5c6c1c2c3c4c5c6c1c2c3c4c5c6c1c2c3c4c5c6c1c2c3c4"
 
 
 # ---- get_trongrid_api_key from YAML ----
@@ -158,11 +129,7 @@ async def test_runtime_get_database_url(runtime_config):
 def test_runtime_network_config_raw(runtime_config):
     """_network_config returns the raw dict for a network."""
     nc = runtime_config._network_config("tron:nile")
-    assert nc.get("fee_to_address") == "TNileFeeTo123456789012345678901234"
     assert nc.get("base_fee", {}).get("USDT") == 200
-    assert "private_key" in nc
     bsc_nc = runtime_config._network_config("bsc:testnet")
-    assert bsc_nc.get("fee_to_address") == "0xBscTestnetFeeTo123456789012345678901"
     assert bsc_nc.get("base_fee", {}).get("DHLU") == 100
-    assert "private_key" in bsc_nc
     assert runtime_config._network_config("nonexistent") == {}
