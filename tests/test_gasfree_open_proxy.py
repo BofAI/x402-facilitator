@@ -110,6 +110,105 @@ def test_proxy_forwards_gasfree_auth_and_strips_client_authorization(mocker) -> 
     assert "x-api-key" not in {k.lower() for k in sent_dict}
     assert "cookie" not in {k.lower() for k in sent_dict}
     assert "x-custom" not in {k.lower() for k in sent_dict}
+    assert "content-type" not in {k.lower() for k in sent_dict}
+
+
+def test_proxy_sets_json_content_type_when_post_has_body(mocker) -> None:
+    from fastapi.testclient import TestClient
+    from gasfree_open_proxy.router import router
+
+    app = FastAPI()
+    app.state.gasfree_open_proxy = GasFreeOpenProxySettings(
+        nile_creds=("gf-key", "gf-secret"),
+        mainnet_creds=None,
+        upstream_nile="https://open-test.gasfree.io",
+        upstream_mainnet="https://open.gasfree.io",
+    )
+    app.include_router(router)
+
+    mock_resp = httpx.Response(200, content=b"{}", headers={"content-type": "application/json"})
+    request_mock = AsyncMock(return_value=mock_resp)
+    inner_client = MagicMock()
+    inner_client.request = request_mock
+    client_cm = MagicMock()
+    client_cm.__aenter__ = AsyncMock(return_value=inner_client)
+    client_cm.__aexit__ = AsyncMock(return_value=None)
+    mocker.patch("gasfree_open_proxy.router.httpx.AsyncClient", return_value=client_cm)
+
+    with TestClient(app) as tc:
+        tc.post(
+            "/nile/api/v1/gasfree/submit",
+            content=b"{}",
+        )
+
+    sent = request_mock.await_args.kwargs["headers"]
+    sent_l = {k.lower(): v for k, v in (sent if isinstance(sent, list) else list(sent.items()))}
+    assert sent_l.get("content-type") == "application/json"
+
+
+def test_proxy_preserves_client_json_charset_on_post(mocker) -> None:
+    from fastapi.testclient import TestClient
+    from gasfree_open_proxy.router import router
+
+    app = FastAPI()
+    app.state.gasfree_open_proxy = GasFreeOpenProxySettings(
+        nile_creds=("gf-key", "gf-secret"),
+        mainnet_creds=None,
+        upstream_nile="https://open-test.gasfree.io",
+        upstream_mainnet="https://open.gasfree.io",
+    )
+    app.include_router(router)
+
+    mock_resp = httpx.Response(200, content=b"{}", headers={"content-type": "application/json"})
+    request_mock = AsyncMock(return_value=mock_resp)
+    inner_client = MagicMock()
+    inner_client.request = request_mock
+    client_cm = MagicMock()
+    client_cm.__aenter__ = AsyncMock(return_value=inner_client)
+    client_cm.__aexit__ = AsyncMock(return_value=None)
+    mocker.patch("gasfree_open_proxy.router.httpx.AsyncClient", return_value=client_cm)
+
+    ct = "application/json; charset=utf-8"
+    with TestClient(app) as tc:
+        tc.post("/nile/api/v1/gasfree/submit", content=b"{}", headers={"Content-Type": ct})
+
+    sent = request_mock.await_args.kwargs["headers"]
+    sent_l = {k.lower(): v for k, v in (sent if isinstance(sent, list) else list(sent.items()))}
+    assert sent_l.get("content-type") == ct
+
+
+def test_proxy_overrides_non_json_content_type_when_post_has_body(mocker) -> None:
+    from fastapi.testclient import TestClient
+    from gasfree_open_proxy.router import router
+
+    app = FastAPI()
+    app.state.gasfree_open_proxy = GasFreeOpenProxySettings(
+        nile_creds=("gf-key", "gf-secret"),
+        mainnet_creds=None,
+        upstream_nile="https://open-test.gasfree.io",
+        upstream_mainnet="https://open.gasfree.io",
+    )
+    app.include_router(router)
+
+    mock_resp = httpx.Response(200, content=b"{}", headers={"content-type": "application/json"})
+    request_mock = AsyncMock(return_value=mock_resp)
+    inner_client = MagicMock()
+    inner_client.request = request_mock
+    client_cm = MagicMock()
+    client_cm.__aenter__ = AsyncMock(return_value=inner_client)
+    client_cm.__aexit__ = AsyncMock(return_value=None)
+    mocker.patch("gasfree_open_proxy.router.httpx.AsyncClient", return_value=client_cm)
+
+    with TestClient(app) as tc:
+        tc.post(
+            "/nile/api/v1/gasfree/submit",
+            content=b"{}",
+            headers={"Content-Type": "text/plain"},
+        )
+
+    sent = request_mock.await_args.kwargs["headers"]
+    sent_l = {k.lower(): v for k, v in (sent if isinstance(sent, list) else list(sent.items()))}
+    assert sent_l.get("content-type") == "application/json"
 
 
 def test_proxy_preserves_duplicate_response_set_cookie_headers(mocker) -> None:

@@ -30,17 +30,20 @@ _HOP_BY_HOP: frozenset[bytes] = frozenset(
 )
 
 # Default-deny: only forward headers safe to send to a third-party Open API.
-# Content-Type is set by build_auth_headers (application/json per GasFree demo).
+# content-type: only collected when request has a body (see _collect_allowed_request_headers).
 _ALLOWED_REQUEST_HEADER_NAMES: frozenset[bytes] = frozenset(
     {
         b"accept",
         b"accept-encoding",
         b"accept-language",
+        b"content-type",
         b"x-request-id",
         b"traceparent",
         b"tracestate",
     }
 )
+
+_METHODS_TYPICALLY_WITH_BODY: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 # Strip hop-by-hop / entity framing from upstream response; drop content-length (recomputed).
 # content-encoding: httpx decodes gzip/br into .content; forwarding the header would lie about the body.
@@ -58,17 +61,39 @@ def _decode_header_pair(k: bytes, v: bytes) -> tuple[str, str]:
         return k.decode("latin-1"), v.decode("latin-1", errors="replace")
 
 
-def _collect_allowed_request_headers(request: Request) -> list[tuple[str, str]]:
+def _collect_allowed_request_headers(request: Request, body: bytes) -> list[tuple[str, str]]:
     """Headers the client may send upstream (whitelist)."""
     pairs: list[tuple[str, str]] = []
+    forward_content_type = (
+        len(body) > 0
+        and request.method.upper() in _METHODS_TYPICALLY_WITH_BODY
+    )
     for k, v in request.headers.raw:
         lk = k.lower()
         if lk in _HOP_BY_HOP or lk in (b"host", b"content-length"):
             continue
         if lk not in _ALLOWED_REQUEST_HEADER_NAMES:
             continue
+        if lk == b"content-type" and not forward_content_type:
+            continue
         pairs.append(_decode_header_pair(k, v))
     return pairs
+
+
+def _ensure_json_content_type_for_gasfree(pairs: list[tuple[str, str]], body: bytes) -> None:
+    """Non-empty body: require application/json for GasFree; preserve client charset if already JSON."""
+    if not body:
+        return
+    without_ct = [(k, v) for k, v in pairs if k.lower() != "content-type"]
+    ct_client = next((v for k, v in pairs if k.lower() == "content-type"), None)
+    pairs.clear()
+    pairs.extend(without_ct)
+    if ct_client is not None:
+        media = ct_client.split(";")[0].strip().lower()
+        if media == "application/json":
+            pairs.append(("Content-Type", ct_client))
+            return
+    pairs.append(("Content-Type", "application/json"))
 
 
 def _merge_request_headers(
@@ -157,7 +182,11 @@ async def _proxy_request(request: Request) -> Response:
 
     body = await request.body()
 
-    header_pairs = _merge_request_headers(_collect_allowed_request_headers(request), auth_headers)
+    header_pairs = _merge_request_headers(
+        _collect_allowed_request_headers(request, body),
+        auth_headers,
+    )
+    _ensure_json_content_type_for_gasfree(header_pairs, body)
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:

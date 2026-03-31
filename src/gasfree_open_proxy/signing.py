@@ -22,11 +22,10 @@ def build_auth_headers(
     api_secret: str,
     timestamp: int | None = None,
 ) -> dict[str, str]:
-    """Headers required by GasFree Open API for the outgoing request."""
+    """GasFree HMAC auth headers only (signature is method+path+ts; Content-Type is not signed)."""
     ts = int(time.time()) if timestamp is None else timestamp
     sig = generate_api_signature(method, path, ts, api_secret)
     return {
-        "Content-Type": "application/json",
         "Timestamp": str(ts),
         "Authorization": f"ApiKey {api_key}:{sig}",
     }
