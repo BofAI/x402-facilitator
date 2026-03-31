@@ -43,6 +43,8 @@ from logging_setup import setup_logging
 from schemas import VerifyRequest, SettleRequest, FeeQuoteRequest, PaymentRecordResponse
 from auth import setup_auth, api_key_refresher, limiter, get_dynamic_rate_limit, get_dynamic_key_func
 from monitoring import attach_prometheus_middleware
+from gasfree_open_proxy import router as gasfree_open_proxy_router
+from gasfree_open_proxy.lifecycle import init_gasfree_open_proxy_state
 
 # Setup initial logging (console only)
 setup_logging()
@@ -188,6 +190,9 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning(f"Unsupported network: {network}")
             continue
+
+    await init_gasfree_open_proxy_state(app, config)
+    logger.info("GasFree open API proxy routes initialized (/mainnet, /nile)")
     
     yield
     
@@ -220,6 +225,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(gasfree_open_proxy_router)
 
 
 @app.get("/health")

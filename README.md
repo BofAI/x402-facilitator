@@ -57,6 +57,22 @@ Main config file:
 - `facilitator.trongrid_api_key` (TRON use cases)
 - TRON **GasFree** (`exact_gasfree`): credentials are read at startup from `GASFREE_API_KEY` / `GASFREE_API_SECRET` (or per-network `GASFREE_API_KEY_NILE`, `GASFREE_API_KEY_MAINNET`, etc.) and/or 1Password refs `gasfree_api_key_nile`, `gasfree_api_secret_nile`, `gasfree_api_key_mainnet`, `gasfree_api_secret_mainnet` (with global `gasfree_api_key` / `gasfree_api_secret` as fallback), then passed explicitly to `GasFreeAPIClient` (process environment is not modified for GasFree).
 
+### GasFree Open API transparent proxy
+
+A separate module **`src/gasfree_open_proxy/`** exposes HTTP pass-through routes on the **same** server (isolated from X402 `verify` / `settle` code):
+
+| Client path | Upstream |
+|-------------|----------|
+| `/mainnet/...` | `https://open.gasfree.io/tron/...` |
+| `/nile/...` | `https://open-test.gasfree.io/nile/...` |
+
+- Uses the **same** GasFree credentials as above: Nile requests need `tron:nile` key/secret; mainnet paths need `tron:mainnet` key/secret. If credentials for that environment are missing, the proxy returns **503** for that prefix.
+- Optional environment overrides: `UPSTREAM_MAINNET_BASE` (default `https://open.gasfree.io`), `UPSTREAM_NILE_BASE` (default `https://open-test.gasfree.io`).
+- Clients **do not** send GasFree `Authorization`; the service signs requests with HMAC (aligned with GasFree Open API). Client `Authorization` is **not** forwarded.
+- **Request headers (whitelist)**: only `Accept`, `Accept-Encoding`, `Accept-Language`, `X-Request-Id`, `Traceparent`, `Tracestate` are forwarded to GasFree. Others—including `X-API-KEY`, `Cookie`, `Authorization`—are stripped so facilitator credentials are not leaked to a third party. `Content-Type` for the upstream call is set by the proxy (`application/json`).
+- **Response headers**: duplicate names (e.g. multiple `Set-Cookie`) are preserved when building the client response. `Content-Encoding` is not forwarded (httpx already decodes the body into `.content`, so the header would not match the bytes sent to the client).
+- Tests: `tests/test_gasfree_open_proxy.py`.
+
 ### Example (Minimal Shape)
 
 ```yaml
