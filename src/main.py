@@ -43,6 +43,8 @@ from logging_setup import setup_logging
 from schemas import VerifyRequest, SettleRequest, FeeQuoteRequest, PaymentRecordResponse
 from auth import setup_auth, api_key_refresher, limiter, get_dynamic_rate_limit, get_dynamic_key_func
 from monitoring import attach_prometheus_middleware
+from gasfree_open_proxy import router as gasfree_open_proxy_router
+from gasfree_open_proxy.lifecycle import init_gasfree_open_proxy_state
 
 # Setup initial logging (console only)
 setup_logging()
@@ -188,6 +190,9 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning(f"Unsupported network: {network}")
             continue
+
+    await init_gasfree_open_proxy_state(app, config)
+    logger.info("GasFree open API proxy routes initialized (/mainnet, /nile)")
     
     yield
     
@@ -204,7 +209,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="X402 Facilitator",
     description="Facilitator service for X402 payment protocol",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -220,6 +225,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(gasfree_open_proxy_router)
 
 
 @app.get("/health")
@@ -245,12 +252,21 @@ async def fee_quote(request: Request, request_data: FeeQuoteRequest):
 async def verify(request: Request, verify_request: VerifyRequest):
     """Verify payment payload"""
     try:
-        return await x402_facilitator.verify(verify_request.paymentPayload, verify_request.paymentRequirements)
+        result = await x402_facilitator.verify(
+            verify_request.paymentPayload, verify_request.paymentRequirements
+        )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning("Verify failed (400): %s", e)
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception:
         logger.exception("Verify failed")
         raise HTTPException(status_code=500, detail="Internal server error")
+    if not result.is_valid:
+        logger.warning(
+            "Verify failed (business): invalid_reason=%s",
+            result.invalid_reason,
+        )
+    return result
 
 def _get_payment_id_from_request(request_data: SettleRequest) -> str | None:
     """Safely extract payment_id from request; returns None if structure is invalid."""
@@ -293,12 +309,22 @@ async def settle(request: Request, request_data: SettleRequest):
             request_data.paymentPayload, request_data.paymentRequirements
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning("Settle failed (400): payment_id=%s %s", payment_id, e)
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception:
         logger.exception("Settle failed")
         raise HTTPException(status_code=500, detail="Internal server error")
 
     tx_hash = result.transaction or ""
+    if not result.success:
+        network = _get_network_from_request(request_data)
+        logger.warning(
+            "Settle failed (business): payment_id=%s network=%s transaction=%s error_reason=%s",
+            payment_id,
+            network,
+            tx_hash,
+            result.error_reason,
+        )
     status = "success" if result.success else "failed"
     try:
         network = _get_network_from_request(request_data)
