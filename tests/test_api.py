@@ -115,8 +115,9 @@ async def test_get_payment_not_found(client, mock_db):
 
 @pytest.mark.asyncio
 async def test_rate_limiting_trigger(client, mocker):
-    """Verify rate limiting on /settle (Anonymous user 1/min): first 200, second 429."""
+    """Verify rate limiting on /settle (anonymous): allowed requests pass, the next is 429."""
     from bankofai.x402.types import SettleResponse
+    from config import config
 
     mocker.patch("auth.get_remote_address", return_value="1.2.3.4")
     mocker.patch(
@@ -126,12 +127,14 @@ async def test_rate_limiting_trigger(client, mocker):
     )
     mocker.patch("main.save_payment_record", new_callable=AsyncMock)
 
-    resp1 = await client.post("/settle", json=SETTLE_BODY)
-    assert resp1.status_code == 200
+    allowed = int(config.rate_limit_anonymous.split("/")[0])
+    for _ in range(allowed):
+        resp = await client.post("/settle", json=SETTLE_BODY)
+        assert resp.status_code == 200
 
-    resp2 = await client.post("/settle", json=SETTLE_BODY)
-    assert resp2.status_code == 429
-    assert "Rate limit exceeded" in resp2.json()["error"]
+    resp_over = await client.post("/settle", json=SETTLE_BODY)
+    assert resp_over.status_code == 429
+    assert "Rate limit exceeded" in resp_over.json()["error"]
 
 
 # --- Settle flow tests (settle first -> save_payment_record; no transaction, no 409) ---
