@@ -213,7 +213,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="X402 Facilitator",
     description="Facilitator service for X402 payment protocol",
-    version="1.1.0",
+    version="1.1.2",
     lifespan=lifespan,
 )
 
