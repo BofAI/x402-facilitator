@@ -118,7 +118,10 @@ async def test_lifespan_uses_tron_wallet_provider(mocker):
     monkeypatch.undo()
     main.config.inject_agent_wallet_password_env.assert_awaited_once_with()
     create_mock.assert_awaited_once_with()
-    main.config.get_gasfree_api_credentials.assert_awaited_once_with("tron:nile")
+    main.config.get_gasfree_api_credentials.assert_awaited()
+    awaited = {c.args[0] for c in main.config.get_gasfree_api_credentials.await_args_list}
+    assert "tron:nile" in awaited
+    assert "tron:mainnet" in awaited
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], permit_mechanism)
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], exact_mechanism)
     gasfree_client_cls.assert_not_called()
@@ -159,7 +162,10 @@ async def test_lifespan_registers_gasfree_when_credentials_present(mocker):
         pass
 
     create_mock.assert_awaited_once_with()
-    main.config.get_gasfree_api_credentials.assert_awaited_once_with("tron:nile")
+    main.config.get_gasfree_api_credentials.assert_awaited()
+    awaited = {c.args[0] for c in main.config.get_gasfree_api_credentials.await_args_list}
+    assert "tron:nile" in awaited
+    assert "tron:mainnet" in awaited
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], permit_mechanism)
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], exact_mechanism)
     register_mock.assert_any_call([main.to_internal_network["tron:nile"]], gasfree_mechanism)
