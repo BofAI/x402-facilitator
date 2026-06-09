@@ -97,10 +97,14 @@ async def _register_tron_facilitator(network: str, base_fee: dict, signer) -> No
 
     gf_key, gf_secret = await config.get_gasfree_api_credentials(network)
     if gf_key and gf_secret:
+        # SDK >=0.6.0: GasFreeAPIClient targets the BankOfAI GasFree proxy
+        # (this service's /mainnet, /nile routes) and no longer signs requests
+        # itself. The HMAC auth now lives in gasfree_open_proxy, which consumes
+        # the same gf_key/gf_secret server-side; the client only needs the base
+        # URL. The credential gate is kept: without credentials the co-located
+        # proxy cannot authenticate upstream, so exact_gasfree could not settle.
         gasfree_client = GasFreeAPIClient(
             NetworkConfig.get_gasfree_api_base_url(internal_net),
-            api_key=gf_key,
-            api_secret=gf_secret,
         )
         gasfree_mechanism = ExactGasFreeFacilitatorMechanism(
             signer,
