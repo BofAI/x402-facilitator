@@ -241,7 +241,7 @@ class Config:
     @property
     def rate_limit_anonymous(self) -> str:
         """Get rate limit for anonymous users"""
-        return self._config.get("rate_limit", {}).get("anonymous", "1/minute")
+        return self._config.get("rate_limit", {}).get("anonymous", "10/minute")
 
     @property
     def monitoring_port(self) -> int:
