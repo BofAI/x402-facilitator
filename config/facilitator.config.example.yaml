@@ -1,37 +1,28 @@
-# x402-tron-facilitator config
+# x402 Facilitator v2 config (TypeScript / upstream @x402/* ecosystem)
+
+server:
+  host: "0.0.0.0"
+  port: 8001
+
+logging:
+  level: "info"
 
 database:
   url: ""
-  # --- Local Development Fallbacks ---
-  # If provided, these values will be used to bypass 1Password retrieval for database password
-  # password: ""
-  # --- Connection pool (optional) ---
-  # ssl_mode: "disable"          # disable | require | verify-ca | verify-full
-  # max_open_conns: 25           # max connections in pool (pool_size + max_overflow)
-  # max_idle_conns: 15           # connections to keep open when idle (pool_size)
-  # max_life_time: 600           # seconds before recycling a connection (pool_recycle)
+  # ssl_mode: "disable"        # disable | require | verify-ca | verify-full
+  # max_open_conns: 25
+  # max_idle_conns: 15
+  # max_life_time: 600
 
-# 1Password: each value is "vault/item/field" (op:// style). Set OP_SERVICE_ACCOUNT_TOKEN when using.
+# 1Password: each value is "vault/item/field". Set OP_SERVICE_ACCOUNT_TOKEN when using.
 onepassword:
   database_password: ""
   trongrid_api_key: ""
-  # Loaded at startup into AGENT_WALLET_PASSWORD for agent-wallet-compatible providers.
   agent_wallet_password: ""
   gasfree_api_key_nile: ""
   gasfree_api_secret_nile: ""
   gasfree_api_key_mainnet: ""
   gasfree_api_secret_mainnet: ""
-
-server:
-  host: "0.0.0.0"
-  port: 8001
-  # uvicorn workers; 1 async worker typically handles ~100 settle QPS (I/O-bound). Use 2 for headroom.
-  workers: 1
-
-logging:
-  dir: "logs"
-  filename: "x402-facilitator.log"
-  level: "INFO"
 
 rate_limit:
   api_key_refresh_interval: 60
@@ -43,23 +34,22 @@ monitoring:
   endpoint: "/metrics"
 
 facilitator:
-  # Shared across all networks (same level as networks)
   trongrid_api_key: ""
 
-  # Per-network config. Key = network id; listed = enabled. Each has base_fee.
-  # Settlement wallets are resolved externally through x402 / agent-wallet providers.
+  # Per-network config. Key = CAIP network id; listed = enabled.
+  # base_fee is a TRON-only facilitator fee, advertised via the scheme's
+  # getExtra().feeConfig (attached to PaymentRequirements.extra.fee). The EVM exact
+  # scheme takes no facilitator fee (settles the exact amount), so EVM networks have
+  # no base_fee. There is no /fee/quote endpoint in v2.
   networks:
     tron:nile:
       base_fee:
         USDT: 100              # 0.0001 USDT (6 decimals)
         USDD: 100000000000000  # 0.0001 USDD (18 decimals)
-    tron:mainnet:
-      base_fee:
-        USDT: 100
-        USDD: 100000000000000
-    bsc:testnet:
-      base_fee:
-        USDC: 100
-    bsc:mainnet:
-      base_fee:
-        EPS: 100
+    bsc:testnet: {}
+    # Enable after mainnet Permit2 / x402ExactPermit2Proxy contracts are deployed
+    # and addresses are filled into @x402/tron constants.
+    # tron:mainnet:
+    #   base_fee:
+    #     USDT: 100
+    # bsc:mainnet: {}

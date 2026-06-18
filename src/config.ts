@@ -1,0 +1,199 @@
+/**
+ * Configuration loading + secret resolution. Faithful port of legacy/src/config.py.
+ *
+ * The YAML shape is unchanged from v1 (minus /fee/quote). Secrets are resolved on
+ * demand: each value under `onepassword.*` is a `vault/item/field` reference resolved
+ * via @1password/sdk when OP_SERVICE_ACCOUNT_TOKEN (or onepassword.token) is set.
+ * Environment variables always take precedence over 1Password.
+ */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "yaml";
+import { getSecretFromOnePassword, isUsableToken, parseOpRef } from "./onepassword.js";
+import { logger, type Level } from "./logger.js";
+
+export interface NetworkConfig {
+  /** Per-asset base fee in token base units (symbol -> amount string/number). */
+  base_fee?: Record<string, number | string>;
+}
+
+export interface FacilitatorConfig {
+  server?: { host?: string; port?: number };
+  logging?: { level?: "debug" | "info" | "warn" | "error" };
+  database: {
+    url: string;
+    password?: string;
+    ssl_mode?: string;
+    max_open_conns?: number;
+    max_idle_conns?: number;
+    max_life_time?: number;
+  };
+  onepassword?: Record<string, string | undefined> & { token?: string };
+  rate_limit?: {
+    api_key_refresh_interval?: number;
+    authenticated?: string;
+    anonymous?: string;
+  };
+  monitoring?: { port?: number; endpoint?: string };
+  facilitator: {
+    trongrid_api_key?: string;
+    networks: Record<string, NetworkConfig>;
+  };
+}
+
+const DEFAULT_PATH = process.env.FACILITATOR_CONFIG_PATH
+  ? resolve(process.env.FACILITATOR_CONFIG_PATH)
+  : resolve(process.cwd(), "config/facilitator.config.yaml");
+
+/**
+ * Load, parse and validate the facilitator YAML config from disk.
+ *
+ * @param path - Optional explicit path; defaults to FACILITATOR_CONFIG_PATH or config/facilitator.config.yaml.
+ * @returns The parsed configuration object.
+ */
+export function loadConfig(path: string = DEFAULT_PATH): FacilitatorConfig {
+  const raw = readFileSync(path, "utf8");
+  const cfg = (parse(raw) as FacilitatorConfig) ?? ({} as FacilitatorConfig);
+  validateRequired(cfg);
+  return cfg;
+}
+
+/** Force a startup failure when critical config is missing (mirrors v1 _validate_required). */
+function validateRequired(cfg: FacilitatorConfig): void {
+  const errors: string[] = [];
+  if (!cfg.database?.url) errors.push("database.url is required and must be non-empty");
+  const networks = cfg.facilitator?.networks;
+  if (!networks || typeof networks !== "object" || Object.keys(networks).length === 0) {
+    errors.push("facilitator.networks is required and must be a non-empty object");
+  }
+  if (errors.length) {
+    throw new Error("Configuration validation failed. " + errors.join(" "));
+  }
+}
+
+/** List of enabled CAIP network ids from config (listed = enabled). */
+export function enabledNetworks(cfg: FacilitatorConfig): string[] {
+  return Object.keys(cfg.facilitator.networks ?? {});
+}
+
+// ---------------------------------------------------------------------------
+// Secret resolution
+// ---------------------------------------------------------------------------
+
+/** The 1Password service-account token: env OP_SERVICE_ACCOUNT_TOKEN, else config. */
+function opToken(cfg: FacilitatorConfig): string | undefined {
+  return process.env.OP_SERVICE_ACCOUNT_TOKEN || cfg.onepassword?.token;
+}
+
+/** Resolve a single `onepassword.<key>` reference, or undefined if absent/unusable. */
+async function resolveOpField(cfg: FacilitatorConfig, key: string): Promise<string | undefined> {
+  const ref = parseOpRef(cfg.onepassword?.[key]);
+  const token = opToken(cfg);
+  if (!ref || !isUsableToken(token)) return undefined;
+  try {
+    return await getSecretFromOnePassword(ref, token);
+  } catch {
+    return undefined;
+  }
+}
+
+/** TronGrid API key: env, then YAML literal, then 1Password. */
+export async function getTrongridApiKey(cfg: FacilitatorConfig): Promise<string | undefined> {
+  return (
+    process.env.TRON_GRID_API_KEY ||
+    cfg.facilitator?.trongrid_api_key ||
+    (await resolveOpField(cfg, "trongrid_api_key"))
+  );
+}
+
+/** Agent-wallet unlock password: env, then 1Password. */
+export async function getAgentWalletPassword(cfg: FacilitatorConfig): Promise<string | undefined> {
+  return process.env.AGENT_WALLET_PASSWORD || (await resolveOpField(cfg, "agent_wallet_password"));
+}
+
+/** Resolve the agent-wallet password and inject it into AGENT_WALLET_PASSWORD (if not already set). */
+export async function injectAgentWalletPasswordEnv(cfg: FacilitatorConfig): Promise<void> {
+  const password = await getAgentWalletPassword(cfg);
+  if (password && !process.env.AGENT_WALLET_PASSWORD) {
+    process.env.AGENT_WALLET_PASSWORD = password;
+  }
+}
+
+/** Database password: YAML literal (local dev), then 1Password. */
+async function getDatabasePassword(cfg: FacilitatorConfig): Promise<string | undefined> {
+  if (cfg.database?.password) return String(cfg.database.password);
+  return resolveOpField(cfg, "database_password");
+}
+
+/** Database URL with the resolved password injected into the userinfo (if any). */
+export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
+  const rawUrl = cfg.database?.url;
+  if (!rawUrl) throw new Error("database.url is required");
+  const password = await getDatabasePassword(cfg);
+  if (!password) return rawUrl;
+
+  const u = new URL(rawUrl);
+  // URL setter handles percent-encoding of special chars in the password.
+  u.password = password;
+  return u.toString();
+}
+
+/** GasFree Open API credentials for a network. Env per-suffix/global first, then 1Password. */
+export async function getGasFreeCredentials(
+  cfg: FacilitatorConfig,
+  network: string,
+): Promise<{ key?: string; secret?: string }> {
+  const suffix = network.split(":").pop()!.toUpperCase();
+  let key =
+    (process.env[`GASFREE_API_KEY_${suffix}`] || process.env.GASFREE_API_KEY || "").trim() ||
+    undefined;
+  let secret =
+    (process.env[`GASFREE_API_SECRET_${suffix}`] || process.env.GASFREE_API_SECRET || "").trim() ||
+    undefined;
+  if (key && secret) return { key, secret };
+
+  const lower = suffix.toLowerCase();
+  key =
+    key ||
+    (await resolveOpField(cfg, `gasfree_api_key_${lower}`)) ||
+    (await resolveOpField(cfg, "gasfree_api_key"));
+  secret =
+    secret ||
+    (await resolveOpField(cfg, `gasfree_api_secret_${lower}`)) ||
+    (await resolveOpField(cfg, "gasfree_api_secret"));
+  return { key, secret };
+}
+
+// ---------------------------------------------------------------------------
+// Plain getters with defaults (mirror legacy Config properties)
+// ---------------------------------------------------------------------------
+
+export const serverHost = (cfg: FacilitatorConfig): string => cfg.server?.host ?? "0.0.0.0";
+export const serverPort = (cfg: FacilitatorConfig): number => cfg.server?.port ?? 8001;
+export const logLevel = (cfg: FacilitatorConfig): Level => cfg.logging?.level ?? "info";
+
+export const apiKeyRefreshInterval = (cfg: FacilitatorConfig): number =>
+  cfg.rate_limit?.api_key_refresh_interval ?? 60;
+export const rateLimitAuthenticated = (cfg: FacilitatorConfig): string =>
+  cfg.rate_limit?.authenticated ?? "1000/minute";
+export const rateLimitAnonymous = (cfg: FacilitatorConfig): string =>
+  cfg.rate_limit?.anonymous ?? "10/minute";
+
+export const monitoringPort = (cfg: FacilitatorConfig): number =>
+  cfg.monitoring?.port ?? serverPort(cfg);
+export const monitoringEndpoint = (cfg: FacilitatorConfig): string =>
+  cfg.monitoring?.endpoint ?? "/metrics";
+
+export const databaseSslMode = (cfg: FacilitatorConfig): string =>
+  cfg.database?.ssl_mode ?? "disable";
+export const databaseMaxOpenConns = (cfg: FacilitatorConfig): number =>
+  cfg.database?.max_open_conns ?? 25;
+export const databaseMaxIdleConns = (cfg: FacilitatorConfig): number =>
+  cfg.database?.max_idle_conns ?? 15;
+export const databaseMaxLifeTime = (cfg: FacilitatorConfig): number =>
+  cfg.database?.max_life_time ?? 600;
+
+/** Log a one-line summary of which secrets resolved (without values). */
+export function logSecretSummary(cfg: FacilitatorConfig): void {
+  logger.debug("onepassword token present", { present: isUsableToken(opToken(cfg)) });
+}
