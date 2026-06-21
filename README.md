@@ -70,7 +70,7 @@ is set). Relevant env vars:
 | `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service-account token |
 | `RATE_LIMIT_STORE` | `memory` (default) or `redis` for shared counters across replicas |
 | `RATE_LIMIT_REDIS_URL` / `REDIS_URL` | Redis connection URL (required when `RATE_LIMIT_STORE=redis`; needs the optional `ioredis` dep) |
-| `TRUST_PROXY_FOR_RATELIMIT` | `true` to key anonymous limits on `X-Forwarded-For` (set **only** behind a trusted proxy that overwrites XFF; default off keys on the socket peer) |
+| `TRUST_PROXY_FOR_RATELIMIT` | `true` to key anonymous limits on `X-Forwarded-For` (set **only** when the direct peer is a trusted proxy; the rightmost XFF entry is used, so append-style proxies like nginx `$proxy_add_x_forwarded_for` are safe. Default off keys on the socket peer) |
 
 > Fees are TRON-only (`base_fee` per network, advertised via `requirements.extra.fee`).
 > The EVM `exact` scheme settles the exact amount and takes no facilitator fee.

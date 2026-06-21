@@ -81,4 +81,19 @@ describe("rateLimit middleware", () => {
       delete process.env.TRUST_PROXY_FOR_RATELIMIT;
     }
   });
+
+  it("uses the rightmost XFF entry so a spoofed leftmost cannot bypass (append proxies)", async () => {
+    process.env.TRUST_PROXY_FOR_RATELIMIT = "true";
+    try {
+      const app = appWith("100/minute", "1/minute");
+      const send = (xff: string) =>
+        app.request("/settle", { method: "POST", headers: { "X-Forwarded-For": xff } });
+      // A trusted proxy appends the real client (9.9.9.9) on the right; the attacker
+      // varies the leftmost. Both must land in the same 9.9.9.9 bucket → second blocked.
+      expect((await send("spoof-a, 9.9.9.9")).status).toBe(200);
+      expect((await send("spoof-b, 9.9.9.9")).status).toBe(429);
+    } finally {
+      delete process.env.TRUST_PROXY_FOR_RATELIMIT;
+    }
+  });
 });

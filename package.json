@@ -25,7 +25,7 @@
     "@hono/node-server": "^1.13.0",
     "drizzle-orm": "^0.36.0",
     "hono": "^4.6.0",
-    "hono-rate-limiter": "^0.5.3",
+    "hono-rate-limiter": "0.5.3",
     "pg": "^8.13.0",
     "prom-client": "^15.1.0",
     "tronweb": "^6.1.0",

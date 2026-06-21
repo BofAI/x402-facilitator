@@ -72,8 +72,17 @@ function clientIp(c: Ctx): string {
     /* connInfo unavailable (e.g. tests) */
   }
   if (process.env.TRUST_PROXY_FOR_RATELIMIT === "true") {
+    // Take the RIGHTMOST X-Forwarded-For entry, not the leftmost. The rightmost is the
+    // address our trusted direct proxy appended; the leftmost is client-controlled —
+    // appending proxies (e.g. nginx `$proxy_add_x_forwarded_for`) preserve a spoofed
+    // leftmost value, which an attacker could vary per request to mint a fresh bucket.
+    // Rightmost is fail-safe: correct for a single overwrite/append proxy, and it only
+    // over-groups (never under-protects) when multiple proxies are chained.
     const fwd = c.req.header("x-forwarded-for");
-    if (fwd) ip = fwd.split(",")[0].trim();
+    if (fwd) {
+      const parts = fwd.split(",").map((p) => p.trim()).filter(Boolean);
+      if (parts.length > 0) ip = parts[parts.length - 1];
+    }
   }
   return ip;
 }
@@ -81,6 +90,11 @@ function clientIp(c: Ctx): string {
 /**
  * Build a RedisStore from `ioredis`, adapting it to the 4-method client the library
  * expects. `ioredis` is an optional dependency, loaded only when Redis is selected.
+ *
+ * NOTE: the adapter below is coupled to hono-rate-limiter's internal RedisClient
+ * contract (scriptLoad/evalsha/decr/del). hono-rate-limiter is pinned to an exact
+ * version in package.json so this contract can't shift on install; re-verify this
+ * mapping when bumping it.
  */
 function makeRedisStore(prefix: string): Store<RLEnv> {
   const url = process.env.RATE_LIMIT_REDIS_URL ?? process.env.REDIS_URL;

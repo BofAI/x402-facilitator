@@ -50,4 +50,3 @@ export const sellers = pgTable("sellers", {
 });
 
 export type Settlement = typeof settlements.$inferSelect;
-export type ApiKeyRow = typeof apiKeys.$inferSelect;

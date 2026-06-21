@@ -2,7 +2,7 @@
  * Database access layer (drizzle + node-postgres).
  *
  * v2 query surface:
- *   - getActiveApiKeyAuth / getApiKeyByKey    (auth+seller cache, shared api_keys_plus)
+ *   - getActiveApiKeyAuth                      (auth+seller cache, shared api_keys_plus)
  *   - saveSettlement                          (one row per settle attempt)
  *   - getSettlementsByTxHash                  (GET /payments/tx/:hash)
  *   - getSettlementsByAuthorization           (GET /payments?network=&nonce=...)
@@ -15,10 +15,10 @@
 import { Pool } from "pg";
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { apiKeys, settlements, sellers, type ApiKeyRow, type Settlement } from "./schema.js";
+import { apiKeys, settlements, sellers, type Settlement } from "./schema.js";
 import { logger } from "../logger.js";
 
-export type { Settlement, ApiKeyRow } from "./schema.js";
+export type { Settlement } from "./schema.js";
 
 export interface DbInitOptions {
   url: string;
@@ -117,16 +117,6 @@ export async function getActiveApiKeyAuth(): Promise<{ key: string; sellerId: st
     .select({ key: apiKeys.key, sellerId: apiKeys.sellerId })
     .from(apiKeys)
     .where(eq(apiKeys.isActive, true));
-}
-
-/** A single active API key row by plaintext key, or null. */
-export async function getApiKeyByKey(key: string): Promise<ApiKeyRow | null> {
-  const rows = await getDb()
-    .select()
-    .from(apiKeys)
-    .where(and(eq(apiKeys.key, key), eq(apiKeys.isActive, true)))
-    .limit(1);
-  return rows[0] ?? null;
 }
 
 export interface SettlementInput {
