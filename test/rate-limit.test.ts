@@ -54,4 +54,31 @@ describe("rateLimit middleware", () => {
     expect((await app.request("/settle", { method: "POST", headers: hdr })).status).toBe(200);
     expect((await app.request("/settle", { method: "POST", headers: hdr })).status).toBe(429);
   });
+
+  it("ignores X-Forwarded-For by default (no per-request bucket bypass)", async () => {
+    delete process.env.TRUST_PROXY_FOR_RATELIMIT;
+    const app = appWith("100/minute", "2/minute");
+    // A spoofed XFF per request must NOT mint a fresh anon bucket.
+    const send = (xff: string) =>
+      app.request("/settle", { method: "POST", headers: { "X-Forwarded-For": xff } });
+    expect((await send("1.1.1.1")).status).toBe(200);
+    expect((await send("2.2.2.2")).status).toBe(200);
+    expect((await send("3.3.3.3")).status).toBe(429);
+  });
+
+  it("honors X-Forwarded-For only when trusted-proxy mode is enabled", async () => {
+    process.env.TRUST_PROXY_FOR_RATELIMIT = "true";
+    try {
+      const app = appWith("100/minute", "1/minute");
+      const send = (xff: string) =>
+        app.request("/settle", { method: "POST", headers: { "X-Forwarded-For": xff } });
+      // Each distinct (trusted) client IP gets its own bucket.
+      expect((await send("1.1.1.1")).status).toBe(200);
+      expect((await send("2.2.2.2")).status).toBe(200);
+      // Same IP again exceeds its 1/minute bucket.
+      expect((await send("1.1.1.1")).status).toBe(429);
+    } finally {
+      delete process.env.TRUST_PROXY_FOR_RATELIMIT;
+    }
+  });
 });

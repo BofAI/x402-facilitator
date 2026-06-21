@@ -19,13 +19,12 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { x402Facilitator } from "@bankofai/x402-core/facilitator";
 import type { PaymentPayload, PaymentRequirements } from "@bankofai/x402-core/types";
-import { authMiddleware, currentApiKey, type AuthVars } from "./auth.js";
+import { authMiddleware, currentApiKey, sellerIdForApiKey, type AuthVars } from "./auth.js";
 import { rateLimit } from "./rate-limit.js";
 import { metricsMiddleware, metricsHandler } from "./metrics.js";
 import { registerGasFreeProxy, type GasFreeProxySettings } from "./gasfree-proxy.js";
 import { extractPayerNonce } from "./settlement.js";
 import {
-  getApiKeyByKey,
   getSettlementsByAuthorization,
   getSettlementsBySeller,
   getSettlementsByTxHash,
@@ -49,13 +48,6 @@ type SettleBody = { paymentPayload?: PaymentPayload; paymentRequirements?: Payme
 
 const FEED_DEFAULT_LIMIT = 50;
 const FEED_MAX_LIMIT = 200;
-
-/** Resolve seller_id from the request's authenticated API key, or null. */
-async function sellerIdForRequest(apiKey: string | null): Promise<string | null> {
-  if (!apiKey) return null;
-  const row = await getApiKeyByKey(apiKey);
-  return row?.sellerId ?? null;
-}
 
 /** Public JSON shape for a settlement row. */
 function toResponse(s: Settlement) {
@@ -149,7 +141,7 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       logger.warn("settle failed", { network, nonce: ids?.nonce, txHash, reason: result.errorReason });
     }
     try {
-      const sellerId = await sellerIdForRequest(currentApiKey(c));
+      const sellerId = sellerIdForApiKey(currentApiKey(c));
       await saveSettlement({
         sellerId,
         network,
@@ -176,7 +168,7 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
 
   // Lookup by settlement tx hash.
   app.get("/payments/tx/:hash", async (c) => {
-    const sellerId = await sellerIdForRequest(currentApiKey(c));
+    const sellerId = sellerIdForApiKey(currentApiKey(c));
     const rows = await getSettlementsByTxHash(c.req.param("hash"), sellerId);
     if (rows.length === 0) return c.json({ detail: "Settlement not found" }, 404);
     return c.json(rows.map(toResponse));
@@ -185,7 +177,7 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
   // Lookup by authorization identity (?network=&nonce=[&asset=&payer=]), or — with no
   // such params — the authenticated seller's settlement feed (?limit=&offset=).
   app.get("/payments", async (c) => {
-    const sellerId = await sellerIdForRequest(currentApiKey(c));
+    const sellerId = sellerIdForApiKey(currentApiKey(c));
     const network = c.req.query("network");
     const nonce = c.req.query("nonce");
 

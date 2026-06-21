@@ -2,7 +2,7 @@
  * Database access layer (drizzle + node-postgres).
  *
  * v2 query surface:
- *   - getAllApiKeys / getApiKeyByKey          (auth cache, shared api_keys_plus)
+ *   - getActiveApiKeyAuth / getApiKeyByKey    (auth+seller cache, shared api_keys_plus)
  *   - saveSettlement                          (one row per settle attempt)
  *   - getSettlementsByTxHash                  (GET /payments/tx/:hash)
  *   - getSettlementsByAuthorization           (GET /payments?network=&nonce=...)
@@ -83,7 +83,13 @@ export async function initDatabase(opts: DbInitOptions): Promise<void> {
   pool = new Pool({
     connectionString: opts.url,
     max: opts.poolSize + opts.maxOverflow,
-    idleTimeoutMillis: opts.maxLifeTime * 1000,
+    // v1's max_life_time is the connection *lifetime* (SQLAlchemy pool_recycle), not
+    // an idle timeout — map it to pg's maxLifetimeSeconds so long-lived connections
+    // are recycled. pg has no test-on-borrow (v1 pool_pre_ping), but recycling plus a
+    // bounded connect timeout lets requests fail fast over stale connections.
+    maxLifetimeSeconds: opts.maxLifeTime,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
     ssl: sslFor(opts.sslMode),
   });
   db = drizzle(pool);
@@ -105,13 +111,12 @@ function getDb(): NodePgDatabase {
   return db;
 }
 
-/** All active API key strings (for the in-memory auth cache). */
-export async function getAllApiKeys(): Promise<string[]> {
-  const rows = await getDb()
-    .select({ key: apiKeys.key })
+/** Active API keys with their seller id (for the in-memory auth + seller cache). */
+export async function getActiveApiKeyAuth(): Promise<{ key: string; sellerId: string }[]> {
+  return getDb()
+    .select({ key: apiKeys.key, sellerId: apiKeys.sellerId })
     .from(apiKeys)
     .where(eq(apiKeys.isActive, true));
-  return rows.map((r) => r.key);
 }
 
 /** A single active API key row by plaintext key, or null. */

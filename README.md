@@ -68,6 +68,9 @@ is set). Relevant env vars:
 | `GASFREE_API_KEY[_NILE\|_MAINNET]` / `GASFREE_API_SECRET[...]` | GasFree relayer creds (gate `exact_gasfree`) |
 | `UPSTREAM_NILE_BASE` / `UPSTREAM_MAINNET_BASE` | Override GasFree upstream bases |
 | `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service-account token |
+| `RATE_LIMIT_STORE` | `memory` (default) or `redis` for shared counters across replicas |
+| `RATE_LIMIT_REDIS_URL` / `REDIS_URL` | Redis connection URL (required when `RATE_LIMIT_STORE=redis`; needs the optional `ioredis` dep) |
+| `TRUST_PROXY_FOR_RATELIMIT` | `true` to key anonymous limits on `X-Forwarded-For` (set **only** behind a trusted proxy that overwrites XFF; default off keys on the socket peer) |
 
 > Fees are TRON-only (`base_fee` per network, advertised via `requirements.extra.fee`).
 > The EVM `exact` scheme settles the exact amount and takes no facilitator fee.

@@ -32,7 +32,9 @@ export const metricsMiddleware: MiddlewareHandler = async (c, next) => {
   try {
     await next();
   } finally {
-    const handler = c.req.routePath ?? c.req.path;
+    // Use the matched route pattern to bound label cardinality; fall back to a fixed
+    // string (never the raw path) so unmatched/404 URLs can't explode the cardinality.
+    const handler = c.req.routePath ?? "unmatched";
     const labels = {
       method: c.req.method,
       handler,

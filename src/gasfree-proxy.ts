@@ -125,6 +125,9 @@ const ALLOWED_REQUEST_HEADERS = new Set([
 
 const METHODS_TYPICALLY_WITH_BODY = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/** Upstream request timeout, mirroring v1's httpx.AsyncClient(timeout=60.0). */
+const UPSTREAM_TIMEOUT_MS = 60_000;
+
 const RESPONSE_STRIP_NAMES = new Set([
   "transfer-encoding",
   "connection",
@@ -229,10 +232,16 @@ async function proxyRequest(req: Request, path: string, settings: GasFreeProxySe
       method: req.method,
       headers,
       body: hasBody ? bodyBytes : undefined,
+      // undici has no default timeout; bound it so a stalled upstream cannot pin
+      // the connection indefinitely (v1 used httpx timeout=60s).
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch (err) {
-    logger.warn("GasFree open proxy upstream error", { err: String(err) });
-    return json(502, { detail: "Bad gateway: upstream request failed" });
+    const timedOut = err instanceof Error && err.name === "TimeoutError";
+    logger.warn("GasFree open proxy upstream error", { err: String(err), timedOut });
+    return json(502, {
+      detail: timedOut ? "Bad gateway: upstream request timed out" : "Bad gateway: upstream request failed",
+    });
   }
 
   // undici decompresses gzip/br when the body is read; strip framing/encoding headers.
