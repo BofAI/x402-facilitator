@@ -71,7 +71,13 @@ export async function buildEvmFacilitatorSigner(network: string): Promise<Facili
   const chainCfg = EVM_CHAINS[network];
   if (!chainCfg) throw new Error(`Unsupported EVM network: ${network}`);
 
-  const wallet: Wallet = await resolveWallet({ network: "evm" });
+  // agent-wallet's parseNetworkFamily accepts only "tron"/"eip155" (or their CAIP
+  // forms), NOT the Network enum value "evm" — an asymmetry in agent-wallet 2.4.0
+  // (Network.EVM === "evm", yet the input parser rejects "evm" and maps "eip155" to
+  // it). v1 sidestepped this entirely (EvmFacilitatorSigner.create() resolved the
+  // eip155 wallet with no network arg). Pass the family token agent-wallet expects;
+  // the EVM key is chain-agnostic so the family alone suffices.
+  const wallet: Wallet = await resolveWallet({ network: "eip155" });
   const address = (await wallet.getAddress()) as `0x${string}`;
 
   const chain = defineChain({
