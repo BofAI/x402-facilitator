@@ -100,12 +100,10 @@ a partial-unique index enforcing one successful settlement per authorization. Th
 shared `sellers` / `api_keys_plus` tables are reused unchanged for auth and seller
 scoping. v1's `payment_records` is not used by v2.
 
-## SDK consumption (dev)
+## SDK consumption
 
-The `@bankofai/x402-*` packages are **vendored tarballs** in [`vendor/`](vendor/) during
-development (referenced via `file:` in `package.json`). When they are published to npm,
-replace the `file:` specs with version ranges and remove `vendor/` + the `overrides`
-entry in `package.json`.
+The `@bankofai/x402-*` packages (`x402-core`, `x402-evm`, `x402-tron`) are consumed from
+npm, pinned to `1.0.0-beta.0` in `package.json`.
 
 ## Docker
 
