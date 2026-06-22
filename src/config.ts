@@ -22,7 +22,6 @@ export interface FacilitatorConfig {
   logging?: { level?: "debug" | "info" | "warn" | "error" };
   database: {
     url: string;
-    password?: string;
     ssl_mode?: string;
     max_open_conns?: number;
     max_idle_conns?: number;
@@ -119,9 +118,8 @@ export async function injectAgentWalletPasswordEnv(cfg: FacilitatorConfig): Prom
   }
 }
 
-/** Database password: YAML literal (local dev), then 1Password. */
+/** Database password from 1Password (local dev puts it directly in database.url). */
 async function getDatabasePassword(cfg: FacilitatorConfig): Promise<string | undefined> {
-  if (cfg.database?.password) return String(cfg.database.password);
   return resolveOpField(cfg, "database_password");
 }
 
