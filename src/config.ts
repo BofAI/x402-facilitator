@@ -12,9 +12,14 @@ import { parse } from "yaml";
 import { getSecretFromOnePassword, isUsableToken, parseOpRef } from "./onepassword.js";
 import { logger, type Level } from "./logger.js";
 
+/** Payment schemes a network can enable. `exact_gasfree` (TRON) rides with `exact`. */
+export type Scheme = "exact" | "upto" | "batch-settlement";
+
 export interface NetworkConfig {
   /** Per-asset base fee in token base units (symbol -> amount string/number). */
   base_fee?: Record<string, number | string>;
+  /** Schemes to register for this network. Defaults to ["exact"] when omitted. */
+  schemes?: Scheme[];
 }
 
 export interface FacilitatorConfig {

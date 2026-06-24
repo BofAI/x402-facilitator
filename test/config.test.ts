@@ -41,6 +41,27 @@ describe("loadConfig", () => {
       loadConfig(writeConfig(`database:\n  url: "x"\nfacilitator:\n  networks: {}\n`)),
     ).toThrow(/facilitator.networks is required/);
   });
+
+  it("parses a per-network schemes list (absent on networks that omit it)", () => {
+    const cfg = loadConfig(
+      writeConfig(`
+database:
+  url: "x"
+facilitator:
+  networks:
+    tron:nile:
+      schemes: ["exact", "upto", "batch-settlement"]
+    bsc:testnet: {}
+`),
+    );
+    expect(cfg.facilitator.networks["tron:nile"].schemes).toEqual([
+      "exact",
+      "upto",
+      "batch-settlement",
+    ]);
+    // Omitted → undefined; the build step defaults it to ["exact"].
+    expect(cfg.facilitator.networks["bsc:testnet"].schemes).toBeUndefined();
+  });
 });
 
 describe("getDatabaseUrl", () => {
@@ -49,7 +70,10 @@ describe("getDatabaseUrl", () => {
     expect(await getDatabaseUrl(cfg)).toBe("postgresql://user@localhost:5432/db");
   });
 
-  it("injects a literal password from config", async () => {
+  it("ignores a literal database.password field (only the 1Password ref injects)", async () => {
+    // The redundant `database.password` literal was dropped; the password is now
+    // resolved solely from the `onepassword.database_password` ref (absent here,
+    // so the url is returned unchanged). Local dev embeds the password in the url.
     const cfg = loadConfig(
       writeConfig(`
 database:
@@ -60,9 +84,6 @@ facilitator:
     tron:nile: {}
 `),
     );
-    const url = await getDatabaseUrl(cfg);
-    expect(url).toContain("@localhost:5432/db");
-    // special chars are percent-encoded
-    expect(url).toContain("p%40ss");
+    expect(await getDatabaseUrl(cfg)).toBe("postgresql://user@localhost:5432/db");
   });
 });

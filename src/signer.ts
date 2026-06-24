@@ -6,20 +6,36 @@
  * unlocked out-of-band via AGENT_WALLET_PASSWORD); the key stays inside the wallet
  * and only signing operations cross the boundary.
  *
- * The upstream signer factories accept a wallet abstraction whose `signTransaction`
- * / `signTypedData` are delegated to the resolved agent-wallet.
+ * The SDK's `create*FacilitatorSigner` factories (beta.1) take the agent-wallet
+ * directly and build the chain client (TronWeb / viem) internally from the CAIP-2
+ * network id. The transaction is built by the SDK, handed to the wallet to sign,
+ * then broadcast — the raw key never enters the SDK.
  */
-import { TronWeb } from "tronweb";
 import { resolveWallet, type Wallet } from "@bankofai/agent-wallet";
-import { createFacilitatorTronSigner, type FacilitatorTronSigner } from "@bankofai/x402-tron";
+import {
+  createFacilitatorTronSigner,
+  createAuthorizerTronSigner,
+  type FacilitatorTronSigner,
+  type TronAuthorizerSignerLike,
+} from "@bankofai/x402-tron";
 import type { FacilitatorEvmSigner } from "@bankofai/x402-evm";
 import {
   createFacilitatorEvmSigner,
-  type FacilitatorEvmPublicClient,
-} from "@bankofai/x402-evm/facilitator/agent-wallet";
-import { createPublicClient, http, defineChain } from "viem";
+  createAuthorizerEvmSigner,
+  type EvmAuthorizerSigner,
+} from "@bankofai/x402-evm/adapters/agent-wallet";
 
-/** TronGrid full-host per TRON network. */
+/**
+ * A resolved agent-wallet that also signs typed data. `resolveWallet` is typed as
+ * the base `Wallet` (no `signTypedData`), but for `evm`/`tron` it returns an
+ * `EvmSigner`/`TronSigner` (both `Eip712Capable`). The batch-settlement scheme
+ * uses `signTypedData` to act as the receiver-authorizer.
+ */
+type SignerWallet = Wallet & {
+  signTypedData(data: Record<string, unknown>, options?: unknown): Promise<string>;
+};
+
+/** TronGrid full-host per TRON network (pins the SDK's internal TronWeb host). */
 const TRON_FULL_HOST: Record<string, string> = {
   "tron:nile": "https://nile.trongrid.io",
   "tron:shasta": "https://api.shasta.trongrid.io",
@@ -27,14 +43,16 @@ const TRON_FULL_HOST: Record<string, string> = {
 };
 
 /** EVM RPC + numeric chainId per supported EVM network. */
-const EVM_CHAINS: Record<string, { id: number; rpc: string; name: string }> = {
-  "bsc:testnet": { id: 97, rpc: "https://bsc-testnet-rpc.publicnode.com", name: "BSC Testnet" },
-  "bsc:mainnet": { id: 56, rpc: "https://bsc-rpc.publicnode.com", name: "BSC Mainnet" },
+const EVM_CHAINS: Record<string, { id: number; rpc: string }> = {
+  "bsc:testnet": { id: 97, rpc: "https://bsc-testnet-rpc.publicnode.com" },
+  "bsc:mainnet": { id: 56, rpc: "https://bsc-rpc.publicnode.com" },
 };
 
 /**
  * Build a TRON facilitator signer for a given network, backed by the active
- * agent-wallet (no private key in this process).
+ * agent-wallet (no private key in this process). The SDK builds TronWeb
+ * internally from the network id; `rpcUrl` pins our fullHost and `apiKey`
+ * forwards the optional TronGrid key.
  *
  * @param network - CAIP network id (e.g. "tron:nile").
  * @returns A FacilitatorTronSigner bound to that network's TronWeb host.
@@ -44,27 +62,21 @@ export async function buildTronFacilitatorSigner(network: string): Promise<Facil
   if (!fullHost) throw new Error(`Unsupported TRON network: ${network}`);
 
   const wallet: Wallet = await resolveWallet({ network: "tron" });
-  const address = await wallet.getAddress();
 
-  const headers = process.env.TRON_GRID_API_KEY
-    ? { "TRON-PRO-API-KEY": process.env.TRON_GRID_API_KEY }
-    : undefined;
-  // No privateKey: reads/tx-building only; signing is delegated to the wallet.
-  const tronWeb = new TronWeb({ fullHost, headers });
-  tronWeb.setAddress(address);
-
-  return createFacilitatorTronSigner(tronWeb, {
-    address,
-    signTransaction: (transaction) => wallet.signTransaction(transaction),
+  return createFacilitatorTronSigner(wallet, {
+    network,
+    rpcUrl: fullHost,
+    apiKey: process.env.TRON_GRID_API_KEY,
   });
 }
 
 /**
- * Build an EVM facilitator signer for a given network. Chain reads/verification/
- * broadcast use a viem public client; signing is delegated to the active
- * agent-wallet via the SDK's wallet-bridge factory (symmetric with TRON).
+ * Build an EVM facilitator signer for a given network. The SDK builds the viem
+ * public client (reads / verification / broadcast) internally from the CAIP-2
+ * network id; `rpcUrl` pins our endpoint. Signing is delegated to the active
+ * agent-wallet (symmetric with TRON).
  *
- * @param network - CAIP network id (e.g. "bsc:testnet").
+ * @param network - Config network id (e.g. "bsc:testnet").
  * @returns A FacilitatorEvmSigner for that chain.
  */
 export async function buildEvmFacilitatorSigner(network: string): Promise<FacilitatorEvmSigner> {
@@ -78,27 +90,40 @@ export async function buildEvmFacilitatorSigner(network: string): Promise<Facili
   // eip155 wallet with no network arg). Pass the family token agent-wallet expects;
   // the EVM key is chain-agnostic so the family alone suffices.
   const wallet: Wallet = await resolveWallet({ network: "eip155" });
-  const address = (await wallet.getAddress()) as `0x${string}`;
 
-  const chain = defineChain({
-    id: chainCfg.id,
-    name: chainCfg.name,
-    nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
-    rpcUrls: { default: { http: [chainCfg.rpc] } },
+  // The SDK derives the chainId from the CAIP-2 reference (eip155:<chainId>) and
+  // resolves chain metadata from its KNOWN_CHAINS table (BSC 56/97 included),
+  // using `rpcUrl` for the transport. The wallet signs the built tx — no raw key
+  // in the SDK — and the gas-sponsoring `sendTransactions` capability rides along.
+  return createFacilitatorEvmSigner(wallet, {
+    network: `eip155:${chainCfg.id}`,
+    rpcUrl: chainCfg.rpc,
   });
-  const publicClient = createPublicClient({ chain, transport: http() });
+}
 
-  // createFacilitatorEvmSigner builds/signs/broadcasts internally (resolved SDK
-  // issue #1); the key never leaves the wallet. It also normalizes the missing
-  // `0x` prefix from agent-wallet (#2), so no workaround is needed here.
-  //
-  // The cast bridges SDK issue #5: FacilitatorEvmPublicClient declares
-  // verifyTypedData/readContract params as Record<string,unknown>, which a real
-  // viem PublicClient does NOT satisfy under strictFunctionTypes (its params are
-  // stricter). viem genuinely provides every method, so narrowing the client to
-  // the SDK's interface type is sound.
-  return createFacilitatorEvmSigner(publicClient as unknown as FacilitatorEvmPublicClient, {
-    address,
-    signTransaction: (tx) => wallet.signTransaction(tx),
-  });
+/**
+ * Build the EVM receiver-authorizer signer (typed-data only), backed by the same
+ * agent-wallet as the settlement signer. The batch-settlement scheme uses it to
+ * sign ClaimBatch / Refund EIP-712 digests; its address is published as
+ * `receiverAuthorizer` and embedded by the server into every channel config. In
+ * production this may be a separate key (the receiver retaining claim authority).
+ *
+ * @returns An EvmAuthorizerSigner ({ address, signTypedData }).
+ */
+export async function buildEvmAuthorizerSigner(): Promise<EvmAuthorizerSigner> {
+  // Same family token as buildEvmFacilitatorSigner — one wallet, two roles.
+  const wallet = (await resolveWallet({ network: "eip155" })) as SignerWallet;
+  return createAuthorizerEvmSigner(wallet);
+}
+
+/**
+ * Build the TRON receiver-authorizer signer — the TRON counterpart of
+ * {@link buildEvmAuthorizerSigner}. Signs ClaimBatch / Refund TIP-712 digests;
+ * the SDK normalizes addresses to EVM-hex inside the typed data.
+ *
+ * @returns A TRON authorizer signer ({ address, signTypedData }).
+ */
+export async function buildTronAuthorizerSigner(): Promise<TronAuthorizerSignerLike> {
+  const wallet = (await resolveWallet({ network: "tron" })) as SignerWallet;
+  return createAuthorizerTronSigner(wallet);
 }
