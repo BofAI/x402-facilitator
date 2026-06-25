@@ -179,7 +179,11 @@ export async function getGasFreeCredentials(
 
 export const serverHost = (cfg: FacilitatorConfig): string => cfg.server?.host ?? "0.0.0.0";
 export const serverPort = (cfg: FacilitatorConfig): number => cfg.server?.port ?? 8001;
-export const logLevel = (cfg: FacilitatorConfig): Level => cfg.logging?.level ?? "info";
+export const logLevel = (cfg: FacilitatorConfig): Level => {
+  // Case-insensitive so legacy configs using "INFO"/"DEBUG" (uppercase) still apply.
+  const raw = (cfg.logging?.level as string | undefined)?.toLowerCase();
+  return raw === "debug" || raw === "warn" || raw === "error" ? raw : "info";
+};
 
 /**
  * Resolved log file path (`dir/filename`), or null when file logging is off.
