@@ -108,12 +108,21 @@ npm, pinned to `1.0.0-beta.0` in `package.json`.
 ## Docker
 
 ```bash
-docker build -t x402-facilitator:2.0.0 .
-docker run -p 8001:8001 \
-  -e AGENT_WALLET_PASSWORD=... \
-  -v "$PWD/config/facilitator.config.yaml:/app/config/facilitator.config.yaml" \
-  x402-facilitator:2.0.0
+docker build -t x402-facilitator .
+
+docker run -p 8001:8001 -p 9001:9001 \
+  -e OP_SERVICE_ACCOUNT_TOKEN="" \
+  -e AGENT_WALLET_PASSWORD="" \
+  -v "$PWD/config/facilitator.config.yaml:/app/config/facilitator.config.yaml:ro" \
+  -v "$PWD/logs:/app/logs" \
+  x402-facilitator
 ```
+
+The container runs as non-root (uid/gid 1000); make sure the host `logs/`
+directory is writable by that uid before bind-mounting it. The agent-wallet
+password is resolved from `OP_SERVICE_ACCOUNT_TOKEN` (1Password) when set;
+otherwise pass it directly via `AGENT_WALLET_PASSWORD`. Port `9001` is only
+needed when `monitoring.port` differs from `server.port`.
 
 ## Status
 
