@@ -24,7 +24,13 @@ export interface NetworkConfig {
 
 export interface FacilitatorConfig {
   server?: { host?: string; port?: number };
-  logging?: { level?: "debug" | "info" | "warn" | "error" };
+  logging?: {
+    level?: "debug" | "info" | "warn" | "error";
+    /** Directory for the log file; combined with `filename`. File logging is off unless both are set. */
+    dir?: string;
+    /** Log file name (fixed; not timestamped). Written in append mode across restarts. */
+    filename?: string;
+  };
   database: {
     url: string;
     ssl_mode?: string;
@@ -174,6 +180,18 @@ export async function getGasFreeCredentials(
 export const serverHost = (cfg: FacilitatorConfig): string => cfg.server?.host ?? "0.0.0.0";
 export const serverPort = (cfg: FacilitatorConfig): number => cfg.server?.port ?? 8001;
 export const logLevel = (cfg: FacilitatorConfig): Level => cfg.logging?.level ?? "info";
+
+/**
+ * Resolved log file path (`dir/filename`), or null when file logging is off.
+ * Mirrors legacy: file logging is enabled only when both `logging.dir` and
+ * `logging.filename` are set. The name is fixed (not timestamped); the file is
+ * appended to across restarts.
+ */
+export const logFilePath = (cfg: FacilitatorConfig): string | null => {
+  const { dir, filename } = cfg.logging ?? {};
+  if (!dir || !filename) return null;
+  return resolve(dir, filename);
+};
 
 export const apiKeyRefreshInterval = (cfg: FacilitatorConfig): number =>
   cfg.rate_limit?.api_key_refresh_interval ?? 60;

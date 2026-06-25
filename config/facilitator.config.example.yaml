@@ -6,6 +6,10 @@ server:
 
 logging:
   level: "info"
+  # File logging (optional). Set both dir + filename to also append logs to a
+  # file (fixed name, not timestamped). Console output is unaffected.
+  # dir: "logs"
+  # filename: "x402-facilitator.log"
 
 database:
   url: ""

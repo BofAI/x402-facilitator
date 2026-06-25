@@ -22,6 +22,7 @@ import {
   rateLimitAnonymous,
   monitoringPort,
   monitoringEndpoint,
+  logFilePath,
   databaseSslMode,
   databaseMaxOpenConns,
   databaseMaxIdleConns,
@@ -33,12 +34,20 @@ import { buildFacilitator } from "./facilitator.js";
 import { createApp } from "./server.js";
 import { metricsHandler } from "./metrics.js";
 import type { GasFreeProxySettings } from "./gasfree-proxy.js";
-import { logger, setLogLevel } from "./logger.js";
+import { setLogger } from "@bankofai/x402-core";
+import { logger, setLogLevel, setLogFile, toSdkLogger } from "./logger.js";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
   setLogLevel(logLevel(cfg));
-  logger.info("Configuration loaded");
+  // Enable file logging when logging.dir + logging.filename are configured
+  // (mirrors legacy); console output is unaffected.
+  const logFile = logFilePath(cfg);
+  if (logFile) setLogFile(logFile);
+  // Route all @bankofai/x402-* SDK output (incl. facilitator verify/settle hooks)
+  // through this app's structured logger so it shares one stream and log level.
+  setLogger(toSdkLogger());
+  logger.info("Configuration loaded", logFile ? { logFile } : undefined);
 
   // Secrets (env first, then 1Password).
   await injectAgentWalletPasswordEnv(cfg);

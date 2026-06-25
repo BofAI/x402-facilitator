@@ -13,6 +13,7 @@
  * network (or null to skip exact_gasfree registration).
  */
 import { x402Facilitator } from "@bankofai/x402-core/facilitator";
+import { createFacilitator } from "@bankofai/x402-core";
 import { registerExactTronScheme } from "@bankofai/x402-tron/exact/facilitator";
 import { registerExactGasFreeTronScheme } from "@bankofai/x402-tron/gasfree/facilitator";
 import { UptoTronScheme } from "@bankofai/x402-tron/upto/facilitator";
@@ -155,7 +156,10 @@ export async function buildFacilitator(
   cfg: FacilitatorConfig,
   opts: BuildFacilitatorOptions,
 ): Promise<x402Facilitator> {
-  const facilitator = new x402Facilitator();
+  // createFacilitator() = new x402Facilitator() with the SDK's structured
+  // verify/settle logging hooks pre-attached; output flows through the global
+  // logger wired in src/index.ts.
+  const facilitator = createFacilitator();
   const networks = cfg.facilitator.networks ?? {};
 
   for (const network of enabledNetworks(cfg)) {
