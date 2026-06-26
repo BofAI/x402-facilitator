@@ -27,6 +27,7 @@ import {
   buildEvmFacilitatorSigner,
   buildTronAuthorizerSigner,
   buildEvmAuthorizerSigner,
+  toCaip,
 } from "./signer.js";
 import {
   type FacilitatorConfig,
@@ -167,9 +168,9 @@ export async function buildFacilitator(
     const setup: NetworkSetup = {
       facilitator,
       network,
-      // enabledNetworks yields plain strings; the scheme registrars / `register`
-      // expect a CAIP-2 network id (`namespace:reference`).
-      caip: network as `${string}:${string}`,
+      // enabledNetworks yields raw config ids; normalize to canonical CAIP-2 for
+      // the scheme registrars / `register` (e.g. config `bsc:testnet` -> eip155:97).
+      caip: toCaip(network),
       // Schemes default to ["exact"] when omitted (back-compat with v1 behaviour).
       has: (s: Scheme) => (net?.schemes ?? ["exact"]).includes(s),
       fee: toFeeConfig(net),

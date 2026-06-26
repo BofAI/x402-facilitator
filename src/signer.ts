@@ -49,6 +49,21 @@ const EVM_CHAINS: Record<string, { id: number; rpc: string }> = {
 };
 
 /**
+ * Normalize a config network id to its canonical CAIP-2 form. EVM chains have no
+ * `bsc` namespace in CAIP-2 — they are all `eip155:<chainId>` — so config aliases
+ * like `bsc:testnet` map to `eip155:97` (chainId sourced from EVM_CHAINS, the same
+ * table the signer connects with, so the registered/advertised id can't drift from
+ * the chain the signer actually talks to). Ids already in CAIP-2 form (`tron:*`,
+ * `eip155:*`) pass through unchanged. This is what the facilitator registers and
+ * exposes via /supported.
+ */
+export function toCaip(network: string): `${string}:${string}` {
+  const evm = EVM_CHAINS[network];
+  if (evm) return `eip155:${evm.id}`;
+  return network as `${string}:${string}`;
+}
+
+/**
  * Build a TRON facilitator signer for a given network, backed by the active
  * agent-wallet (no private key in this process). The SDK builds TronWeb
  * internally from the network id; `rpcUrl` pins our fullHost and `apiKey`
