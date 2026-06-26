@@ -14,15 +14,17 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 
-# Non-root runtime user pinned to uid/gid 1000 (matches legacy ec2-user) so the
-# original `-v $(pwd)/logs:/app/logs` bind mount keeps the same write permissions.
-# node:22-slim already ships a uid/gid 1000 `node` user, so create only if absent
-# and run by numeric uid to stay independent of the account name.
-RUN (getent group 1000 >/dev/null || groupadd -g 1000 appuser) \
-    && (getent passwd 1000 >/dev/null || useradd -r -u 1000 -g 1000 -s /bin/false appuser) \
-    && mkdir -p logs \
-    && chown -R 1000:1000 /app
-USER 1000
+# Non-root runtime user matching legacy v1 exactly: `ec2-user` at uid/gid 1000 with
+# HOME /home/ec2-user. The ops `docker run` bind-mounts the provisioned agent-wallet
+# store at ~/.agent-wallet (agent-wallet's default = homedir()/.agent-wallet), so the
+# runtime user and HOME must match v1 or `resolveWallet` finds no active wallet.
+# node:22-slim ships uid/gid 1000 as `node`; rename it rather than add a second one.
+RUN groupmod -n ec2-user node \
+    && usermod -l ec2-user -d /home/ec2-user -m node \
+    && mkdir -p /app/logs \
+    && chown -R 1000:1000 /app /home/ec2-user
+ENV HOME=/home/ec2-user
+USER ec2-user
 
 # 8001: HTTP API, 9001: metrics/monitoring (config monitoring.port)
 EXPOSE 8001 9001
