@@ -30,6 +30,26 @@ describe("extractPayerNonce", () => {
     ).toEqual({ payer: "TUser", nonce: "7" });
   });
 
+  it("extracts payer (null nonce) from a batch-settlement deposit/voucher/refund payload", () => {
+    expect(
+      extractPayerNonce({
+        type: "voucher",
+        channelConfig: { payer: "0xchanpayer", receiver: "0xrecv", token: "0xtok", salt: "0x01" },
+        voucher: { channelId: "0xchan", maxClaimableAmount: "100", signature: "0xsig" },
+      }),
+    ).toEqual({ payer: "0xchanpayer", nonce: null });
+  });
+
+  it("extracts payer (null nonce) from a batch-settlement claim payload (voucher.channel.payer)", () => {
+    expect(
+      extractPayerNonce({
+        voucher: { channel: { payer: "0xclaimpayer", receiver: "0xrecv", token: "0xtok" }, maxClaimableAmount: "100" },
+        signature: "0xsig",
+        totalClaimed: "50",
+      }),
+    ).toEqual({ payer: "0xclaimpayer", nonce: null });
+  });
+
   it("returns null for unknown / empty payloads", () => {
     expect(extractPayerNonce(undefined)).toBeNull();
     expect(extractPayerNonce({})).toBeNull();
