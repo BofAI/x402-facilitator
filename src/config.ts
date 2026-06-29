@@ -15,10 +15,13 @@ import { logger, type Level } from "./logger.js";
 /** Payment schemes a network can enable. `exact_gasfree` (TRON) rides with `exact`. */
 export type Scheme = "exact" | "upto" | "batch-settlement";
 
+/** Every payment scheme — the default registered for a network when `schemes` is omitted. */
+export const ALL_SCHEMES: readonly Scheme[] = ["exact", "upto", "batch-settlement"];
+
 export interface NetworkConfig {
   /** Per-asset base fee in token base units (symbol -> amount string/number). */
   base_fee?: Record<string, number | string>;
-  /** Schemes to register for this network. Defaults to ["exact"] when omitted. */
+  /** Schemes to register for this network. Defaults to all schemes when omitted. */
   schemes?: Scheme[];
 }
 

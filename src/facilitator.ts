@@ -1,6 +1,6 @@
 /**
  * Builds the x402Facilitator and registers scheme/network handlers from config.
- * Each network's `schemes` list (default ["exact"]) selects what to register:
+ * Each network's `schemes` list (default: all schemes) selects what to register:
  *   - exact            -> TRON: eip3009/permit2 (+ exact_gasfree when creds resolve)
  *                         EVM:  eip3009/permit2
  *   - upto             -> Permit2 up-to-max settlement (TRON + EVM)
@@ -33,6 +33,7 @@ import {
   type FacilitatorConfig,
   type NetworkConfig,
   type Scheme,
+  ALL_SCHEMES,
   enabledNetworks,
 } from "./config.js";
 import { logger } from "./logger.js";
@@ -171,8 +172,8 @@ export async function buildFacilitator(
       // enabledNetworks yields raw config ids; normalize to canonical CAIP-2 for
       // the scheme registrars / `register` (e.g. config `bsc:testnet` -> eip155:97).
       caip: toCaip(network),
-      // Schemes default to ["exact"] when omitted (back-compat with v1 behaviour).
-      has: (s: Scheme) => (net?.schemes ?? ["exact"]).includes(s),
+      // Schemes default to all schemes when omitted.
+      has: (s: Scheme) => (net?.schemes ?? ALL_SCHEMES).includes(s),
       fee: toFeeConfig(net),
     };
 

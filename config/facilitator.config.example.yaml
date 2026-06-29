@@ -48,7 +48,8 @@ facilitator:
   # no base_fee. There is no /fee/quote endpoint in v2.
   #
   # schemes: which payment schemes to register for the network. Defaults to
-  # ["exact"] when omitted. Options: exact | upto | batch-settlement. On TRON,
+  # all schemes (exact, upto, batch-settlement) when omitted. Options: exact |
+  # upto | batch-settlement. On TRON,
   # exact also registers exact_gasfree when GasFree creds resolve. batch-settlement
   # uses the facilitator's agent-wallet as the receiverAuthorizer (published via
   # /supported); in production this may be a separate key.

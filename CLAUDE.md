@@ -31,7 +31,7 @@ Startup is orchestrated in `src/index.ts` and mirrors v1's lifespan:
 
 Key seams:
 
-- **`src/facilitator.ts`** is the heart. It builds the SDK's `x402Facilitator` via `createFacilitator()` and registers scheme handlers per enabled network. Each network's `schemes` list (default `["exact"]`) selects what to register: `exact` (TRON eip3009/permit2, +`exact_gasfree` when creds resolve; EVM eip3009/permit2), `upto` (Permit2 up-to-max), `batch-settlement` (channel deposit/voucher/claim). TRON and EVM have symmetric `register*Network` handlers; TRON `exact` carries a facilitator fee and a GasFree variant, EVM `exact` takes no fee and has no gasfree.
+- **`src/facilitator.ts`** is the heart. It builds the SDK's `x402Facilitator` via `createFacilitator()` and registers scheme handlers per enabled network. Each network's `schemes` list (default: all schemes) selects what to register: `exact` (TRON eip3009/permit2, +`exact_gasfree` when creds resolve; EVM eip3009/permit2), `upto` (Permit2 up-to-max), `batch-settlement` (channel deposit/voucher/claim). TRON and EVM have symmetric `register*Network` handlers; TRON `exact` carries a facilitator fee and a GasFree variant, EVM `exact` takes no fee and has no gasfree.
 
 - **Non-custodial signing (`src/signer.ts`)** — this process **never holds settlement private keys**. Wallets resolve through `@bankofai/agent-wallet` (unlocked out-of-band via `AGENT_WALLET_PASSWORD`); the SDK builds the tx, hands it to the wallet to sign, then broadcasts — the raw key never enters the SDK. For `batch-settlement`, the same agent-wallet doubles as the `receiverAuthorizer` (signs TIP-712/EIP-712 digests).
 
