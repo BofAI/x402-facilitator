@@ -1,12 +1,11 @@
-# x402 Facilitator (v2)
+# x402 Facilitator
 
 Multi-chain **HTTP 402 Payment Required** facilitator. It verifies payment payloads
 off-chain and settles them on-chain, on the upstream **x402 TypeScript** ecosystem
 (`@bankofai/x402-core` + `@bankofai/x402-tron` + `@bankofai/x402-evm`).
 
-v2 is a full rewrite of the Python/FastAPI v1 (now under [`legacy/`](legacy/)):
-Python → Node/TS, bankofai SDK → `@bankofai/x402-*`, and a hard cutover of the
-payment scheme wire format.
+A TypeScript/Node service. The earlier Python/FastAPI implementation is kept under
+[`legacy/`](legacy/) as a behavioral reference.
 
 ## Features
 
@@ -74,7 +73,7 @@ is set). Relevant env vars:
 
 > Fees are TRON-only (`base_fee` per network, advertised via `requirements.extra.fee`).
 > The EVM `exact` scheme settles the exact amount and takes no facilitator fee.
-> There is **no** `/fee/quote` endpoint in v2.
+> There is **no** `/fee/quote` endpoint.
 
 ## Endpoints
 
@@ -94,16 +93,16 @@ Lookups are seller-scoped when the request carries a valid `X-API-KEY`.
 
 ## Database
 
-v2 owns a new `settlements` table (created on startup), keyed on
+The `settlements` table (created on startup) is keyed on
 `(network, scheme, asset, payer, nonce)` — the on-chain authorization identity — with
 a partial-unique index enforcing one successful settlement per authorization. The
 shared `sellers` / `api_keys_plus` tables are reused unchanged for auth and seller
-scoping. v1's `payment_records` is not used by v2.
+scoping. The legacy `payment_records` table is not used.
 
 ## SDK consumption
 
 The `@bankofai/x402-*` packages (`x402-core`, `x402-evm`, `x402-tron`) are consumed from
-npm, pinned to `1.0.0-beta.0` in `package.json`.
+npm, pinned to `1.0.0` in `package.json`.
 
 ## Docker
 
