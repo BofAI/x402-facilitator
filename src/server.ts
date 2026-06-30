@@ -149,7 +149,9 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         asset,
         payer: result.payer ?? ids?.payer ?? null,
         nonce: ids?.nonce ?? null,
-        amount: result.amount ?? null,
+        // Prefer the actually-settled amount (upto/batch); fall back to the
+        // requirements amount (exact, where SettleResponse omits it).
+        amount: result.amount ?? req.amount ?? null,
         txHash,
         status: result.success ? "success" : "failed",
         errorReason: result.errorReason ?? null,
