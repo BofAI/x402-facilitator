@@ -18,11 +18,11 @@ import {
   type FacilitatorTronSigner,
   type TronAuthorizerSignerLike,
 } from "@bankofai/x402-tron";
-import type { FacilitatorEvmSigner } from "@bankofai/x402-evm";
 import {
   createFacilitatorEvmSigner,
   createAuthorizerEvmSigner,
   type EvmAuthorizerSigner,
+  type GasSponsoringFacilitatorEvmSigner,
 } from "@bankofai/x402-evm/adapters/agent-wallet";
 
 /**
@@ -94,7 +94,9 @@ export async function buildTronFacilitatorSigner(network: string): Promise<Facil
  * @param network - Config network id (e.g. "bsc:testnet").
  * @returns A FacilitatorEvmSigner for that chain.
  */
-export async function buildEvmFacilitatorSigner(network: string): Promise<FacilitatorEvmSigner> {
+export async function buildEvmFacilitatorSigner(
+  network: string,
+): Promise<GasSponsoringFacilitatorEvmSigner> {
   const chainCfg = EVM_CHAINS[network];
   if (!chainCfg) throw new Error(`Unsupported EVM network: ${network}`);
 

@@ -2,7 +2,7 @@
  * Builds the x402Facilitator and registers scheme/network handlers from config.
  * Each network's `schemes` list (default: all schemes) selects what to register:
  *   - exact            -> TRON: eip3009/permit2 (+ exact_gasfree when creds resolve)
- *                         EVM:  eip3009/permit2
+ *                         EVM:  eip3009/permit2 (+ ERC-20 approval gas sponsoring)
  *   - upto             -> Permit2 up-to-max settlement (TRON + EVM)
  *   - batch-settlement -> channel deposit/voucher/claim/settle/refund (TRON + EVM);
  *                         the facilitator's agent-wallet doubles as receiverAuthorizer
@@ -21,7 +21,12 @@ import { BatchSettlementTronScheme } from "@bankofai/x402-tron/batch-settlement/
 import { registerExactEvmScheme } from "@bankofai/x402-evm/exact/facilitator";
 import { UptoEvmScheme } from "@bankofai/x402-evm/upto/facilitator";
 import { BatchSettlementEvmScheme } from "@bankofai/x402-evm/batch-settlement/facilitator";
+import {
+  createErc20ApprovalGasSponsoringExtension,
+  type Erc20ApprovalGasSponsoringSigner,
+} from "@bankofai/x402-extensions";
 import type { ExactTronFeeConfig } from "@bankofai/x402-tron";
+import type { GasSponsoringFacilitatorEvmSigner } from "@bankofai/x402-evm/adapters/agent-wallet";
 import {
   buildTronFacilitatorSigner,
   buildEvmFacilitatorSigner,
@@ -122,7 +127,7 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
  * Register the enabled schemes for one EVM network. Symmetric with the TRON
  * handler; EVM exact takes no facilitator fee and has no gasfree variant.
  */
-async function registerEvmNetwork(setup: NetworkSetup): Promise<void> {
+async function registerEvmNetwork(setup: NetworkSetup): Promise<GasSponsoringFacilitatorEvmSigner> {
   const { facilitator, network, caip, has } = setup;
   const signer = await buildEvmFacilitatorSigner(network);
 
@@ -145,6 +150,26 @@ async function registerEvmNetwork(setup: NetworkSetup): Promise<void> {
       receiverAuthorizer: authorizerSigner.address,
     });
   }
+
+  return signer;
+}
+
+function registerEvmGasSponsoringExtension(
+  facilitator: x402Facilitator,
+  signers: Record<string, GasSponsoringFacilitatorEvmSigner>,
+): void {
+  const defaultSigner = Object.values(signers)[0];
+  if (!defaultSigner) return;
+
+  facilitator.registerExtension(
+    createErc20ApprovalGasSponsoringExtension(
+      defaultSigner as Erc20ApprovalGasSponsoringSigner,
+      network => signers[network] as Erc20ApprovalGasSponsoringSigner | undefined,
+    ),
+  );
+  logger.info("Registered ERC-20 approval gas-sponsoring extension (EVM)", {
+    networks: Object.keys(signers),
+  });
 }
 
 /**
@@ -163,6 +188,7 @@ export async function buildFacilitator(
   // logger wired in src/index.ts.
   const facilitator = createFacilitator();
   const networks = cfg.facilitator.networks ?? {};
+  const evmGasSponsoringSigners: Record<string, GasSponsoringFacilitatorEvmSigner> = {};
 
   for (const network of enabledNetworks(cfg)) {
     const net = networks[network];
@@ -180,11 +206,13 @@ export async function buildFacilitator(
     if (isTron(network)) {
       await registerTronNetwork(setup, opts);
     } else if (isEvm(network)) {
-      await registerEvmNetwork(setup);
+      evmGasSponsoringSigners[setup.caip] = await registerEvmNetwork(setup);
     } else {
       logger.warn("Unsupported network; skipped", { network });
     }
   }
+
+  registerEvmGasSponsoringExtension(facilitator, evmGasSponsoringSigners);
 
   return facilitator;
 }
