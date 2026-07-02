@@ -1,40 +1,31 @@
-# x402-tron-facilitator Docker image
-# Python 3.12 slim for smaller image
-FROM python:3.12-slim
-
-# Prevent Python from writing pyc files and buffering stdout/stderr
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
-
+# x402 Facilitator v2 (TypeScript / Node)
+FROM node:22-slim AS build
 WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
 
-# Build deps: gcc for wheels, git for pip install from git URLs
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+FROM node:22-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
 
-# Copy dependency file first for better layer caching
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Create a non-root runtime user
-RUN useradd -r -s /bin/false ec2-user && \
-    groupmod -g 1000 ec2-user && \
-    usermod -u 1000 -g 1000 ec2-user
-
-# Copy application code
-COPY src/ ./src/
-
-# Create logs directory (config may write here)
-RUN mkdir -p logs && chown -R ec2-user:ec2-user /app
-
+# Non-root runtime user matching legacy v1 exactly: `ec2-user` at uid/gid 1000 with
+# HOME /home/ec2-user. The ops `docker run` bind-mounts the provisioned agent-wallet
+# store at ~/.agent-wallet (agent-wallet's default = homedir()/.agent-wallet), so the
+# runtime user and HOME must match v1 or `resolveWallet` finds no active wallet.
+# node:22-slim ships uid/gid 1000 as `node`; rename it rather than add a second one.
+RUN groupmod -n ec2-user node \
+    && usermod -l ec2-user -d /home/ec2-user -m node \
+    && mkdir -p /app/logs \
+    && chown -R 1000:1000 /app /home/ec2-user
+ENV HOME=/home/ec2-user
 USER ec2-user
 
+# 8001: HTTP API, 9001: metrics/monitoring (config monitoring.port)
 EXPOSE 8001 9001
-
-# Default: run facilitator. Override CMD for custom entry.
-CMD ["python", "src/main.py"]
+CMD ["node", "dist/index.js"]

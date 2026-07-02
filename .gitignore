@@ -92,3 +92,11 @@ facilitator.config.yaml
 
 # Private
 _private/
+
+# Node / TypeScript (v2)
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
