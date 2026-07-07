@@ -87,7 +87,7 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
   const signer = await buildTronFacilitatorSigner(network);
 
   if (has("exact")) {
-    registerExactTronScheme(facilitator, { signer, networks: caip, fee });
+    registerExactTronScheme(facilitator, { signer, networks: caip });
 
     const gasfreeBase = opts.gasfreeBaseUrlFor(network);
     if (gasfreeBase) {
@@ -107,7 +107,7 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
 
   if (has("upto")) {
     // beta.3 aligned TRON with EVM: register the scheme class directly.
-    facilitator.register(caip, new UptoTronScheme(signer, fee));
+    facilitator.register(caip, new UptoTronScheme(signer));
     logger.info("Registered upto (TRON)", { network });
   }
 
