@@ -7,6 +7,7 @@
  *   wire GasFree proxy -> serve HTTP (+ optional separate metrics port).
  */
 import { serve, type ServerType } from "@hono/node-server";
+import { TRON_MAINNET, TRON_NILE } from "@bankofai/x402-tron";
 import { Hono } from "hono";
 import {
   loadConfig,
@@ -86,8 +87,10 @@ async function main(): Promise<void> {
   // credentials are present (the proxy could not authenticate upstream otherwise).
   const selfBase = `http://127.0.0.1:${serverPort(cfg)}`;
   const gasfreeBaseUrlFor = (network: string): string | null => {
-    if (network === "tron:nile" && gasfreeSettings.nileCreds) return `${selfBase}/nile`;
-    if (network === "tron:mainnet" && gasfreeSettings.mainnetCreds) return `${selfBase}/mainnet`;
+    // `network` arrives in canonical CAIP-2 (hex chain id) from the facilitator;
+    // credentials are still resolved from config by friendly name above.
+    if (network === TRON_NILE && gasfreeSettings.nileCreds) return `${selfBase}/nile`;
+    if (network === TRON_MAINNET && gasfreeSettings.mainnetCreds) return `${selfBase}/mainnet`;
     return null;
   };
 

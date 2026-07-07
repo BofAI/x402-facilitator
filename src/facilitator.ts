@@ -89,7 +89,7 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
   if (has("exact")) {
     registerExactTronScheme(facilitator, { signer, networks: caip });
 
-    const gasfreeBase = opts.gasfreeBaseUrlFor(network);
+    const gasfreeBase = opts.gasfreeBaseUrlFor(caip);
     if (gasfreeBase) {
       // Point the GasFree client at this service's co-located proxy, which adds
       // HMAC auth and forwards to the official relayer.
@@ -97,7 +97,7 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
         signer,
         networks: caip,
         fee,
-        apiBaseUrls: { [network]: gasfreeBase },
+        apiBaseUrls: { [caip]: gasfreeBase },
       });
       logger.info("Registered exact + exact_gasfree", { network, gasfreeBase });
     } else {

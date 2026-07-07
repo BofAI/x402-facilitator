@@ -54,6 +54,9 @@ facilitator:
   # uses the facilitator's agent-wallet as the receiverAuthorizer (published via
   # /supported); in production this may be a separate key.
   networks:
+    # TRON networks accept friendly names (tron:nile / tron:mainnet / tron:shasta);
+    # they are normalized to canonical CAIP-2 hex chain ids (e.g. tron:0xcd8690dc)
+    # for the x402 SDK (1.0.1+, which uses hex chain id in CAIP-2).
     tron:nile:
       schemes: ["exact", "upto", "batch-settlement"]
       base_fee:

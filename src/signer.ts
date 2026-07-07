@@ -15,6 +15,9 @@ import { resolveWallet, type Wallet } from "@bankofai/agent-wallet";
 import {
   createFacilitatorTronSigner,
   createAuthorizerTronSigner,
+  TRON_MAINNET,
+  TRON_NILE,
+  TRON_SHASTA,
   type FacilitatorTronSigner,
   type TronAuthorizerSignerLike,
 } from "@bankofai/x402-tron";
@@ -35,11 +38,23 @@ type SignerWallet = Wallet & {
   signTypedData(data: Record<string, unknown>, options?: unknown): Promise<string>;
 };
 
-/** TronGrid full-host per TRON network (pins the SDK's internal TronWeb host). */
+/**
+ * Human-friendly TRON network aliases -> canonical CAIP-2 (hex chain id). The
+ * x402 SDK (1.0.1+) identifies TRON networks by hex chain id in CAIP-2 (e.g.
+ * `tron:0x2b6653dc`); config may use friendly names which we normalize so every
+ * value handed to the SDK is in canonical form.
+ */
+const TRON_CAIP_ALIASES: Record<string, string> = {
+  "tron:mainnet": TRON_MAINNET,
+  "tron:nile": TRON_NILE,
+  "tron:shasta": TRON_SHASTA,
+};
+
+/** TronGrid full-host per TRON network, keyed by canonical CAIP-2 (SDK constant). */
 const TRON_FULL_HOST: Record<string, string> = {
-  "tron:nile": "https://nile.trongrid.io",
-  "tron:shasta": "https://api.shasta.trongrid.io",
-  "tron:mainnet": "https://api.trongrid.io",
+  [TRON_NILE]: "https://nile.trongrid.io",
+  [TRON_SHASTA]: "https://api.shasta.trongrid.io",
+  [TRON_MAINNET]: "https://api.trongrid.io",
 };
 
 /** EVM RPC + numeric chainId per supported EVM network. */
@@ -53,13 +68,16 @@ const EVM_CHAINS: Record<string, { id: number; rpc: string }> = {
  * `bsc` namespace in CAIP-2 — they are all `eip155:<chainId>` — so config aliases
  * like `bsc:testnet` map to `eip155:97` (chainId sourced from EVM_CHAINS, the same
  * table the signer connects with, so the registered/advertised id can't drift from
- * the chain the signer actually talks to). Ids already in CAIP-2 form (`tron:*`,
- * `eip155:*`) pass through unchanged. This is what the facilitator registers and
- * exposes via /supported.
+ * the chain the signer actually talks to). TRON friendly names (`tron:mainnet`)
+ * normalize to the SDK's hex-chain-id CAIP-2 (`tron:0x2b6653dc`); ids already in
+ * canonical form pass through unchanged. This is what the facilitator registers
+ * and exposes via /supported.
  */
 export function toCaip(network: string): `${string}:${string}` {
   const evm = EVM_CHAINS[network];
   if (evm) return `eip155:${evm.id}`;
+  const tronAlias = TRON_CAIP_ALIASES[network];
+  if (tronAlias) return tronAlias as `${string}:${string}`;
   return network as `${string}:${string}`;
 }
 
@@ -69,17 +87,19 @@ export function toCaip(network: string): `${string}:${string}` {
  * internally from the network id; `rpcUrl` pins our fullHost and `apiKey`
  * forwards the optional TronGrid key.
  *
- * @param network - CAIP network id (e.g. "tron:nile").
+ * @param network - Config network id (e.g. "tron:nile"); normalized to canonical
+ *   CAIP-2 (hex chain id) before being handed to the SDK.
  * @returns A FacilitatorTronSigner bound to that network's TronWeb host.
  */
 export async function buildTronFacilitatorSigner(network: string): Promise<FacilitatorTronSigner> {
-  const fullHost = TRON_FULL_HOST[network];
+  const caip = toCaip(network);
+  const fullHost = TRON_FULL_HOST[caip];
   if (!fullHost) throw new Error(`Unsupported TRON network: ${network}`);
 
   const wallet: Wallet = await resolveWallet({ network: "tron" });
 
   return createFacilitatorTronSigner(wallet, {
-    network,
+    network: caip,
     rpcUrl: fullHost,
     apiKey: process.env.TRON_GRID_API_KEY,
   });
