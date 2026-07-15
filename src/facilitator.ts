@@ -25,7 +25,6 @@ import {
   createErc20ApprovalGasSponsoringExtension,
   type Erc20ApprovalGasSponsoringSigner,
 } from "@bankofai/x402-extensions";
-import type { ExactTronFeeConfig } from "@bankofai/x402-tron";
 import type { GasSponsoringFacilitatorEvmSigner } from "@bankofai/x402-evm/adapters/agent-wallet";
 import {
   buildTronFacilitatorSigner,
@@ -51,19 +50,6 @@ export interface BuildFacilitatorOptions {
 const isTron = (n: string) => n.startsWith("tron:");
 const isEvm = (n: string) => n.startsWith("bsc:") || n.startsWith("eip155:") || n.startsWith("eth:");
 
-/** Map config `base_fee` (symbol -> number|string) to the scheme fee config. */
-function toFeeConfig(net: NetworkConfig): ExactTronFeeConfig | undefined {
-  if (!net.base_fee) return undefined;
-  const baseFee: Record<string, string> = {};
-  for (const [symbol, amount] of Object.entries(net.base_fee)) {
-    // The scheme looks up baseFee by `symbol.toUpperCase()`; normalize keys so a
-    // lowercase config entry can't silently miss.
-    baseFee[symbol.toUpperCase()] = String(amount);
-  }
-  // feeTo is left unset: the scheme defaults it to the facilitator signer address.
-  return { baseFee };
-}
-
 /** Per-network registration context shared by the chain handlers. */
 interface NetworkSetup {
   facilitator: x402Facilitator;
@@ -73,8 +59,6 @@ interface NetworkSetup {
   caip: `${string}:${string}`;
   /** Whether a scheme is enabled for this network. */
   has: (s: Scheme) => boolean;
-  /** TRON facilitator fee (advertised via getExtra); unused on EVM. */
-  fee?: ExactTronFeeConfig;
 }
 
 /**
@@ -83,7 +67,7 @@ interface NetworkSetup {
  * authorizer (same agent-wallet, exposing its typed-data signing role).
  */
 async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOptions): Promise<void> {
-  const { facilitator, network, caip, has, fee } = setup;
+  const { facilitator, network, caip, has } = setup;
   const signer = await buildTronFacilitatorSigner(network);
 
   if (has("exact")) {
@@ -96,7 +80,6 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
       registerExactGasFreeTronScheme(facilitator, {
         signer,
         networks: caip,
-        fee,
         apiBaseUrls: { [caip]: gasfreeBase },
       });
       logger.info("Registered exact + exact_gasfree", { network, gasfreeBase });
@@ -125,7 +108,7 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
 
 /**
  * Register the enabled schemes for one EVM network. Symmetric with the TRON
- * handler; EVM exact takes no facilitator fee and has no gasfree variant.
+ * handler; EVM has no gasfree variant.
  */
 async function registerEvmNetwork(setup: NetworkSetup): Promise<GasSponsoringFacilitatorEvmSigner> {
   const { facilitator, network, caip, has } = setup;
@@ -200,7 +183,6 @@ export async function buildFacilitator(
       caip: toCaip(network),
       // Schemes default to all schemes when omitted.
       has: (s: Scheme) => (net?.schemes ?? ALL_SCHEMES).includes(s),
-      fee: toFeeConfig(net),
     };
 
     if (isTron(network)) {

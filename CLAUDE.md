@@ -31,7 +31,7 @@ Startup is orchestrated in `src/index.ts` and mirrors v1's lifespan:
 
 Key seams:
 
-- **`src/facilitator.ts`** is the heart. It builds the SDK's `x402Facilitator` via `createFacilitator()` and registers scheme handlers per enabled network. Each network's `schemes` list (default: all schemes) selects what to register: `exact` (TRON eip3009/permit2, +`exact_gasfree` when creds resolve; EVM eip3009/permit2), `upto` (Permit2 up-to-max), `batch-settlement` (channel deposit/voucher/claim). TRON and EVM have symmetric `register*Network` handlers; TRON `exact` carries a facilitator fee and a GasFree variant, EVM `exact` takes no fee and has no gasfree.
+- **`src/facilitator.ts`** is the heart. It builds the SDK's `x402Facilitator` via `createFacilitator()` and registers scheme handlers per enabled network. Each network's `schemes` list (default: all schemes) selects what to register: `exact` (TRON eip3009/permit2, +`exact_gasfree` when creds resolve; EVM eip3009/permit2), `upto` (Permit2 up-to-max), `batch-settlement` (channel deposit/voucher/claim). TRON and EVM have symmetric `register*Network` handlers; TRON `exact` has a GasFree variant, EVM `exact` does not.
 
 - **Non-custodial signing (`src/signer.ts`)** — this process **never holds settlement private keys**. Wallets resolve through `@bankofai/agent-wallet` (unlocked out-of-band via `AGENT_WALLET_PASSWORD`); the SDK builds the tx, hands it to the wallet to sign, then broadcasts — the raw key never enters the SDK. For `batch-settlement`, the same agent-wallet doubles as the `receiverAuthorizer` (signs TIP-712/EIP-712 digests).
 
@@ -49,6 +49,6 @@ Key seams:
 
 - Networks use **CAIP-2** ids (`tron:nile`, `tron:mainnet`, `bsc:testnet`, `eip155:*`). `isTron`/`isEvm` in `facilitator.ts` route by prefix.
 - The `@bankofai/x402-*` packages (`x402-core`, `x402-evm`, `x402-tron`, `x402-extensions`) come from the npm registry. Pin to the tested version deliberately — bumping is a separate, deliberate upgrade (API drift risk). When the SDK's interface is awkward, surface the gap rather than silently `any`-adapting around it.
-- Fees are **TRON-only** (`base_fee` per network). There is no `/fee/quote` endpoint in v2 (removed from v1).
+- Fees were removed from the TRON schemes in SDK `1.0.1-beta.4`; there is no `base_fee` config and no `/fee/quote` endpoint.
 - Stale Python artifacts (`src/**/__pycache__`, `tests/__pycache__`) are leftovers from v1 — ignore them; the live tests are TS files under `test/`.
 - Status: feature-complete and unit-tested, but **not yet validated against live chains** and no integration tests yet.

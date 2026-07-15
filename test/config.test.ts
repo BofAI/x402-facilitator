@@ -17,11 +17,9 @@ database:
 facilitator:
   networks:
     tron:nile:
-      base_fee:
-        USDT: 100
+      schemes: ["exact", "upto", "batch-settlement"]
     bsc:testnet:
-      base_fee:
-        USDC: 100
+      schemes: ["exact"]
 `;
 
 describe("loadConfig", () => {
