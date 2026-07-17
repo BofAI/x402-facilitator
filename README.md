@@ -71,7 +71,7 @@ is set). Relevant env vars:
 | `RATE_LIMIT_REDIS_URL` / `REDIS_URL` | Redis connection URL (required when `RATE_LIMIT_STORE=redis`; needs the optional `ioredis` dep) |
 | `TRUST_PROXY_FOR_RATELIMIT` | `true` to key anonymous limits on `X-Forwarded-For` (set **only** when the direct peer is a trusted proxy; the rightmost XFF entry is used, so append-style proxies like nginx `$proxy_add_x_forwarded_for` are safe. Default off keys on the socket peer) |
 
-> Fees were removed from the TRON facilitator schemes in SDK `1.0.1-beta.4` — the `exact`/`upto` proxies transfer exactly `amount` and the GasFree relayer handles its own fee terms. There is no `base_fee` config and no `/fee/quote` endpoint.
+> Fees were removed from the TRON facilitator schemes in SDK `1.0.1` — the `exact`/`upto` proxies transfer exactly `amount` and the GasFree relayer handles its own fee terms. There is no `base_fee` config and no `/fee/quote` endpoint.
 
 ## Endpoints
 
