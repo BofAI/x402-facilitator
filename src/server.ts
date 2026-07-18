@@ -50,12 +50,18 @@ export interface AppDeps {
 }
 
 /**
- * Top-level request body for /verify and /settle. Strict on the wrapper so
- * unknown top-level keys are rejected; inner payload/requirements use the SDK
- * schemas (strip) so protocol-legitimate requests stay accepted.
+ * Top-level request body for /verify and /settle. The SDK's HTTPFacilitatorClient
+ * sends `x402Version` at the top level alongside paymentPayload/paymentRequirements,
+ * so it is an allowed (optional) field; everything else unknown is rejected by
+ * `.strict()`. Inner payload/requirements use the SDK schemas (strip) so
+ * protocol-legitimate requests stay accepted.
  */
 const SettleBodySchema = z
   .object({
+    // Protocol version the SDK mirrors from paymentPayload.x402Version; we don't
+    // branch on it (the SDK schema below enforces the payload's own version),
+    // but it must be accepted to match HTTPFacilitatorClient's wire format.
+    x402Version: z.number().optional(),
     paymentPayload: z.unknown(),
     paymentRequirements: z.unknown(),
   })

@@ -44,7 +44,11 @@ const V2_REQUIREMENTS = {
   maxTimeoutSeconds: 60,
   extra: {},
 };
+// Mirrors the SDK HTTPFacilitatorClient wire format: x402Version is sent at
+// the top level (mirrored from paymentPayload.x402Version) in addition to the
+// payload/requirements. SettleBodySchema must accept this shape.
 const VALID_BODY = {
+  x402Version: 2,
   paymentPayload: {
     x402Version: 2,
     payload: { authorization: { from: "0xp", nonce: "0x1" } },
@@ -117,6 +121,26 @@ describe("createApp JSON body validation (P1-07)", () => {
 
     it("accepts a legitimate body with 200", async () => {
       const res = await post(makeApp(), "/verify", JSON.stringify(VALID_BODY));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ isValid: true });
+    });
+
+    // Regression: the SDK's HTTPFacilitatorClient sends x402Version at the TOP
+    // LEVEL of the request body (mirrored from paymentPayload.x402Version). A
+    // `.strict()` wrapper that didn't allow it rejected these legitimate
+    // requests with missing_parameters. VALID_BODY already carries the field;
+    // this test pins the exact SDK wire shape explicitly.
+    it("accepts the SDK wire format (top-level x402Version) without 400", async () => {
+      const sdkBody = {
+        x402Version: 2,
+        paymentPayload: {
+          x402Version: 2,
+          payload: { authorization: { from: "0xpayer", nonce: "0xabc" } },
+          accepted: V2_REQUIREMENTS,
+        },
+        paymentRequirements: V2_REQUIREMENTS,
+      };
+      const res = await post(makeApp(), "/verify", JSON.stringify(sdkBody));
       expect(res.status).toBe(200);
       expect(await res.json()).toMatchObject({ isValid: true });
     });
