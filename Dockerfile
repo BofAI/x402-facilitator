@@ -29,10 +29,16 @@ USER ec2-user
 # 8001: HTTP API, 9001: metrics/monitoring (config monitoring.port)
 EXPOSE 8001 9001
 
-# Health probe: /health returns 200 with no auth or rate-limit. Polls every 30s
-# with a 5s timeout; 3 consecutive failures mark the container unhealthy. Uses
-# `node -e` so it works on node:22-slim (which ships neither wget nor curl).
+# The HTTP listen port is read from YAML (server.port, default 8001) but can be
+# overridden by SERVER_PORT env. The container pins SERVER_PORT=8001 so the health
+# probe and the actual listen port always agree without mounting a config file.
+# To run on a different port, override ENV SERVER_PORT, EXPOSE, and the HEALTHCHECK
+# target together.
+ENV SERVER_PORT=8001
+# /health returns 200 with no auth or rate-limit. Polls every 30s with a 5s
+# timeout; 3 consecutive failures mark the container unhealthy. Uses `node -e`
+# so it works on node:22-slim (which ships neither wget nor curl).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:8001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.SERVER_PORT||'8001')+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "dist/index.js"]

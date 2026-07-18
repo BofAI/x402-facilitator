@@ -179,7 +179,14 @@ export async function getGasFreeCredentials(
 // ---------------------------------------------------------------------------
 
 export const serverHost = (cfg: FacilitatorConfig): string => cfg.server?.host ?? "0.0.0.0";
-export const serverPort = (cfg: FacilitatorConfig): number => cfg.server?.port ?? 8001;
+export const serverPort = (cfg: FacilitatorConfig): number => {
+  // YAML server.port is the source of truth, but an explicit SERVER_PORT env
+  // wins so container orchestrators (and the Dockerfile HEALTHCHECK) can pin
+  // the listen port without mounting a config file.
+  const envPort = Number(process.env.SERVER_PORT);
+  if (Number.isFinite(envPort) && envPort > 0) return envPort;
+  return cfg.server?.port ?? 8001;
+};
 export const logLevel = (cfg: FacilitatorConfig): Level => {
   // Case-insensitive so legacy configs using "INFO"/"DEBUG" (uppercase) still apply.
   const raw = (cfg.logging?.level as string | undefined)?.toLowerCase();

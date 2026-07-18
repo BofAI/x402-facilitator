@@ -1,8 +1,8 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { loadConfig, enabledNetworks, getDatabaseUrl } from "../src/config.js";
+import { describe, expect, it, afterEach } from "vitest";
+import { loadConfig, enabledNetworks, getDatabaseUrl, serverPort } from "../src/config.js";
 
 function writeConfig(body: string): string {
   const dir = mkdtempSync(join(tmpdir(), "facilitator-cfg-"));
@@ -83,5 +83,51 @@ facilitator:
 `),
     );
     expect(await getDatabaseUrl(cfg)).toBe("postgresql://user@localhost:5432/db");
+  });
+});
+
+describe("serverPort", () => {
+  const prev = process.env.SERVER_PORT;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.SERVER_PORT;
+    else process.env.SERVER_PORT = prev;
+  });
+
+  it("defaults to 8001 when neither env nor YAML sets a port", () => {
+    delete process.env.SERVER_PORT;
+    const cfg = loadConfig(writeConfig(VALID));
+    expect(serverPort(cfg)).toBe(8001);
+  });
+
+  it("SERVER_PORT env overrides the YAML server.port (Dockerfile HEALTHCHECK relies on this)", () => {
+    const cfg = loadConfig(
+      writeConfig(`
+database:
+  url: "x"
+server:
+  port: 9999
+facilitator:
+  networks:
+    tron:nile: {}
+`),
+    );
+    process.env.SERVER_PORT = "8001";
+    expect(serverPort(cfg)).toBe(8001);
+  });
+
+  it("falls back to YAML server.port when SERVER_PORT is unset", () => {
+    delete process.env.SERVER_PORT;
+    const cfg = loadConfig(
+      writeConfig(`
+database:
+  url: "x"
+server:
+  port: 9999
+facilitator:
+  networks:
+    tron:nile: {}
+`),
+    );
+    expect(serverPort(cfg)).toBe(9999);
   });
 });

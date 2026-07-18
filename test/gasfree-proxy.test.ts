@@ -159,13 +159,32 @@ describe("GasFree proxy upstream response read errors (P1-12)", () => {
     return app;
   }
 
-  it("returns 502 when arrayBuffer() throws (unreadable upstream body)", async () => {
+  it("returns 502 when the upstream body stream throws (unreadable body)", async () => {
     const badResp = new Response("ok", { status: 200 });
-    vi.spyOn(badResp, "arrayBuffer").mockRejectedValue(new Error("unexpected end of stream"));
+    // Force the streaming reader to throw, simulating a body that becomes
+    // unreadable mid-transfer (the guard streams, it does not call arrayBuffer()).
+    vi.spyOn(badResp, "body", "get").mockReturnValue({
+      getReader: () => ({ read: () => Promise.reject(new Error("unexpected end of stream")), cancel: () => Promise.resolve() }),
+    });
     const app = appWithFetch(async () => badResp);
     const res = await app.request("/nile/api/v1/config/token/all");
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ code: "bad_gateway", message: "Upstream response could not be read" });
+  });
+
+  it("returns 502 before reading when Content-Length exceeds the limit", async () => {
+    // A hostile upstream advertises a huge payload; the body must never be read.
+    const resp = new Response(new Uint8Array(0), {
+      status: 200,
+      headers: { "content-length": String(16 * 1024 * 1024 + 1) },
+    });
+    const readerSpy = vi.spyOn(resp, "body", "get");
+    const app = appWithFetch(async () => resp);
+    const res = await app.request("/nile/api/v1/config/token/all");
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ code: "bad_gateway", message: "Upstream response too large" });
+    // Body was never streamed because the Content-Length pre-check rejected first.
+    expect(readerSpy).not.toHaveBeenCalled();
   });
 
   it("returns 502 when upstream response exceeds the size limit", async () => {
@@ -192,7 +211,9 @@ describe("GasFree proxy upstream response read errors (P1-12)", () => {
       status: 200,
       headers: { "x-sensitive": "leak", "content-encoding": "gzip" },
     });
-    vi.spyOn(badResp, "arrayBuffer").mockRejectedValue(new Error("decode failed"));
+    vi.spyOn(badResp, "body", "get").mockReturnValue({
+      getReader: () => ({ read: () => Promise.reject(new Error("decode failed")), cancel: () => Promise.resolve() }),
+    });
     const app = appWithFetch(async () => badResp);
     const res = await app.request("/nile/api/v1/config/token/all");
     expect(res.status).toBe(502);
