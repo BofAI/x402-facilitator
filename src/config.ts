@@ -219,6 +219,12 @@ export const databaseMaxIdleConns = (cfg: FacilitatorConfig): number =>
 export const databaseMaxLifeTime = (cfg: FacilitatorConfig): number =>
   cfg.database?.max_life_time ?? 600;
 
+/** Max request body size in bytes (env MAX_REQUEST_BODY_BYTES, default 1 MiB). */
+export const maxRequestBodyBytes = (): number => {
+  const raw = Number(process.env.MAX_REQUEST_BODY_BYTES);
+  return Number.isFinite(raw) && raw > 0 ? raw : 1024 * 1024;
+};
+
 /** Log a one-line summary of which secrets resolved (without values). */
 export function logSecretSummary(cfg: FacilitatorConfig): void {
   logger.debug("onepassword token present", { present: isUsableToken(opToken(cfg)) });

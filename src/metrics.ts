@@ -83,7 +83,19 @@ export const metricsMiddleware: MiddlewareHandler = async (c, next) => {
 
     httpRequestsTotal.inc({ method, status, handler });
     httpRequestSizeBytes.observe({ handler }, Number(c.req.header("content-length") ?? 0));
-    httpResponseSizeBytes.observe({ handler }, Number(c.res.headers.get("content-length") ?? 0));
+    // Hono JSON responses are streamed and typically omit content-length, so the
+    // header-based count was always 0. Read the actual finalized body length via a
+    // cloned Response (cloning avoids consuming the stream the client receives).
+    let respBytes = Number(c.res.headers.get("content-length") ?? 0);
+    if (!respBytes) {
+      try {
+        const buf = await c.res.clone().arrayBuffer();
+        respBytes = buf.byteLength;
+      } catch {
+        /* body unreadable (e.g. streaming/no body) — leave at 0 */
+      }
+    }
+    httpResponseSizeBytes.observe({ handler }, respBytes);
     httpRequestDurationHighr.observe(seconds);
     httpRequestDuration.observe({ method, handler }, seconds);
   }

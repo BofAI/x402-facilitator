@@ -128,6 +128,9 @@ const METHODS_TYPICALLY_WITH_BODY = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 /** Upstream request timeout, mirroring v1's httpx.AsyncClient(timeout=60.0). */
 const UPSTREAM_TIMEOUT_MS = 60_000;
 
+/** Max upstream response body size (16 MiB); protects against runaway responses. */
+const MAX_UPSTREAM_RESPONSE_BYTES = 16 * 1024 * 1024;
+
 const RESPONSE_STRIP_NAMES = new Set([
   "transfer-encoding",
   "connection",
@@ -240,20 +243,42 @@ async function proxyRequest(req: Request, path: string, settings: GasFreeProxySe
     const timedOut = err instanceof Error && err.name === "TimeoutError";
     logger.warn("GasFree open proxy upstream error", { err: String(err), timedOut });
     return json(502, {
-      detail: timedOut ? "Bad gateway: upstream request timed out" : "Bad gateway: upstream request failed",
+      code: "bad_gateway",
+      message: timedOut ? "Upstream request timed out" : "Upstream request failed",
     });
   }
 
-  // undici decompresses gzip/br when the body is read; strip framing/encoding headers.
-  const respBody = new Uint8Array(await upstreamResp.arrayBuffer());
-  const outHeaders = new Headers();
-  upstreamResp.headers.forEach((value, key) => {
-    if (!RESPONSE_STRIP_NAMES.has(key.toLowerCase())) outHeaders.append(key, value);
-  });
-
   const status = upstreamResp.status;
   const bodyless = status < 200 || status === 204 || status === 304;
-  return new Response(bodyless ? null : respBody, { status, headers: outHeaders });
+
+  try {
+    // undici decompresses gzip/br when the body is read; strip framing/encoding
+    // headers. A successful fetch does not guarantee the body is readable, so
+    // reading, decompression, and encoding errors are all captured here.
+    const respBody = new Uint8Array(await upstreamResp.arrayBuffer());
+
+    if (respBody.byteLength > MAX_UPSTREAM_RESPONSE_BYTES) {
+      logger.warn("GasFree upstream response exceeded size limit", {
+        status,
+        bytes: respBody.byteLength,
+        limit: MAX_UPSTREAM_RESPONSE_BYTES,
+      });
+      return json(502, { code: "bad_gateway", message: "Upstream response too large" });
+    }
+
+    const outHeaders = new Headers();
+    upstreamResp.headers.forEach((value, key) => {
+      if (!RESPONSE_STRIP_NAMES.has(key.toLowerCase())) outHeaders.append(key, value);
+    });
+    return new Response(bodyless ? null : respBody, { status, headers: outHeaders });
+  } catch (err) {
+    logger.warn("GasFree open proxy upstream response read error", {
+      status,
+      contentEncoding: upstreamResp.headers.get("content-encoding") ?? null,
+      err: String(err),
+    });
+    return json(502, { code: "bad_gateway", message: "Upstream response could not be read" });
+  }
 }
 
 /**

@@ -31,11 +31,14 @@ import {
   buildEvmFacilitatorSigner,
   buildTronAuthorizerSigner,
   buildEvmAuthorizerSigner,
-  toCaip,
 } from "./signer.js";
 import {
+  normalize,
+  familyOf,
+  type CanonicalNetwork,
+} from "./network.js";
+import {
   type FacilitatorConfig,
-  type NetworkConfig,
   type Scheme,
   ALL_SCHEMES,
   enabledNetworks,
@@ -47,16 +50,13 @@ export interface BuildFacilitatorOptions {
   gasfreeBaseUrlFor: (network: string) => string | null;
 }
 
-const isTron = (n: string) => n.startsWith("tron:");
-const isEvm = (n: string) => n.startsWith("bsc:") || n.startsWith("eip155:") || n.startsWith("eth:");
-
 /** Per-network registration context shared by the chain handlers. */
 interface NetworkSetup {
   facilitator: x402Facilitator;
   /** Raw config network string (gasfree lookup + logging). */
   network: string;
-  /** CAIP-2 form the scheme registrars / `register` expect. */
-  caip: `${string}:${string}`;
+  /** Canonical CAIP-2 the scheme registrars / `register` expect. */
+  caip: CanonicalNetwork;
   /** Whether a scheme is enabled for this network. */
   has: (s: Scheme) => boolean;
 }
@@ -68,7 +68,7 @@ interface NetworkSetup {
  */
 async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOptions): Promise<void> {
   const { facilitator, network, caip, has } = setup;
-  const signer = await buildTronFacilitatorSigner(network);
+  const signer = await buildTronFacilitatorSigner(caip);
 
   if (has("exact")) {
     registerExactTronScheme(facilitator, { signer, networks: caip });
@@ -89,7 +89,7 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
   }
 
   if (has("upto")) {
-    // beta.3 aligned TRON with EVM: register the scheme class directly.
+    // Register the scheme class directly (TRON upto has no register helper).
     facilitator.register(caip, new UptoTronScheme(signer));
     logger.info("Registered upto (TRON)", { network });
   }
@@ -112,7 +112,7 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
  */
 async function registerEvmNetwork(setup: NetworkSetup): Promise<GasSponsoringFacilitatorEvmSigner> {
   const { facilitator, network, caip, has } = setup;
-  const signer = await buildEvmFacilitatorSigner(network);
+  const signer = await buildEvmFacilitatorSigner(caip);
 
   if (has("exact")) {
     registerExactEvmScheme(facilitator, { signer, networks: caip });
@@ -141,17 +141,30 @@ function registerEvmGasSponsoringExtension(
   facilitator: x402Facilitator,
   signers: Record<string, GasSponsoringFacilitatorEvmSigner>,
 ): void {
-  const defaultSigner = Object.values(signers)[0];
-  if (!defaultSigner) return;
+  const signerEntries = Object.entries(signers);
+  if (signerEntries.length === 0) return;
+  const [firstNetwork, firstSigner] = signerEntries[0];
 
   facilitator.registerExtension(
     createErc20ApprovalGasSponsoringExtension(
-      defaultSigner as Erc20ApprovalGasSponsoringSigner,
-      network => signers[network] as Erc20ApprovalGasSponsoringSigner | undefined,
+      // The SDK requires a fallback signer, but it must never be reached: the
+      // resolver below throws for any network without an explicit signer
+      // mapping rather than silently using an insertion-ordered default.
+      firstSigner as Erc20ApprovalGasSponsoringSigner,
+      (network: string) => {
+        const resolved = signers[network] as Erc20ApprovalGasSponsoringSigner | undefined;
+        if (!resolved) {
+          throw new Error(
+            `No gas-sponsoring signer registered for network ${network}`,
+          );
+        }
+        return resolved;
+      },
     ),
   );
   logger.info("Registered ERC-20 approval gas-sponsoring extension (EVM)", {
     networks: Object.keys(signers),
+    defaultNetwork: firstNetwork,
   });
 }
 
@@ -173,21 +186,34 @@ export async function buildFacilitator(
   const networks = cfg.facilitator.networks ?? {};
   const evmGasSponsoringSigners: Record<string, GasSponsoringFacilitatorEvmSigner> = {};
 
+  const seen = new Set<CanonicalNetwork>();
   for (const network of enabledNetworks(cfg)) {
     const net = networks[network];
+    // Normalize once: any registered input (alias or canonical) resolves to the
+    // canonical CAIP-2. Unknown inputs throw here so misconfiguration fails at
+    // startup (P0-04).
+    const caip = normalize(network);
+    if (seen.has(caip)) {
+      // Reject alias+canonical of the same chain (and any duplicate) instead of
+      // registering twice (P1-10).
+      throw new Error(
+        `Duplicate network configuration: ${network} normalizes to ${caip}, which is already configured`,
+      );
+    }
+    seen.add(caip);
+
     const setup: NetworkSetup = {
       facilitator,
       network,
-      // enabledNetworks yields raw config ids; normalize to canonical CAIP-2 for
-      // the scheme registrars / `register` (e.g. config `bsc:testnet` -> eip155:97).
-      caip: toCaip(network),
+      caip,
       // Schemes default to all schemes when omitted.
       has: (s: Scheme) => (net?.schemes ?? ALL_SCHEMES).includes(s),
     };
 
-    if (isTron(network)) {
+    const family = familyOf(caip);
+    if (family === "tron") {
       await registerTronNetwork(setup, opts);
-    } else if (isEvm(network)) {
+    } else if (family === "evm") {
       evmGasSponsoringSigners[setup.caip] = await registerEvmNetwork(setup);
     } else {
       logger.warn("Unsupported network; skipped", { network });

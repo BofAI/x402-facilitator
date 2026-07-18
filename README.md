@@ -11,6 +11,7 @@ A TypeScript/Node service. The earlier Python/FastAPI implementation is kept und
 
 - `verify` / `settle` / `supported` endpoints backed by `@bankofai/x402-core`.
 - TRON `exact` (EIP-3009 / Permit2) + `exact_gasfree`; EVM (BSC) `exact`.
+- `upto` (Permit2 up-to-max settlement, TRON + EVM) and `batch-settlement` (channel deposit/voucher/claim/settle/refund, TRON + EVM).
 - **Non-custodial signing** — settlement keys never enter this process; wallets are
   resolved through `@bankofai/agent-wallet` and only signing crosses the boundary.
 - Settlement persistence keyed on the on-chain authorization identity, with
@@ -100,7 +101,7 @@ scoping. The legacy `payment_records` table is not used.
 ## SDK consumption
 
 The `@bankofai/x402-*` packages (`x402-core`, `x402-evm`, `x402-tron`) are consumed from
-npm, pinned to `1.0.0` in `package.json`.
+npm, declared as `^1.0.1` in `package.json`.
 
 ## Docker
 

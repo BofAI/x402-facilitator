@@ -149,3 +149,54 @@ describe("proxy request", () => {
     expect(r.status).toBe(404);
   });
 });
+
+
+describe("GasFree proxy upstream response read errors (P1-12)", () => {
+  function appWithFetch(fetchImpl: () => Promise<Response>) {
+    vi.stubGlobal("fetch", vi.fn(fetchImpl));
+    const app = new Hono();
+    registerGasFreeProxy(app, () => NILE_SETTINGS);
+    return app;
+  }
+
+  it("returns 502 when arrayBuffer() throws (unreadable upstream body)", async () => {
+    const badResp = new Response("ok", { status: 200 });
+    vi.spyOn(badResp, "arrayBuffer").mockRejectedValue(new Error("unexpected end of stream"));
+    const app = appWithFetch(async () => badResp);
+    const res = await app.request("/nile/api/v1/config/token/all");
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ code: "bad_gateway", message: "Upstream response could not be read" });
+  });
+
+  it("returns 502 when upstream response exceeds the size limit", async () => {
+    const oversized = new Uint8Array(16 * 1024 * 1024 + 1);
+    const resp = new Response(oversized, { status: 200 });
+    const app = appWithFetch(async () => resp);
+    const res = await app.request("/nile/api/v1/config/token/all");
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ code: "bad_gateway", message: "Upstream response too large" });
+  });
+
+  it("still passes through a normal 200 response", async () => {
+    const resp = new Response(gzipSync(Buffer.from('{"ok":true}')), {
+      status: 200,
+      headers: { "content-type": "application/json", "content-encoding": "gzip" },
+    });
+    const app = appWithFetch(async () => resp);
+    const res = await app.request("/nile/api/v1/config/token/all");
+    expect(res.status).toBe(200);
+  });
+
+  it("does not echo upstream headers on a 502 read error", async () => {
+    const badResp = new Response("ok", {
+      status: 200,
+      headers: { "x-sensitive": "leak", "content-encoding": "gzip" },
+    });
+    vi.spyOn(badResp, "arrayBuffer").mockRejectedValue(new Error("decode failed"));
+    const app = appWithFetch(async () => badResp);
+    const res = await app.request("/nile/api/v1/config/token/all");
+    expect(res.status).toBe(502);
+    expect(res.headers.get("x-sensitive")).toBeNull();
+    expect(res.headers.get("content-encoding")).toBeNull();
+  });
+});

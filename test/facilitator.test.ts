@@ -19,8 +19,8 @@ const mocks = vi.hoisted(() => {
     }
   }
 
-  const evmSigner = {
-    getAddresses: () => ["0xfacilitator"],
+  const baseSigner = (addr: string) => ({
+    getAddresses: () => [addr],
     readContract: vi.fn(),
     verifyTypedData: vi.fn(),
     writeContract: vi.fn(),
@@ -28,12 +28,19 @@ const mocks = vi.hoisted(() => {
     waitForTransactionReceipt: vi.fn(),
     getCode: vi.fn(),
     sendTransactions: vi.fn(),
-  };
+  });
+  const evmSigner = baseSigner("0xfacilitator");
+  const evmSigner97 = baseSigner("0xsigner97");
+  const evmSigner56 = baseSigner("0xsigner56");
 
   return {
     FakeFacilitator,
     evmSigner,
-    buildEvmFacilitatorSigner: vi.fn(async () => evmSigner),
+    evmSigner97,
+    evmSigner56,
+    buildEvmFacilitatorSigner: vi.fn(async (canonical: string) =>
+      canonical === "eip155:56" ? evmSigner56 : evmSigner97,
+    ),
     buildEvmAuthorizerSigner: vi.fn(async () => ({
       address: "0xauthorizer",
       signTypedData: vi.fn(),
@@ -94,8 +101,8 @@ vi.mock("@bankofai/x402-extensions", () => ({
 }));
 
 vi.mock("../src/signer.js", async (importOriginal) => {
-  // Keep the real `toCaip` so tests exercise the actual tron:nile -> hex CAIP-2
-  // normalization; only the signer builders (which talk to real wallets) are stubbed.
+  // Keep the real network normalization (network.ts) so tests exercise the actual
+  // tron:nile -> hex CAIP-2 path; only the signer builders (real wallets) are stubbed.
   const actual = await importOriginal<typeof import("../src/signer.js")>();
   return {
     ...actual,
@@ -128,13 +135,84 @@ describe("buildFacilitator", () => {
       { gasfreeBaseUrlFor: () => null },
     )) as InstanceType<typeof mocks.FakeFacilitator>;
 
-    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("bsc:testnet");
+    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("eip155:97");
     expect(facilitator.extensions).toHaveLength(1);
     expect(facilitator.extensions[0].key).toBe("erc20ApprovalGasSponsoring");
-    expect(facilitator.extensions[0].signer).toBe(mocks.evmSigner);
+    // bsc:testnet resolves to eip155:97 -> signer97; the fallback signer is that
+    // same network-scoped signer, never an insertion-ordered arbitrary value.
+    expect(facilitator.extensions[0].signer).toBe(mocks.evmSigner97);
     expect((facilitator.extensions[0].signerForNetwork as (network: string) => unknown)("eip155:97")).toBe(
-      mocks.evmSigner,
+      mocks.evmSigner97,
     );
+  });
+
+  it("P1-14: resolves the gas-sponsoring signer by canonical network, not insertion order", async () => {
+    // Register mainnet FIRST to make insertion order != chain-id order; the
+    // resolver must still map eip155:97 -> signer97 and eip155:56 -> signer56.
+    const facilitator = (await buildFacilitator(
+      {
+        database: { url: "postgresql://localhost/test" },
+        facilitator: {
+          networks: {
+            "bsc:mainnet": { schemes: ["exact"] },
+            "bsc:testnet": { schemes: ["exact"] },
+          },
+        },
+      },
+      { gasfreeBaseUrlFor: () => null },
+    )) as InstanceType<typeof mocks.FakeFacilitator>;
+
+    expect(facilitator.extensions).toHaveLength(1);
+    const resolve = facilitator.extensions[0].signerForNetwork as (n: string) => unknown;
+    // Canonical networks resolve to their own signer regardless of object order.
+    expect(resolve("eip155:97")).toBe(mocks.evmSigner97);
+    expect(resolve("eip155:56")).toBe(mocks.evmSigner56);
+    // Unknown network throws instead of falling back to a default signer.
+    expect(() => resolve("eip155:999")).toThrow(/No gas-sponsoring signer registered for network eip155:999/);
+  });
+
+  it("P0-04: accepts canonical CAIP-2 ids in config (not just friendly aliases)", async () => {
+    // Writing the canonical form directly must start up just like the alias form.
+    const facilitator = (await buildFacilitator(
+      {
+        database: { url: "postgresql://localhost/test" },
+        facilitator: { networks: { "eip155:97": { schemes: ["exact"] } } },
+      },
+      { gasfreeBaseUrlFor: () => null },
+    )) as InstanceType<typeof mocks.FakeFacilitator>;
+    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("eip155:97");
+    expect(facilitator.extensions).toHaveLength(1);
+  });
+
+  it("P1-10: rejects alias + canonical of the same chain as a duplicate", async () => {
+    // bsc:testnet and eip155:97 normalize to the same canonical key; the second
+    // must be rejected at startup rather than registered twice.
+    await expect(
+      buildFacilitator(
+        {
+          database: { url: "postgresql://localhost/test" },
+          facilitator: {
+            networks: {
+              "bsc:testnet": { schemes: ["exact"] },
+              "eip155:97": { schemes: ["exact"] },
+            },
+          },
+        },
+        { gasfreeBaseUrlFor: () => null },
+      ),
+    ).rejects.toThrow(/Duplicate network configuration: eip155:97 normalizes to eip155:97, which is already configured/);
+  });
+
+  it("P0-04/P1-10: rejects an unsupported network id at startup", async () => {
+    await expect(
+      buildFacilitator(
+        {
+          database: { url: "postgresql://localhost/test" },
+          facilitator: { networks: { "eip155:999": { schemes: ["exact"] } } },
+        },
+        { gasfreeBaseUrlFor: () => null },
+      ),
+    ).rejects.toThrow(/Unsupported or unknown network: eip155:999/);
   });
 
   it("passes the normalized hex CAIP-2 to the TRON gasfree registration path", async () => {

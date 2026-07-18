@@ -37,7 +37,7 @@ async function getClient(token: string): Promise<{ secrets: { resolve(ref: strin
       createClient({
         auth: token,
         integrationName: "x402-facilitator",
-        integrationVersion: "2.0.0",
+        integrationVersion: "2.0.1",
       }),
     );
   }

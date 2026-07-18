@@ -1,127 +1,54 @@
 /**
  * x402 Facilitator v2 entry point.
  *
- * Startup mirrors v1 (legacy/src/main.py lifespan):
- *   load config -> resolve secrets (1Password) -> init DB -> start API-key
- *   refresher -> inject TronGrid key -> resolve signers & register schemes ->
- *   wire GasFree proxy -> serve HTTP (+ optional separate metrics port).
+ * Startup is staged via buildRuntimeConfig (src/runtime.ts):
+ *   load config -> logging -> secrets -> DB -> auth -> GasFree -> serve HTTP.
+ * Each stage has its own error context; the assembled RuntimeConfig carries
+ * everything createApp / buildFacilitator need, so index.ts only wires the
+ * HTTP servers and the shutdown handler.
  */
 import { serve, type ServerType } from "@hono/node-server";
-import { TRON_MAINNET, TRON_NILE } from "@bankofai/x402-tron";
 import { Hono } from "hono";
-import {
-  loadConfig,
-  injectAgentWalletPasswordEnv,
-  getTrongridApiKey,
-  getDatabaseUrl,
-  getGasFreeCredentials,
-  serverHost,
-  serverPort,
-  logLevel,
-  apiKeyRefreshInterval,
-  rateLimitAuthenticated,
-  rateLimitAnonymous,
-  monitoringPort,
-  monitoringEndpoint,
-  logFilePath,
-  databaseSslMode,
-  databaseMaxOpenConns,
-  databaseMaxIdleConns,
-  databaseMaxLifeTime,
-} from "./config.js";
-import { initDatabase, disposeDatabase } from "./db/index.js";
-import { startApiKeyRefresher, stopApiKeyRefresher } from "./auth.js";
+import { loadConfig } from "./config.js";
+import { disposeDatabase } from "./db/index.js";
+import { stopApiKeyRefresher } from "./auth.js";
 import { buildFacilitator } from "./facilitator.js";
 import { createApp } from "./server.js";
 import { metricsHandler } from "./metrics.js";
-import type { GasFreeProxySettings } from "./gasfree-proxy.js";
-import { setLogger } from "@bankofai/x402-core";
-import { logger, setLogLevel, setLogFile, toSdkLogger } from "./logger.js";
+import { buildRuntimeConfig } from "./runtime.js";
+import { logger } from "./logger.js";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
-  setLogLevel(logLevel(cfg));
-  // Enable file logging when logging.dir + logging.filename are configured
-  // (mirrors legacy); console output is unaffected.
-  const logFile = logFilePath(cfg);
-  if (logFile) setLogFile(logFile);
-  // Route all @bankofai/x402-* SDK output (incl. facilitator verify/settle hooks)
-  // through this app's structured logger so it shares one stream and log level.
-  setLogger(toSdkLogger());
-  logger.info("Configuration loaded", logFile ? { logFile } : undefined);
+  const rt = await buildRuntimeConfig(cfg);
 
-  // Secrets (env first, then 1Password).
-  await injectAgentWalletPasswordEnv(cfg);
-  const trongridKey = await getTrongridApiKey(cfg);
-  if (trongridKey) {
-    process.env.TRON_GRID_API_KEY = trongridKey;
-    logger.info("TronGrid API key injected");
-  } else {
-    logger.warn("TronGrid API key not configured; default rate limits apply");
-  }
-
-  // Database.
-  const databaseUrl = await getDatabaseUrl(cfg);
-  await initDatabase({
-    url: databaseUrl,
-    poolSize: databaseMaxIdleConns(cfg),
-    maxOverflow: Math.max(0, databaseMaxOpenConns(cfg) - databaseMaxIdleConns(cfg)),
-    maxLifeTime: databaseMaxLifeTime(cfg),
-    sslMode: databaseSslMode(cfg),
+  const facilitator = await buildFacilitator(cfg, {
+    gasfreeBaseUrlFor: rt.gasfreeBaseUrlFor,
   });
-
-  // API-key cache + periodic refresh.
-  await startApiKeyRefresher(apiKeyRefreshInterval(cfg));
-
-  // GasFree proxy settings (creds for nile/mainnet; upstream bases overridable via env).
-  const nile = await getGasFreeCredentials(cfg, "tron:nile");
-  const mainnet = await getGasFreeCredentials(cfg, "tron:mainnet");
-  const gasfreeSettings: GasFreeProxySettings = {
-    nileCreds: nile.key && nile.secret ? { key: nile.key, secret: nile.secret } : null,
-    mainnetCreds: mainnet.key && mainnet.secret ? { key: mainnet.key, secret: mainnet.secret } : null,
-    upstreamNile: (process.env.UPSTREAM_NILE_BASE ?? "https://open-test.gasfree.io").replace(/\/+$/, ""),
-    upstreamMainnet: (process.env.UPSTREAM_MAINNET_BASE ?? "https://open.gasfree.io").replace(/\/+$/, ""),
-  };
-
-  // The GasFree scheme client points at our own proxy; only enable per-network when
-  // credentials are present (the proxy could not authenticate upstream otherwise).
-  const selfBase = `http://127.0.0.1:${serverPort(cfg)}`;
-  const gasfreeBaseUrlFor = (network: string): string | null => {
-    // `network` arrives in canonical CAIP-2 (hex chain id) from the facilitator;
-    // credentials are still resolved from config by friendly name above.
-    if (network === TRON_NILE && gasfreeSettings.nileCreds) return `${selfBase}/nile`;
-    if (network === TRON_MAINNET && gasfreeSettings.mainnetCreds) return `${selfBase}/mainnet`;
-    return null;
-  };
-
-  const facilitator = await buildFacilitator(cfg, { gasfreeBaseUrlFor });
   logger.info("Facilitator initialized", { networks: Object.keys(cfg.facilitator.networks ?? {}) });
 
-  const sameMetricsPort = monitoringPort(cfg) === serverPort(cfg);
   const app = createApp(facilitator, {
-    rateLimit: { authenticated: rateLimitAuthenticated(cfg), anonymous: rateLimitAnonymous(cfg) },
-    gasfreeSettings: () => gasfreeSettings,
-    metricsOnMainPort: sameMetricsPort,
-    metricsEndpoint: monitoringEndpoint(cfg),
+    rateLimit: rt.rateLimit,
+    gasfreeSettings: () => rt.gasfreeSettings,
+    metricsOnMainPort: rt.metricsOnMainPort,
+    metricsEndpoint: rt.metricsEndpoint,
+    maxRequestBodyBytes: rt.maxRequestBodyBytes,
   });
 
-  const host = serverHost(cfg);
-  const port = serverPort(cfg);
   const servers: ServerType[] = [];
-
   servers.push(
-    serve({ fetch: app.fetch, hostname: host, port }, (info) => {
+    serve({ fetch: app.fetch, hostname: rt.host, port: rt.port }, (info) => {
       logger.info("X402 Facilitator listening", { host: info.address, port: info.port });
     }),
   );
 
   // Separate metrics server when monitoring uses a different port.
-  if (!sameMetricsPort) {
+  if (!rt.metricsOnMainPort) {
     const metricsApp = new Hono();
-    metricsApp.get(monitoringEndpoint(cfg), metricsHandler);
+    metricsApp.get(rt.metricsEndpoint, metricsHandler);
     servers.push(
-      serve({ fetch: metricsApp.fetch, hostname: host, port: monitoringPort(cfg) }, (info) => {
-        logger.info("Metrics endpoint listening", { port: info.port, path: monitoringEndpoint(cfg) });
+      serve({ fetch: metricsApp.fetch, hostname: rt.host, port: rt.metricsPort }, (info) => {
+        logger.info("Metrics endpoint listening", { port: info.port, path: rt.metricsEndpoint });
       }),
     );
   }
