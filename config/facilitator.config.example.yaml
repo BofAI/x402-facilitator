@@ -42,10 +42,6 @@ facilitator:
   trongrid_api_key: ""
 
   # Per-network config. Key = CAIP network id; listed = enabled.
-  # base_fee is a TRON-only facilitator fee, advertised via the scheme's
-  # getExtra().feeConfig (attached to PaymentRequirements.extra.fee). The EVM exact
-  # scheme takes no facilitator fee (settles the exact amount), so EVM networks have
-  # no base_fee. There is no /fee/quote endpoint in v2.
   #
   # schemes: which payment schemes to register for the network. Defaults to
   # all schemes (exact, upto, batch-settlement) when omitted. Options: exact |
@@ -54,16 +50,15 @@ facilitator:
   # uses the facilitator's agent-wallet as the receiverAuthorizer (published via
   # /supported); in production this may be a separate key.
   networks:
+    # TRON networks accept friendly names (tron:nile / tron:mainnet / tron:shasta);
+    # they are normalized to canonical CAIP-2 hex chain ids (e.g. tron:0xcd8690dc)
+    # for the x402 SDK (1.0.1+, which uses hex chain id in CAIP-2).
     tron:nile:
       schemes: ["exact", "upto", "batch-settlement"]
-      base_fee:
-        USDT: 100              # 0.0001 USDT (6 decimals)
-        USDD: 100000000000000  # 0.0001 USDD (18 decimals)
     bsc:testnet:
       schemes: ["exact", "upto", "batch-settlement"]
     # Enable after mainnet Permit2 / x402ExactPermit2Proxy contracts are deployed
     # and addresses are filled into @x402/tron constants.
     # tron:mainnet:
-    #   base_fee:
-    #     USDT: 100
+    #   schemes: ["exact", "upto", "batch-settlement"]
     # bsc:mainnet: {}

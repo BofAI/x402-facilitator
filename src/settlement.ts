@@ -28,17 +28,33 @@ export interface PayerNonce {
 }
 
 interface FromNonce {
-  from?: unknown;
-  nonce?: unknown;
+  from: string;
+  nonce: string;
 }
 
 interface UserNonce {
-  user?: unknown;
-  nonce?: unknown;
+  user: string;
+  nonce: string;
 }
 
 interface ChannelPayerHolder {
-  payer?: unknown;
+  payer: string;
+}
+
+function hasFromNonce(v: unknown): v is FromNonce {
+  return typeof v === "object" && v !== null &&
+    typeof (v as FromNonce).from === "string" &&
+    typeof (v as FromNonce).nonce === "string";
+}
+
+function hasUserNonce(v: unknown): v is UserNonce {
+  return typeof v === "object" && v !== null &&
+    typeof (v as UserNonce).user === "string" &&
+    typeof (v as UserNonce).nonce === "string";
+}
+
+function hasPayer(v: unknown): v is ChannelPayerHolder {
+  return typeof v === "object" && v !== null && typeof (v as ChannelPayerHolder).payer === "string";
 }
 
 /**
@@ -50,30 +66,33 @@ interface ChannelPayerHolder {
 export function extractPayerNonce(payload: Record<string, unknown> | undefined): PayerNonce | null {
   if (!payload) return null;
 
-  const auth = payload.authorization as FromNonce | undefined;
-  if (auth && typeof auth.from === "string" && typeof auth.nonce === "string") {
+  const auth = payload.authorization;
+  if (hasFromNonce(auth)) {
     return { payer: auth.from, nonce: auth.nonce };
   }
 
-  const permit2 = payload.permit2Authorization as FromNonce | undefined;
-  if (permit2 && typeof permit2.from === "string" && typeof permit2.nonce === "string") {
+  const permit2 = payload.permit2Authorization;
+  if (hasFromNonce(permit2)) {
     return { payer: permit2.from, nonce: permit2.nonce };
   }
 
-  const gasfree = payload.gasfree as UserNonce | undefined;
-  if (gasfree && typeof gasfree.user === "string" && typeof gasfree.nonce === "string") {
+  const gasfree = payload.gasfree;
+  if (hasUserNonce(gasfree)) {
     return { payer: gasfree.user, nonce: gasfree.nonce };
   }
 
   // batch-settlement: payer on the channel config, no per-payment nonce.
-  const channelConfig = payload.channelConfig as ChannelPayerHolder | undefined;
-  if (channelConfig && typeof channelConfig.payer === "string") {
+  const channelConfig = payload.channelConfig;
+  if (hasPayer(channelConfig)) {
     return { payer: channelConfig.payer, nonce: null };
   }
 
   // batch-settlement claim: channel nested under the voucher.
-  const claimChannel = (payload.voucher as { channel?: ChannelPayerHolder } | undefined)?.channel;
-  if (claimChannel && typeof claimChannel.payer === "string") {
+  const voucher = payload.voucher;
+  const claimChannel = typeof voucher === "object" && voucher !== null
+    ? (voucher as { channel?: unknown }).channel
+    : undefined;
+  if (hasPayer(claimChannel)) {
     return { payer: claimChannel.payer, nonce: null };
   }
 

@@ -12,7 +12,6 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  issues: write
 
 concurrency:
   group: audit-pr-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
@@ -43,8 +42,19 @@ jobs:
         run: |
           ARCHIVE_NAME="${{ github.event.repository.name }}.zip"
           rm -f "/tmp/${ARCHIVE_NAME}"
-          zip -r "/tmp/${ARCHIVE_NAME}" .
+          zip -r "/tmp/${ARCHIVE_NAME}" . \
+            -x '.git/*' \
+            -x '.env*' \
+            -x 'node_modules/*' \
+            -x 'dist/*' \
+            -x '*.tsbuildinfo' \
+            -x '.venv/*' \
+            -x '__pycache__/*' \
+            -x '.pytest_cache/*' \
+            -x 'facilitator.config.yaml' \
+            -x '_private/*'
           echo "archive_name=${ARCHIVE_NAME}" >> "$GITHUB_OUTPUT"
+          python3 -c "import sys,zipfile; bad=[n for n in zipfile.ZipFile(sys.argv[1]).namelist() if n.startswith('.git/')]; sys.exit(1 if bad else 0)" "/tmp/${ARCHIVE_NAME}" || { echo "::error::.git directory leaked into audit archive"; exit 1; }
 
       - name: Submit audit job
         id: submit
@@ -197,8 +207,19 @@ jobs:
         run: |
           ARCHIVE_NAME="${{ github.event.repository.name }}.zip"
           rm -f "/tmp/${ARCHIVE_NAME}"
-          zip -r "/tmp/${ARCHIVE_NAME}" .
+          zip -r "/tmp/${ARCHIVE_NAME}" . \
+            -x '.git/*' \
+            -x '.env*' \
+            -x 'node_modules/*' \
+            -x 'dist/*' \
+            -x '*.tsbuildinfo' \
+            -x '.venv/*' \
+            -x '__pycache__/*' \
+            -x '.pytest_cache/*' \
+            -x 'facilitator.config.yaml' \
+            -x '_private/*'
           echo "archive_name=${ARCHIVE_NAME}" >> "$GITHUB_OUTPUT"
+          python3 -c "import sys,zipfile; bad=[n for n in zipfile.ZipFile(sys.argv[1]).namelist() if n.startswith('.git/')]; sys.exit(1 if bad else 0)" "/tmp/${ARCHIVE_NAME}" || { echo "::error::.git directory leaked into audit archive"; exit 1; }
 
       - name: Submit audit job
         id: submit

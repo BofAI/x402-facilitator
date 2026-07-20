@@ -1,6 +1,6 @@
 {
   "name": "x402-facilitator",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "x402 Facilitator service (TypeScript, @bankofai/x402-* ecosystem)",
   "type": "module",
   "private": true,
@@ -14,30 +14,40 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@1password/sdk": "^0.3.1",
     "@bankofai/agent-wallet": "^2.3.0",
-    "@bankofai/x402-core": "^1.0.0",
-    "@bankofai/x402-evm": "^1.0.0",
-    "@bankofai/x402-extensions": "^1.0.0",
-    "@bankofai/x402-tron": "^1.0.0",
+    "@bankofai/x402-core": "^1.0.1",
+    "@bankofai/x402-evm": "^1.0.1",
+    "@bankofai/x402-extensions": "^1.0.1",
+    "@bankofai/x402-tron": "^1.0.1",
     "@hono/node-server": "^1.13.0",
-    "drizzle-orm": "^0.36.0",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
     "hono-rate-limiter": "0.5.3",
     "pg": "^8.13.0",
     "prom-client": "^15.1.0",
-    "tronweb": "^6.1.0",
+    "tronweb": "^6.4.0",
     "viem": "^2.21.0",
-    "yaml": "^2.5.0"
+    "yaml": "^2.5.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
     "@types/pg": "^8.11.10",
+    "eslint": "^9.39.5",
     "tsx": "^4.21.0",
     "typescript": "^5.7.3",
+    "typescript-eslint": "^8.64.0",
     "vitest": "^3.0.5"
+  },
+  "overrides": {
+    "ws": "^8.21.1",
+    "esbuild": "^0.28.1"
+  },
+  "optionalDependencies": {
+    "ioredis": "^5.4.0"
   }
 }

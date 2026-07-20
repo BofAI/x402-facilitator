@@ -15,7 +15,7 @@
 import { Pool } from "pg";
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { apiKeys, settlements, sellers, type Settlement } from "./schema.js";
+import { apiKeys, settlements, type Settlement } from "./schema.js";
 import { logger } from "../logger.js";
 
 export type { Settlement } from "./schema.js";
@@ -36,7 +36,7 @@ let db: NodePgDatabase | null = null;
  * The partial unique index enforces "an authorization settles at most once
  * successfully" — the facilitator-side dedup complementing on-chain nonce burn.
  */
-const CREATE_TABLES_SQL = `
+export const CREATE_TABLES_SQL = `
 CREATE TABLE IF NOT EXISTS sellers (
   id BIGSERIAL PRIMARY KEY,
   seller_id VARCHAR(64) NOT NULL UNIQUE,

@@ -11,6 +11,7 @@ A TypeScript/Node service. The earlier Python/FastAPI implementation is kept und
 
 - `verify` / `settle` / `supported` endpoints backed by `@bankofai/x402-core`.
 - TRON `exact` (EIP-3009 / Permit2) + `exact_gasfree`; EVM (BSC) `exact`.
+- `upto` (Permit2 up-to-max settlement, TRON + EVM) and `batch-settlement` (channel deposit/voucher/claim/settle/refund, TRON + EVM).
 - **Non-custodial signing** — settlement keys never enter this process; wallets are
   resolved through `@bankofai/agent-wallet` and only signing crosses the boundary.
 - Settlement persistence keyed on the on-chain authorization identity, with
@@ -71,9 +72,7 @@ is set). Relevant env vars:
 | `RATE_LIMIT_REDIS_URL` / `REDIS_URL` | Redis connection URL (required when `RATE_LIMIT_STORE=redis`; needs the optional `ioredis` dep) |
 | `TRUST_PROXY_FOR_RATELIMIT` | `true` to key anonymous limits on `X-Forwarded-For` (set **only** when the direct peer is a trusted proxy; the rightmost XFF entry is used, so append-style proxies like nginx `$proxy_add_x_forwarded_for` are safe. Default off keys on the socket peer) |
 
-> Fees are TRON-only (`base_fee` per network, advertised via `requirements.extra.fee`).
-> The EVM `exact` scheme settles the exact amount and takes no facilitator fee.
-> There is **no** `/fee/quote` endpoint.
+> Fees were removed from the TRON facilitator schemes in SDK `1.0.1` — the `exact`/`upto` proxies transfer exactly `amount` and the GasFree relayer handles its own fee terms. There is no `base_fee` config and no `/fee/quote` endpoint.
 
 ## Endpoints
 
@@ -102,7 +101,7 @@ scoping. The legacy `payment_records` table is not used.
 ## SDK consumption
 
 The `@bankofai/x402-*` packages (`x402-core`, `x402-evm`, `x402-tron`) are consumed from
-npm, pinned to `1.0.0` in `package.json`.
+npm, declared as `^1.0.1` in `package.json`.
 
 ## Docker
 
