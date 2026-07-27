@@ -1,0 +1,47 @@
+# Local runtime config for the development environment.
+# Start with:
+#   FACILITATOR_CONFIG_PATH=config/facilitator.config.dev.yaml npm run dev
+
+database:
+  # node-postgres requires postgresql:// (not postgresql+asyncpg://).
+  # Add the database username before starting the service, for example:
+  # postgresql://USERNAME@onaws.com:5432/x402_facilitator
+  url: "postgresql://onaws.com:5432/x402_facilitator"
+  ssl_mode: "require"
+  max_open_conns: 100
+
+onepassword:
+  database_password: "x402-facilitator_dev/psql/password"
+  trongrid_api_key: "x402-facilitator_dev/trongrid/trongrid_api_key"
+  gasfree_api_key_nile: "x402-facilitator_dev/gasfree/gasfree_api_key_nile"
+  gasfree_api_secret_nile: "x402-facilitator_dev/gasfree/gasfree_api_secret_nile"
+  agent_wallet_password: "x402-facilitator_dev/wallet/agent_wallet_password"
+
+server:
+  host: "0.0.0.0"
+  port: 8001
+
+logging:
+  dir: "logs"
+  filename: "app.log"
+  level: "INFO"
+
+rate_limit:
+  api_key_refresh_interval: 60
+  authenticated: "1000/minute"
+  anonymous: "1/minute"
+
+monitoring:
+  port: 9001
+  endpoint: "/metrics"
+
+facilitator:
+  networks:
+    tron:nile: {}
+    bsc:testnet: {}
+    base:sepolia:
+      schemes: ["exact"]
+      gas_sponsoring: false
+      rpc_url: "https://sepolia.base.org"
+      assets:
+        - "0x036CbD53842c5426634e7929541eC2318f3dCF7e"

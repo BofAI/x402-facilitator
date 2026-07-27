@@ -1,0 +1,57 @@
+# Local runtime config for the production environment.
+# Start with:
+#   FACILITATOR_CONFIG_PATH=config/facilitator.config.prod.yaml npm start
+
+database:
+  # node-postgres requires postgresql:// (not postgresql+asyncpg://).
+  # Add the database username before starting the service, for example:
+  # postgresql://USERNAME@fyg.us-east-1.rds.amazonaws.com:5432/x402_facilitator_prod
+  url: "postgresql://fyg.us-east-1.rds.amazonaws.com:5432/x402_facilitator_prod"
+  ssl_mode: "require"
+  max_open_conns: 100
+
+onepassword:
+  database_password: "x402-facilitator/psql/password"
+  trongrid_api_key: "x402-facilitator/trongrid/trongrid_api_key"
+  gasfree_api_key_nile: "x402-facilitator/gasfree/gasfree_api_key_nile"
+  gasfree_api_secret_nile: "x402-facilitator/gasfree/gasfree_api_secret_nile"
+  gasfree_api_key_mainnet: "x402-facilitator/gasfree/gasfree_api_key_mainnet"
+  gasfree_api_secret_mainnet: "x402-facilitator/gasfree/gasfree_api_secret_mainnet"
+  agent_wallet_password: "x402-facilitator/wallet/agent_wallet_password"
+
+server:
+  host: "0.0.0.0"
+  port: 8001
+
+logging:
+  dir: "logs"
+  filename: "app.log"
+  level: "INFO"
+
+rate_limit:
+  api_key_refresh_interval: 5
+  authenticated: "1000/minute"
+  anonymous: "1/minute"
+
+monitoring:
+  port: 9001
+  endpoint: "/metrics"
+
+facilitator:
+  networks:
+    tron:nile: {}
+    tron:mainnet: {}
+    bsc:testnet: {}
+    bsc:mainnet: {}
+    base:sepolia:
+      schemes: ["exact"]
+      gas_sponsoring: false
+      rpc_url: "https://sepolia.base.org"
+      assets:
+        - "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    base:mainnet:
+      schemes: ["exact"]
+      gas_sponsoring: false
+      rpc_url: "https://mainnet.base.org"
+      assets:
+        - "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"

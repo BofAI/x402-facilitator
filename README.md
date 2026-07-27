@@ -109,9 +109,8 @@ npm, declared as `^1.0.1` in `package.json`.
 docker build -t x402-facilitator .
 
 docker run -p 8001:8001 -p 9001:9001 \
-  -e OP_SERVICE_ACCOUNT_TOKEN="" \
-  -e AGENT_WALLET_PASSWORD="" \
-  -v "$PWD/config/facilitator.config.yaml:/app/config/facilitator.config.yaml:ro" \
+  -e FACILITATOR_CONFIG_PATH="/app/config/facilitator.config.dev.yaml" \
+  -e OP_SERVICE_ACCOUNT_TOKEN \
   -v "$PWD/logs:/app/logs" \
   x402-facilitator
 ```
@@ -121,6 +120,13 @@ directory is writable by that uid before bind-mounting it. The agent-wallet
 password is resolved from `OP_SERVICE_ACCOUNT_TOKEN` (1Password) when set;
 otherwise pass it directly via `AGENT_WALLET_PASSWORD`. Port `9001` is only
 needed when `monitoring.port` differs from `server.port`.
+
+Both `config/facilitator.config.dev.yaml` and
+`config/facilitator.config.prod.yaml` are baked into the image. Select one at
+runtime with `FACILITATOR_CONFIG_PATH`; no config-directory mount is required.
+`OP_SERVICE_ACCOUNT_TOKEN` must be injected only at container runtime (for
+example by the deployment platform's secret environment-variable facility);
+it is never stored in the image or either YAML file.
 
 ## Status
 

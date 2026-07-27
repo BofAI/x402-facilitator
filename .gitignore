@@ -87,7 +87,7 @@ venv.bak/
 *.log
 logs
 
-# Config (contains sensitive info)
+# Config (contains environment-specific endpoints and secret references)
 facilitator.config.yaml
 
 # Private
