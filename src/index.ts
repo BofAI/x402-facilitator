@@ -9,7 +9,7 @@
  */
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
-import { loadConfig } from "./config.js";
+import { configuredAssetAllowlists, loadConfig } from "./config.js";
 import { disposeDatabase } from "./db/index.js";
 import { stopApiKeyRefresher } from "./auth.js";
 import { buildFacilitator } from "./facilitator.js";
@@ -33,6 +33,7 @@ async function main(): Promise<void> {
     metricsOnMainPort: rt.metricsOnMainPort,
     metricsEndpoint: rt.metricsEndpoint,
     maxRequestBodyBytes: rt.maxRequestBodyBytes,
+    allowedAssets: configuredAssetAllowlists(cfg),
   });
 
   const servers: ServerType[] = [];

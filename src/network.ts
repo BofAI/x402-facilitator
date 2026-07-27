@@ -74,6 +74,20 @@ const REGISTRY: readonly NetworkEntry[] = [
     rpc: "https://bsc-rpc.publicnode.com",
     chainId: 56,
   },
+  {
+    canonical: "eip155:8453" as CanonicalNetwork,
+    aliases: ["base:mainnet", "base-mainnet"],
+    family: "evm",
+    rpc: "https://mainnet.base.org",
+    chainId: 8453,
+  },
+  {
+    canonical: "eip155:84532" as CanonicalNetwork,
+    aliases: ["base:sepolia", "base-sepolia"],
+    family: "evm",
+    rpc: "https://sepolia.base.org",
+    chainId: 84532,
+  },
 ];
 
 /** Lookup table: every accepted input (canonical + aliases) -> entry. */
@@ -104,7 +118,8 @@ export function familyOf(canonical: CanonicalNetwork): NetworkFamily {
 }
 
 /** RPC endpoint for a canonical network. */
-export function rpcFor(canonical: CanonicalNetwork): string {
+export function rpcFor(canonical: CanonicalNetwork, explicit?: string): string {
+  if (explicit) return explicit;
   const entry = BY_INPUT.get(canonical);
   if (!entry) throw new Error(`Unsupported or unknown network: ${canonical}`);
   return entry.rpc;

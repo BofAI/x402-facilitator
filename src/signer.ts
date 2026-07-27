@@ -71,6 +71,7 @@ export async function buildTronFacilitatorSigner(canonical: CanonicalNetwork): P
  */
 export async function buildEvmFacilitatorSigner(
   canonical: CanonicalNetwork,
+  rpcUrl?: string,
 ): Promise<GasSponsoringFacilitatorEvmSigner> {
   const chainId = chainIdOf(canonical);
   if (chainId === undefined) throw new Error(`Not an EVM network: ${canonical}`);
@@ -89,7 +90,7 @@ export async function buildEvmFacilitatorSigner(
   // in the SDK — and the gas-sponsoring `sendTransactions` capability rides along.
   return createFacilitatorEvmSigner(wallet, {
     network: `eip155:${chainId}`,
-    rpcUrl: rpcFor(canonical),
+    rpcUrl: rpcFor(canonical, rpcUrl),
   });
 }
 

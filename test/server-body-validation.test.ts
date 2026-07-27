@@ -125,6 +125,22 @@ describe("createApp JSON body validation (P1-07)", () => {
       expect(await res.json()).toMatchObject({ isValid: true });
     });
 
+    it("rejects a non-USDC asset when a Base allowlist is configured", async () => {
+      const deps = {
+        ...buildDeps(),
+        allowedAssets: {
+          "eip155:97": ["0xallowed"],
+        },
+      };
+      const app = createApp(fakeFacilitator() as unknown as Hono, deps);
+      const res = await post(app, "/verify", JSON.stringify(VALID_BODY));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({
+        isValid: false,
+        invalidReason: "asset_not_allowed",
+      });
+    });
+
     // Regression: the SDK's HTTPFacilitatorClient sends x402Version at the TOP
     // LEVEL of the request body (mirrored from paymentPayload.x402Version). A
     // `.strict()` wrapper that didn't allow it rejected these legitimate
@@ -147,6 +163,22 @@ describe("createApp JSON body validation (P1-07)", () => {
   });
 
   describe("POST /settle", () => {
+    it("rejects a non-USDC asset when a Base allowlist is configured", async () => {
+      const deps = {
+        ...buildDeps(),
+        allowedAssets: {
+          "eip155:97": ["0xallowed"],
+        },
+      };
+      const app = createApp(fakeFacilitator() as unknown as Hono, deps);
+      const res = await post(app, "/settle", JSON.stringify(VALID_BODY));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({
+        success: false,
+        errorReason: "asset_not_allowed",
+      });
+    });
+
     it("rejects null body with 400", async () => {
       const res = await post(makeApp(), "/settle", "null");
       expect(res.status).toBe(400);

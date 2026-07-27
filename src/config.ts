@@ -11,16 +11,28 @@ import { resolve } from "node:path";
 import { parse } from "yaml";
 import { getSecretFromOnePassword, isUsableToken, parseOpRef } from "./onepassword.js";
 import { logger, type Level } from "./logger.js";
+import { normalize } from "./network.js";
 
 /** Payment schemes a network can enable. `exact_gasfree` (TRON) rides with `exact`. */
 export type Scheme = "exact" | "upto" | "batch-settlement";
 
 /** Every payment scheme — the default registered for a network when `schemes` is omitted. */
 export const ALL_SCHEMES: readonly Scheme[] = ["exact", "upto", "batch-settlement"];
+const BASE_USDC_ASSETS: Readonly<Record<string, string>> = {
+  "eip155:8453": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+  "eip155:84532": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+};
 
 export interface NetworkConfig {
   /** Schemes to register for this network. Defaults to all schemes when omitted. */
   schemes?: Scheme[];
+  /** Optional production RPC override. */
+  rpc_url?: string;
+  rpcUrl?: string;
+  /** Optional token contract allowlist for verify/settle. */
+  assets?: string[];
+  /** Whether this network participates in the ERC-20 gas-sponsoring extension. */
+  gas_sponsoring?: boolean;
 }
 
 export interface FacilitatorConfig {
@@ -85,6 +97,27 @@ function validateRequired(cfg: FacilitatorConfig): void {
 /** List of enabled CAIP network ids from config (listed = enabled). */
 export function enabledNetworks(cfg: FacilitatorConfig): string[] {
   return Object.keys(cfg.facilitator.networks ?? {});
+}
+
+/** Canonical per-network asset allowlists used by the HTTP verify/settle boundary. */
+export function configuredAssetAllowlists(
+  cfg: FacilitatorConfig,
+): Record<string, readonly string[]> {
+  const out: Record<string, readonly string[]> = {};
+  for (const [network, value] of Object.entries(cfg.facilitator.networks ?? {})) {
+    const canonical = normalize(network);
+    const baseUsdc = BASE_USDC_ASSETS[canonical];
+    if (baseUsdc) {
+      const configured = value.assets?.map(asset => asset.toLowerCase()) ?? [baseUsdc];
+      if (configured.some(asset => asset !== baseUsdc)) {
+        throw new Error(`${network}.assets supports only the official Base USDC contract`);
+      }
+      out[canonical] = [baseUsdc];
+    } else if (value.assets?.length) {
+      out[canonical] = [...new Set(value.assets.map(asset => asset.toLowerCase()))];
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

@@ -57,6 +57,19 @@ facilitator:
       schemes: ["exact", "upto", "batch-settlement"]
     bsc:testnet:
       schemes: ["exact", "upto", "batch-settlement"]
+    base:sepolia:
+      schemes: ["exact"]
+      gas_sponsoring: false
+      rpc_url: "https://sepolia.base.org"
+      assets:
+        - "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    # Enable only after Base Mainnet small-value settlement validation.
+    # base:mainnet:
+    #   schemes: ["exact"]
+    #   gas_sponsoring: false
+    #   rpc_url: "https://mainnet.base.org"
+    #   assets:
+    #     - "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
     # Enable after mainnet Permit2 / x402ExactPermit2Proxy contracts are deployed
     # and addresses are filled into @x402/tron constants.
     # tron:mainnet:

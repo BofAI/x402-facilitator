@@ -2,7 +2,13 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
-import { loadConfig, enabledNetworks, getDatabaseUrl, serverPort } from "../src/config.js";
+import {
+  configuredAssetAllowlists,
+  loadConfig,
+  enabledNetworks,
+  getDatabaseUrl,
+  serverPort,
+} from "../src/config.js";
 
 function writeConfig(body: string): string {
   const dir = mkdtempSync(join(tmpdir(), "facilitator-cfg-"));
@@ -59,6 +65,41 @@ facilitator:
     ]);
     // Omitted → undefined; the build step defaults it to ["exact"].
     expect(cfg.facilitator.networks["bsc:testnet"].schemes).toBeUndefined();
+  });
+
+  it("normalizes Base USDC asset allowlists", () => {
+    const cfg = loadConfig(writeConfig(`
+database:
+  url: "x"
+facilitator:
+  networks:
+    base:sepolia:
+      schemes: ["exact"]
+      assets:
+        - "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+`));
+    expect(configuredAssetAllowlists(cfg)).toEqual({
+      "eip155:84532": ["0x036cbd53842c5426634e7929541ec2318f3dcf7e"],
+    });
+  });
+
+  it("defaults Base to official USDC and rejects other assets", () => {
+    const cfg = loadConfig(writeConfig(`
+database:
+  url: "x"
+facilitator:
+  networks:
+    base:mainnet:
+      schemes: ["exact"]
+`));
+    expect(configuredAssetAllowlists(cfg)).toEqual({
+      "eip155:8453": ["0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"],
+    });
+
+    cfg.facilitator.networks["base:mainnet"].assets = [
+      "0x0000000000000000000000000000000000000000",
+    ];
+    expect(() => configuredAssetAllowlists(cfg)).toThrow(/only the official Base USDC/);
   });
 });
 

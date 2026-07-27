@@ -184,6 +184,34 @@ describe("buildFacilitator", () => {
     expect(facilitator.extensions).toHaveLength(1);
   });
 
+  it("registers Base Sepolia exact with the configured production RPC", async () => {
+    const facilitator = (await buildFacilitator(
+      {
+        database: { url: "postgresql://localhost/test" },
+        facilitator: {
+          networks: {
+            "base:sepolia": {
+              schemes: ["exact"],
+              gas_sponsoring: false,
+              rpc_url: "https://base-sepolia.example",
+              assets: ["0x036CbD53842c5426634e7929541eC2318f3dCF7e"],
+            },
+          },
+        },
+      },
+      { gasfreeBaseUrlFor: () => null },
+    )) as InstanceType<typeof mocks.FakeFacilitator>;
+
+    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith(
+      "eip155:84532",
+      "https://base-sepolia.example",
+    );
+    expect(facilitator.registrations).toEqual([
+      expect.objectContaining({ network: "eip155:84532" }),
+    ]);
+    expect(facilitator.extensions).toHaveLength(0);
+  });
+
   it("P1-10: rejects alias + canonical of the same chain as a duplicate", async () => {
     // bsc:testnet and eip155:97 normalize to the same canonical key; the second
     // must be rejected at startup rather than registered twice.

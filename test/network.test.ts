@@ -11,6 +11,12 @@ describe("network registry normalize", () => {
     ["bsc:mainnet", "eip155:56"],
     ["eip155:97", "eip155:97"],
     ["eip155:56", "eip155:56"],
+    ["base:mainnet", "eip155:8453"],
+    ["base-mainnet", "eip155:8453"],
+    ["base:sepolia", "eip155:84532"],
+    ["base-sepolia", "eip155:84532"],
+    ["eip155:8453", "eip155:8453"],
+    ["eip155:84532", "eip155:84532"],
     ["tron:mainnet", "tron:0x2b6653dc"],
     ["tron:nile", "tron:0xcd8690dc"],
     ["tron:shasta", "tron:0x94a9059e"],
@@ -36,18 +42,23 @@ describe("network registry family lookup", () => {
   it("classifies EVM networks", () => {
     expect(familyOf(normalize("bsc:testnet"))).toBe("evm");
     expect(familyOf(normalize("eip155:56"))).toBe("evm");
+    expect(familyOf(normalize("base:sepolia"))).toBe("evm");
   });
 });
 
 describe("network registry rpc + chainId", () => {
   it("returns RPC endpoints", () => {
     expect(rpcFor(normalize("bsc:testnet"))).toBe("https://bsc-testnet-rpc.publicnode.com");
+    expect(rpcFor(normalize("base:mainnet"))).toBe("https://mainnet.base.org");
+    expect(rpcFor(normalize("base:sepolia"), "https://rpc.example")).toBe("https://rpc.example");
     expect(rpcFor(normalize("tron:nile"))).toBe("https://nile.trongrid.io");
   });
 
   it("returns chainId for EVM and undefined for TRON", () => {
     expect(chainIdOf(normalize("eip155:97"))).toBe(97);
     expect(chainIdOf(normalize("eip155:56"))).toBe(56);
+    expect(chainIdOf(normalize("base:mainnet"))).toBe(8453);
+    expect(chainIdOf(normalize("base:sepolia"))).toBe(84532);
     expect(chainIdOf(normalize("tron:0xcd8690dc"))).toBeUndefined();
   });
 });
