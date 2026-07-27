@@ -46,8 +46,7 @@ type SignerWallet = Wallet & {
  * internally from the network id; `rpcUrl` pins our fullHost and `apiKey`
  * forwards the optional TronGrid key.
  *
- * @param network - Config network id (e.g. "tron:nile"); normalized to canonical
- *   CAIP-2 (hex chain id) before being handed to the SDK.
+ * @param network - Canonical CAIP-2 network id (e.g. "tron:0xcd8690dc").
  * @returns A FacilitatorTronSigner bound to that network's TronWeb host.
  */
 export async function buildTronFacilitatorSigner(canonical: CanonicalNetwork): Promise<FacilitatorTronSigner> {
@@ -66,12 +65,11 @@ export async function buildTronFacilitatorSigner(canonical: CanonicalNetwork): P
  * network id; `rpcUrl` pins our endpoint. Signing is delegated to the active
  * agent-wallet (symmetric with TRON).
  *
- * @param network - Config network id (e.g. "bsc:testnet").
+ * @param network - Canonical CAIP-2 network id (e.g. "eip155:97").
  * @returns A FacilitatorEvmSigner for that chain.
  */
 export async function buildEvmFacilitatorSigner(
   canonical: CanonicalNetwork,
-  rpcUrl?: string,
 ): Promise<GasSponsoringFacilitatorEvmSigner> {
   const chainId = chainIdOf(canonical);
   if (chainId === undefined) throw new Error(`Not an EVM network: ${canonical}`);
@@ -86,11 +84,11 @@ export async function buildEvmFacilitatorSigner(
 
   // The SDK derives the chainId from the CAIP-2 reference (eip155:<chainId>) and
   // resolves chain metadata from its KNOWN_CHAINS table (BSC 56/97 included),
-  // using `rpcUrl` for the transport. The wallet signs the built tx — no raw key
+  // using the registry RPC endpoint for the transport. The wallet signs the built tx — no raw key
   // in the SDK — and the gas-sponsoring `sendTransactions` capability rides along.
   return createFacilitatorEvmSigner(wallet, {
     network: `eip155:${chainId}`,
-    rpcUrl: rpcFor(canonical, rpcUrl),
+    rpcUrl: rpcFor(canonical),
   });
 }
 

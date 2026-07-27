@@ -125,5 +125,5 @@ needed when `monitoring.port` differs from `server.port`.
 ## Status
 
 Feature-complete and unit-tested; **not yet validated against live chains** (real
-verify+settle on tron:nile / bsc:testnet and GasFree end-to-end are pending), and
+verify+settle on `tron:0xcd8690dc` / `eip155:97` and GasFree end-to-end are pending), and
 without integration tests yet.

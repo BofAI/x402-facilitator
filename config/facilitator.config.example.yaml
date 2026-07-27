@@ -41,7 +41,7 @@ monitoring:
 facilitator:
   trongrid_api_key: ""
 
-  # Per-network config. Key = CAIP network id; listed = enabled.
+  # Per-network config. Key = canonical CAIP-2 network id; listed = enabled.
   #
   # schemes: which payment schemes to register for the network. Defaults to
   # all schemes (exact, upto, batch-settlement) when omitted. Options: exact |
@@ -50,28 +50,24 @@ facilitator:
   # uses the facilitator's agent-wallet as the receiverAuthorizer (published via
   # /supported); in production this may be a separate key.
   networks:
-    # TRON networks accept friendly names (tron:nile / tron:mainnet / tron:shasta);
-    # they are normalized to canonical CAIP-2 hex chain ids (e.g. tron:0xcd8690dc)
-    # for the x402 SDK (1.0.1+, which uses hex chain id in CAIP-2).
-    tron:nile:
+    # TRON Nile testnet
+    tron:0xcd8690dc:
       schemes: ["exact", "upto", "batch-settlement"]
-    bsc:testnet:
+    # TRON Shasta testnet
+    tron:0x94a9059e:
       schemes: ["exact", "upto", "batch-settlement"]
-    base:sepolia:
-      schemes: ["exact"]
-      gas_sponsoring: false
-      rpc_url: "https://sepolia.base.org"
-      assets:
-        - "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-    # Enable only after Base Mainnet small-value settlement validation.
-    # base:mainnet:
-    #   schemes: ["exact"]
-    #   gas_sponsoring: false
-    #   rpc_url: "https://mainnet.base.org"
-    #   assets:
-    #     - "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-    # Enable after mainnet Permit2 / x402ExactPermit2Proxy contracts are deployed
-    # and addresses are filled into @x402/tron constants.
-    # tron:mainnet:
-    #   schemes: ["exact", "upto", "batch-settlement"]
-    # bsc:mainnet: {}
+    # TRON Mainnet
+    tron:0x2b6653dc:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # BSC Testnet
+    eip155:97:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # BSC Mainnet
+    eip155:56:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # Base Sepolia testnet
+    eip155:84532:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # Base Mainnet
+    eip155:8453:
+      schemes: ["exact", "upto", "batch-settlement"]

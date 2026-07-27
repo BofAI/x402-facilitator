@@ -32,11 +32,7 @@ import {
   buildTronAuthorizerSigner,
   buildEvmAuthorizerSigner,
 } from "./signer.js";
-import {
-  normalize,
-  familyOf,
-  type CanonicalNetwork,
-} from "./network.js";
+import { requireCanonicalNetwork, familyOf, type CanonicalNetwork } from "./network.js";
 import {
   type FacilitatorConfig,
   type Scheme,
@@ -57,8 +53,6 @@ interface NetworkSetup {
   network: string;
   /** Canonical CAIP-2 the scheme registrars / `register` expect. */
   caip: CanonicalNetwork;
-  /** Optional production RPC override from config. */
-  rpcUrl?: string;
   /** Whether a scheme is enabled for this network. */
   has: (s: Scheme) => boolean;
 }
@@ -113,10 +107,8 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
  * handler; EVM has no gasfree variant.
  */
 async function registerEvmNetwork(setup: NetworkSetup): Promise<GasSponsoringFacilitatorEvmSigner> {
-  const { facilitator, network, caip, has, rpcUrl } = setup;
-  const signer = rpcUrl
-    ? await buildEvmFacilitatorSigner(caip, rpcUrl)
-    : await buildEvmFacilitatorSigner(caip);
+  const { facilitator, network, caip, has } = setup;
+  const signer = await buildEvmFacilitatorSigner(caip);
 
   if (has("exact")) {
     registerExactEvmScheme(facilitator, { signer, networks: caip });
@@ -190,27 +182,16 @@ export async function buildFacilitator(
   const networks = cfg.facilitator.networks ?? {};
   const evmGasSponsoringSigners: Record<string, GasSponsoringFacilitatorEvmSigner> = {};
 
-  const seen = new Set<CanonicalNetwork>();
   for (const network of enabledNetworks(cfg)) {
     const net = networks[network];
-    // Normalize once: any registered input (alias or canonical) resolves to the
-    // canonical CAIP-2. Unknown inputs throw here so misconfiguration fails at
-    // startup (P0-04).
-    const caip = normalize(network);
-    if (seen.has(caip)) {
-      // Reject alias+canonical of the same chain (and any duplicate) instead of
-      // registering twice (P1-10).
-      throw new Error(
-        `Duplicate network configuration: ${network} normalizes to ${caip}, which is already configured`,
-      );
-    }
-    seen.add(caip);
+    // Config uses canonical CAIP-2 identifiers directly; validation does not
+    // rewrite the value before handing it to the SDK.
+    const caip = requireCanonicalNetwork(network);
 
     const setup: NetworkSetup = {
       facilitator,
       network,
       caip,
-      rpcUrl: net?.rpcUrl || net?.rpc_url,
       // Schemes default to all schemes when omitted.
       has: (s: Scheme) => (net?.schemes ?? ALL_SCHEMES).includes(s),
     };
@@ -219,10 +200,7 @@ export async function buildFacilitator(
     if (family === "tron") {
       await registerTronNetwork(setup, opts);
     } else if (family === "evm") {
-      const signer = await registerEvmNetwork(setup);
-      if (net?.gas_sponsoring !== false) {
-        evmGasSponsoringSigners[setup.caip] = signer;
-      }
+      evmGasSponsoringSigners[setup.caip] = await registerEvmNetwork(setup);
     } else {
       logger.warn("Unsupported network; skipped", { network });
     }

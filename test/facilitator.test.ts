@@ -101,8 +101,8 @@ vi.mock("@bankofai/x402-extensions", () => ({
 }));
 
 vi.mock("../src/signer.js", async (importOriginal) => {
-  // Keep the real network normalization (network.ts) so tests exercise the actual
-  // tron:nile -> hex CAIP-2 path; only the signer builders (real wallets) are stubbed.
+  // Keep the real canonical-network validation; only signer builders (real wallets)
+  // are stubbed.
   const actual = await importOriginal<typeof import("../src/signer.js")>();
   return {
     ...actual,
@@ -126,7 +126,7 @@ describe("buildFacilitator", () => {
         database: { url: "postgresql://localhost/test" },
         facilitator: {
           networks: {
-            "bsc:testnet": {
+            "eip155:97": {
               schemes: ["exact", "upto", "batch-settlement"],
             },
           },
@@ -138,8 +138,7 @@ describe("buildFacilitator", () => {
     expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("eip155:97");
     expect(facilitator.extensions).toHaveLength(1);
     expect(facilitator.extensions[0].key).toBe("erc20ApprovalGasSponsoring");
-    // bsc:testnet resolves to eip155:97 -> signer97; the fallback signer is that
-    // same network-scoped signer, never an insertion-ordered arbitrary value.
+    // The fallback signer is network-scoped, never an insertion-ordered arbitrary value.
     expect(facilitator.extensions[0].signer).toBe(mocks.evmSigner97);
     expect((facilitator.extensions[0].signerForNetwork as (network: string) => unknown)("eip155:97")).toBe(
       mocks.evmSigner97,
@@ -154,8 +153,8 @@ describe("buildFacilitator", () => {
         database: { url: "postgresql://localhost/test" },
         facilitator: {
           networks: {
-            "bsc:mainnet": { schemes: ["exact"] },
-            "bsc:testnet": { schemes: ["exact"] },
+            "eip155:56": { schemes: ["exact"] },
+            "eip155:97": { schemes: ["exact"] },
           },
         },
       },
@@ -171,8 +170,7 @@ describe("buildFacilitator", () => {
     expect(() => resolve("eip155:999")).toThrow(/No gas-sponsoring signer registered for network eip155:999/);
   });
 
-  it("P0-04: accepts canonical CAIP-2 ids in config (not just friendly aliases)", async () => {
-    // Writing the canonical form directly must start up just like the alias form.
+  it("accepts canonical CAIP-2 ids in config", async () => {
     const facilitator = (await buildFacilitator(
       {
         database: { url: "postgresql://localhost/test" },
@@ -184,17 +182,14 @@ describe("buildFacilitator", () => {
     expect(facilitator.extensions).toHaveLength(1);
   });
 
-  it("registers Base Sepolia exact with the configured production RPC", async () => {
+  it("registers Base Sepolia exact with the registry RPC", async () => {
     const facilitator = (await buildFacilitator(
       {
         database: { url: "postgresql://localhost/test" },
         facilitator: {
           networks: {
-            "base:sepolia": {
+            "eip155:84532": {
               schemes: ["exact"],
-              gas_sponsoring: false,
-              rpc_url: "https://base-sepolia.example",
-              assets: ["0x036CbD53842c5426634e7929541eC2318f3dCF7e"],
             },
           },
         },
@@ -202,19 +197,14 @@ describe("buildFacilitator", () => {
       { gasfreeBaseUrlFor: () => null },
     )) as InstanceType<typeof mocks.FakeFacilitator>;
 
-    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith(
-      "eip155:84532",
-      "https://base-sepolia.example",
-    );
+    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("eip155:84532");
     expect(facilitator.registrations).toEqual([
       expect.objectContaining({ network: "eip155:84532" }),
     ]);
-    expect(facilitator.extensions).toHaveLength(0);
+    expect(facilitator.extensions).toHaveLength(1);
   });
 
-  it("P1-10: rejects alias + canonical of the same chain as a duplicate", async () => {
-    // bsc:testnet and eip155:97 normalize to the same canonical key; the second
-    // must be rejected at startup rather than registered twice.
+  it("rejects a non-canonical network id at startup", async () => {
     await expect(
       buildFacilitator(
         {
@@ -222,16 +212,15 @@ describe("buildFacilitator", () => {
           facilitator: {
             networks: {
               "bsc:testnet": { schemes: ["exact"] },
-              "eip155:97": { schemes: ["exact"] },
             },
           },
         },
         { gasfreeBaseUrlFor: () => null },
       ),
-    ).rejects.toThrow(/Duplicate network configuration: eip155:97 normalizes to eip155:97, which is already configured/);
+    ).rejects.toThrow(/Unsupported canonical CAIP-2 network: bsc:testnet/);
   });
 
-  it("P0-04/P1-10: rejects an unsupported network id at startup", async () => {
+  it("rejects an unsupported canonical network id at startup", async () => {
     await expect(
       buildFacilitator(
         {
@@ -240,10 +229,10 @@ describe("buildFacilitator", () => {
         },
         { gasfreeBaseUrlFor: () => null },
       ),
-    ).rejects.toThrow(/Unsupported or unknown network: eip155:999/);
+    ).rejects.toThrow(/Unsupported canonical CAIP-2 network: eip155:999/);
   });
 
-  it("passes the normalized hex CAIP-2 to the TRON gasfree registration path", async () => {
+  it("passes the configured CAIP-2 directly to the TRON gasfree registration path", async () => {
     const gasfreeBaseUrlFor = vi.fn(
       (network: string) => (network === TRON_NILE ? "http://127.0.0.1:8001/nile" : null),
     );
@@ -253,15 +242,13 @@ describe("buildFacilitator", () => {
         database: { url: "postgresql://localhost/test" },
         facilitator: {
           networks: {
-            "tron:nile": { schemes: ["exact"] },
+            [TRON_NILE]: { schemes: ["exact"] },
           },
         },
       },
       { gasfreeBaseUrlFor },
     );
 
-    // toCaip normalizes "tron:nile" -> "tron:0xcd8690dc" (TRON_NILE) before it
-    // reaches gasfreeBaseUrlFor and the scheme registrar.
     expect(gasfreeBaseUrlFor).toHaveBeenCalledWith(TRON_NILE);
     expect(vi.mocked(registerExactTronScheme)).toHaveBeenCalledWith(
       expect.anything(),
@@ -284,7 +271,7 @@ describe("buildFacilitator", () => {
         database: { url: "postgresql://localhost/test" },
         facilitator: {
           networks: {
-            "tron:nile": { schemes: ["exact"] },
+            [TRON_NILE]: { schemes: ["exact"] },
           },
         },
       },

@@ -2,13 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
-import {
-  configuredAssetAllowlists,
-  loadConfig,
-  enabledNetworks,
-  getDatabaseUrl,
-  serverPort,
-} from "../src/config.js";
+import { loadConfig, enabledNetworks, getDatabaseUrl, serverPort } from "../src/config.js";
 
 function writeConfig(body: string): string {
   const dir = mkdtempSync(join(tmpdir(), "facilitator-cfg-"));
@@ -22,20 +16,20 @@ database:
   url: "postgresql://user@localhost:5432/db"
 facilitator:
   networks:
-    tron:nile:
+    tron:0xcd8690dc:
       schemes: ["exact", "upto", "batch-settlement"]
-    bsc:testnet:
+    eip155:97:
       schemes: ["exact"]
 `;
 
 describe("loadConfig", () => {
   it("loads and lists enabled networks", () => {
     const cfg = loadConfig(writeConfig(VALID));
-    expect(enabledNetworks(cfg)).toEqual(["tron:nile", "bsc:testnet"]);
+    expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97"]);
   });
 
   it("throws when database.url is missing", () => {
-    expect(() => loadConfig(writeConfig(`facilitator:\n  networks:\n    tron:nile: {}\n`))).toThrow(
+    expect(() => loadConfig(writeConfig(`facilitator:\n  networks:\n    tron:0xcd8690dc: {}\n`))).toThrow(
       /database.url is required/,
     );
   });
@@ -53,54 +47,20 @@ database:
   url: "x"
 facilitator:
   networks:
-    tron:nile:
+    tron:0xcd8690dc:
       schemes: ["exact", "upto", "batch-settlement"]
-    bsc:testnet: {}
+    eip155:97: {}
 `),
     );
-    expect(cfg.facilitator.networks["tron:nile"].schemes).toEqual([
+    expect(cfg.facilitator.networks["tron:0xcd8690dc"].schemes).toEqual([
       "exact",
       "upto",
       "batch-settlement",
     ]);
     // Omitted → undefined; the build step defaults it to ["exact"].
-    expect(cfg.facilitator.networks["bsc:testnet"].schemes).toBeUndefined();
+    expect(cfg.facilitator.networks["eip155:97"].schemes).toBeUndefined();
   });
 
-  it("normalizes Base USDC asset allowlists", () => {
-    const cfg = loadConfig(writeConfig(`
-database:
-  url: "x"
-facilitator:
-  networks:
-    base:sepolia:
-      schemes: ["exact"]
-      assets:
-        - "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
-`));
-    expect(configuredAssetAllowlists(cfg)).toEqual({
-      "eip155:84532": ["0x036cbd53842c5426634e7929541ec2318f3dcf7e"],
-    });
-  });
-
-  it("defaults Base to official USDC and rejects other assets", () => {
-    const cfg = loadConfig(writeConfig(`
-database:
-  url: "x"
-facilitator:
-  networks:
-    base:mainnet:
-      schemes: ["exact"]
-`));
-    expect(configuredAssetAllowlists(cfg)).toEqual({
-      "eip155:8453": ["0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"],
-    });
-
-    cfg.facilitator.networks["base:mainnet"].assets = [
-      "0x0000000000000000000000000000000000000000",
-    ];
-    expect(() => configuredAssetAllowlists(cfg)).toThrow(/only the official Base USDC/);
-  });
 });
 
 describe("getDatabaseUrl", () => {
@@ -120,7 +80,7 @@ database:
   password: "p@ss"
 facilitator:
   networks:
-    tron:nile: {}
+    tron:0xcd8690dc: {}
 `),
     );
     expect(await getDatabaseUrl(cfg)).toBe("postgresql://user@localhost:5432/db");
@@ -149,7 +109,7 @@ server:
   port: 9999
 facilitator:
   networks:
-    tron:nile: {}
+    tron:0xcd8690dc: {}
 `),
     );
     process.env.SERVER_PORT = "8001";
@@ -166,7 +126,7 @@ server:
   port: 9999
 facilitator:
   networks:
-    tron:nile: {}
+    tron:0xcd8690dc: {}
 `),
     );
     expect(serverPort(cfg)).toBe(9999);

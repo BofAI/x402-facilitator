@@ -47,7 +47,7 @@ Key seams:
 
 ## Conventions & gotchas
 
-- Networks use **CAIP-2** ids (`tron:nile`, `tron:mainnet`, `bsc:testnet`, `eip155:*`). `isTron`/`isEvm` in `facilitator.ts` route by prefix.
+- Networks use supported canonical **CAIP-2** ids only (for example `tron:0xcd8690dc`, `tron:0x2b6653dc`, `eip155:97`, `eip155:84532`). Friendly aliases are rejected; `facilitator.ts` routes by the registered network family.
 - The `@bankofai/x402-*` packages (`x402-core`, `x402-evm`, `x402-tron`, `x402-extensions`) come from the npm registry. Pin to the tested version deliberately — bumping is a separate, deliberate upgrade (API drift risk). When the SDK's interface is awkward, surface the gap rather than silently `any`-adapting around it.
 - Fees were removed from the TRON schemes in SDK `1.0.1`; there is no `base_fee` config and no `/fee/quote` endpoint.
 - Stale Python artifacts (`src/**/__pycache__`, `tests/__pycache__`) are leftovers from v1 — ignore them; the live tests are TS files under `test/`.

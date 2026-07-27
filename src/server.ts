@@ -47,8 +47,6 @@ export interface AppDeps {
   metricsEndpoint: string;
   /** Max request body size in bytes (default 1 MiB). */
   maxRequestBodyBytes: number;
-  /** Optional canonical network -> lowercase token contract allowlist. */
-  allowedAssets?: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
@@ -154,9 +152,6 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       logger.warn("verify body rejected");
       return c.json({ isValid: false, invalidReason: "missing_parameters" }, 400);
     }
-    if (!assetAllowed(parsed.paymentRequirements, deps.allowedAssets)) {
-      return c.json({ isValid: false, invalidReason: "asset_not_allowed" }, 400);
-    }
     try {
       const result = await facilitator.verify(parsed.paymentPayload, parsed.paymentRequirements);
       if (!result.isValid) logger.warn("verify invalid", { reason: result.invalidReason });
@@ -182,10 +177,6 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       return c.json({ success: false, errorReason: "missing_parameters" }, 400);
     }
     const { paymentPayload, paymentRequirements } = parsed;
-    if (!assetAllowed(paymentRequirements, deps.allowedAssets)) {
-      return c.json({ success: false, errorReason: "asset_not_allowed" }, 400);
-    }
-
     const requirements = paymentRequirements;
     const accepted = paymentPayload.accepted;
     const network = requirements.network ?? accepted?.network ?? "";
@@ -282,13 +273,4 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
   registerGasFreeProxy(app as unknown as Hono, deps.gasfreeSettings);
 
   return app;
-}
-
-function assetAllowed(
-  requirements: PaymentRequirements,
-  allowlists: AppDeps["allowedAssets"],
-): boolean {
-  const allowed = allowlists?.[requirements.network];
-  if (!allowed) return true;
-  return allowed.includes(requirements.asset.toLowerCase());
 }
