@@ -1,8 +1,8 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
-import { loadConfig, enabledNetworks, getDatabaseUrl, serverPort } from "../src/config.js";
+import { configPath, loadConfig, enabledNetworks, getDatabaseUrl, serverPort } from "../src/config.js";
 
 function writeConfig(body: string): string {
   const dir = mkdtempSync(join(tmpdir(), "facilitator-cfg-"));
@@ -61,6 +61,42 @@ facilitator:
     expect(cfg.facilitator.networks["eip155:97"].schemes).toBeUndefined();
   });
 
+});
+
+describe("configPath", () => {
+  const serviceEnv = process.env.FACILITATOR_SERVICE_ENV;
+  const explicitPath = process.env.FACILITATOR_CONFIG_PATH;
+
+  afterEach(() => {
+    if (serviceEnv === undefined) delete process.env.FACILITATOR_SERVICE_ENV;
+    else process.env.FACILITATOR_SERVICE_ENV = serviceEnv;
+    if (explicitPath === undefined) delete process.env.FACILITATOR_CONFIG_PATH;
+    else process.env.FACILITATOR_CONFIG_PATH = explicitPath;
+  });
+
+  it("selects the development config for FACILITATOR_SERVICE_ENV=dev", () => {
+    delete process.env.FACILITATOR_CONFIG_PATH;
+    process.env.FACILITATOR_SERVICE_ENV = "dev";
+    expect(configPath()).toBe(resolve(process.cwd(), "config/facilitator.config.dev.yaml"));
+  });
+
+  it("selects the production config for FACILITATOR_SERVICE_ENV=prod", () => {
+    delete process.env.FACILITATOR_CONFIG_PATH;
+    process.env.FACILITATOR_SERVICE_ENV = "prod";
+    expect(configPath()).toBe(resolve(process.cwd(), "config/facilitator.config.prod.yaml"));
+  });
+
+  it("prefers FACILITATOR_CONFIG_PATH over FACILITATOR_SERVICE_ENV", () => {
+    process.env.FACILITATOR_SERVICE_ENV = "prod";
+    process.env.FACILITATOR_CONFIG_PATH = "config/custom.yaml";
+    expect(configPath()).toBe(resolve("config/custom.yaml"));
+  });
+
+  it("rejects an unsupported FACILITATOR_SERVICE_ENV", () => {
+    delete process.env.FACILITATOR_CONFIG_PATH;
+    process.env.FACILITATOR_SERVICE_ENV = "staging";
+    expect(configPath).toThrow(/must be either 'dev' or 'prod'/);
+  });
 });
 
 describe("getDatabaseUrl", () => {

@@ -52,17 +52,33 @@ export interface FacilitatorConfig {
   };
 }
 
-const DEFAULT_PATH = process.env.FACILITATOR_CONFIG_PATH
-  ? resolve(process.env.FACILITATOR_CONFIG_PATH)
-  : resolve(process.cwd(), "config/facilitator.config.yaml");
+/** Resolve the runtime config path from an explicit path or service environment. */
+export function configPath(): string {
+  if (process.env.FACILITATOR_CONFIG_PATH) {
+    return resolve(process.env.FACILITATOR_CONFIG_PATH);
+  }
+
+  switch (process.env.FACILITATOR_SERVICE_ENV) {
+    case undefined:
+    case "":
+      return resolve(process.cwd(), "config/facilitator.config.yaml");
+    case "dev":
+      return resolve(process.cwd(), "config/facilitator.config.dev.yaml");
+    case "prod":
+      return resolve(process.cwd(), "config/facilitator.config.prod.yaml");
+    default:
+      throw new Error("FACILITATOR_SERVICE_ENV must be either 'dev' or 'prod'");
+  }
+}
 
 /**
  * Load, parse and validate the facilitator YAML config from disk.
  *
- * @param path - Optional explicit path; defaults to FACILITATOR_CONFIG_PATH or config/facilitator.config.yaml.
+ * @param path - Optional explicit path; otherwise uses FACILITATOR_CONFIG_PATH,
+ * FACILITATOR_SERVICE_ENV, or config/facilitator.config.yaml.
  * @returns The parsed configuration object.
  */
-export function loadConfig(path: string = DEFAULT_PATH): FacilitatorConfig {
+export function loadConfig(path: string = configPath()): FacilitatorConfig {
   const raw = readFileSync(path, "utf8");
   const cfg = (parse(raw) as FacilitatorConfig) ?? ({} as FacilitatorConfig);
   validateRequired(cfg);

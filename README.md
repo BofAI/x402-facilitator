@@ -53,7 +53,9 @@ Default listen address: `http://0.0.0.0:8001`.
 
 YAML config (`config/facilitator.config.yaml`; template:
 [`config/facilitator.config.example.yaml`](config/facilitator.config.example.yaml)).
-Path override: `FACILITATOR_CONFIG_PATH`.
+Set `FACILITATOR_SERVICE_ENV=dev` or `FACILITATOR_SERVICE_ENV=prod` to select the
+matching baked-in environment config. `FACILITATOR_CONFIG_PATH` remains an explicit
+path override and takes precedence.
 
 Required: `database.url`, `facilitator.networks` (≥1 network, listed = enabled).
 
@@ -63,6 +65,8 @@ is set). Relevant env vars:
 
 | Var | Purpose |
 |---|---|
+| `FACILITATOR_SERVICE_ENV` | `dev` or `prod`; selects the matching baked-in config file |
+| `FACILITATOR_CONFIG_PATH` | Explicit config path; overrides `FACILITATOR_SERVICE_ENV` |
 | `AGENT_WALLET_PASSWORD` | Unlock the agent-wallet provider |
 | `TRON_GRID_API_KEY` | TronGrid rate limits (shared across TRON networks) |
 | `GASFREE_API_KEY[_NILE\|_MAINNET]` / `GASFREE_API_SECRET[...]` | GasFree relayer creds (gate `exact_gasfree`) |
@@ -109,7 +113,7 @@ npm, declared as `^1.0.1` in `package.json`.
 docker build -t x402-facilitator .
 
 docker run -p 8001:8001 -p 9001:9001 \
-  -e FACILITATOR_CONFIG_PATH="/app/config/facilitator.config.dev.yaml" \
+  -e FACILITATOR_SERVICE_ENV=dev \
   -e OP_SERVICE_ACCOUNT_TOKEN \
   -v "$PWD/logs:/app/logs" \
   x402-facilitator
@@ -123,7 +127,9 @@ needed when `monitoring.port` differs from `server.port`.
 
 Both `config/facilitator.config.dev.yaml` and
 `config/facilitator.config.prod.yaml` are baked into the image. Select one at
-runtime with `FACILITATOR_CONFIG_PATH`; no config-directory mount is required.
+runtime with `FACILITATOR_SERVICE_ENV=dev` or `FACILITATOR_SERVICE_ENV=prod`; no
+config-directory mount is required. `FACILITATOR_CONFIG_PATH` remains available
+for an explicit custom path.
 `OP_SERVICE_ACCOUNT_TOKEN` must be injected only at container runtime (for
 example by the deployment platform's secret environment-variable facility);
 it is never stored in the image or either YAML file.

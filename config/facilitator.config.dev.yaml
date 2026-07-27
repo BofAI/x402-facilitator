@@ -1,6 +1,6 @@
 # Local runtime config for the development environment.
 # Start with:
-#   FACILITATOR_CONFIG_PATH=config/facilitator.config.dev.yaml npm run dev
+#   FACILITATOR_SERVICE_ENV=dev npm run dev
 
 database:
   # node-postgres requires postgresql:// (not postgresql+asyncpg://).
@@ -37,11 +37,12 @@ monitoring:
 
 facilitator:
   networks:
-    tron:nile: {}
-    bsc:testnet: {}
-    base:sepolia:
-      schemes: ["exact"]
-      gas_sponsoring: false
-      rpc_url: "https://sepolia.base.org"
-      assets:
-        - "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    # TRON Nile testnet
+    tron:0xcd8690dc:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # BSC Testnet
+    eip155:97:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # Base Sepolia testnet
+    eip155:84532:
+      schemes: ["exact", "upto", "batch-settlement"]
