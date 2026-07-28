@@ -146,22 +146,36 @@ export async function injectAgentWalletPasswordEnv(cfg: FacilitatorConfig): Prom
   }
 }
 
-/** Database password from 1Password (local dev puts it directly in database.url). */
+/** Database username from 1Password. */
+async function getDatabaseUser(cfg: FacilitatorConfig): Promise<string | undefined> {
+  return resolveOpField(cfg, "database_user");
+}
+
+/** Database password from 1Password. */
 async function getDatabasePassword(cfg: FacilitatorConfig): Promise<string | undefined> {
   return resolveOpField(cfg, "database_password");
 }
 
-/** Database URL with the resolved password injected into the userinfo (if any). */
+/** Inject resolved database credentials into a connection URL. */
+export function databaseUrlWithCredentials(
+  rawUrl: string,
+  user?: string,
+  password?: string,
+): string {
+  if (!user && !password) return rawUrl;
+  const url = new URL(rawUrl);
+  if (user) url.username = user;
+  if (password) url.password = password;
+  return url.toString();
+}
+
+/** Database URL with resolved 1Password credentials injected into the userinfo. */
 export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
   const rawUrl = cfg.database?.url;
   if (!rawUrl) throw new Error("database.url is required");
+  const user = await getDatabaseUser(cfg);
   const password = await getDatabasePassword(cfg);
-  if (!password) return rawUrl;
-
-  const u = new URL(rawUrl);
-  // URL setter handles percent-encoding of special chars in the password.
-  u.password = password;
-  return u.toString();
+  return databaseUrlWithCredentials(rawUrl, user, password);
 }
 
 /** GasFree Open API credentials for a network. Env per-suffix/global first, then 1Password. */

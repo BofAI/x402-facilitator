@@ -3,13 +3,14 @@
 #   FACILITATOR_SERVICE_ENV=dev npm run dev
 
 database:
-  # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form.
-  # With no username in the URL, it falls back to the container user (ec2-user).
-  url: "postgresql+asyncpg://onaws.com:5432/x402_facilitator"
+  # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form; credentials
+  # are injected from onepassword below before connecting.
+  url: "postgresql+asyncpg://sun-agent-postgresql.chqcqywoo8fb.us-east-1.rds.amazonaws.com:5432/x402_facilitator"
   ssl_mode: "require"
   max_open_conns: 100
 
 onepassword:
+  database_user: "x402-facilitator_dev/psql/user"
   database_password: "x402-facilitator_dev/psql/password"
   trongrid_api_key: "x402-facilitator_dev/trongrid/trongrid_api_key"
   gasfree_api_key_nile: "x402-facilitator_dev/gasfree/gasfree_api_key_nile"

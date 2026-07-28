@@ -2,7 +2,14 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
-import { configPath, loadConfig, enabledNetworks, getDatabaseUrl, serverPort } from "../src/config.js";
+import {
+  configPath,
+  loadConfig,
+  enabledNetworks,
+  getDatabaseUrl,
+  databaseUrlWithCredentials,
+  serverPort,
+} from "../src/config.js";
 import { redactDatabaseUrl } from "../src/runtime.js";
 
 function writeConfig(body: string): string {
@@ -121,6 +128,16 @@ facilitator:
 `),
     );
     expect(await getDatabaseUrl(cfg)).toBe("postgresql://user@localhost:5432/db");
+  });
+
+  it("injects resolved 1Password database credentials into the URL", () => {
+    expect(
+      databaseUrlWithCredentials(
+        "postgresql+asyncpg://host:5432/x402_facilitator",
+        "db-user",
+        "p@ss/word",
+      ),
+    ).toBe("postgresql+asyncpg://db-user:p%40ss%2Fword@host:5432/x402_facilitator");
   });
 });
 
