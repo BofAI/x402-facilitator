@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
 import { configPath, loadConfig, enabledNetworks, getDatabaseUrl, serverPort } from "../src/config.js";
+import { redactDatabaseUrl } from "../src/runtime.js";
 
 function writeConfig(body: string): string {
   const dir = mkdtempSync(join(tmpdir(), "facilitator-cfg-"));
@@ -120,6 +121,14 @@ facilitator:
 `),
     );
     expect(await getDatabaseUrl(cfg)).toBe("postgresql://user@localhost:5432/db");
+  });
+});
+
+describe("redactDatabaseUrl", () => {
+  it("keeps the connection target visible while masking the password", () => {
+    expect(redactDatabaseUrl("postgresql+asyncpg://ec2-user:secret@onaws.com:5432/x402_facilitator")).toBe(
+      "postgresql+asyncpg://ec2-user:***@onaws.com:5432/x402_facilitator",
+    );
   });
 });
 

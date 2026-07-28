@@ -3,10 +3,9 @@
 #   FACILITATOR_SERVICE_ENV=dev npm run dev
 
 database:
-  # node-postgres requires postgresql:// (not postgresql+asyncpg://).
-  # Add the database username before starting the service, for example:
-  # postgresql://USERNAME@onaws.com:5432/x402_facilitator
-  url: "postgresql://onaws.com:5432/x402_facilitator"
+  # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form.
+  # With no username in the URL, it falls back to the container user (ec2-user).
+  url: "postgresql+asyncpg://onaws.com:5432/x402_facilitator"
   ssl_mode: "require"
   max_open_conns: 100
 
