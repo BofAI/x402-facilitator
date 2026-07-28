@@ -5,7 +5,7 @@
 database:
   # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form; credentials
   # are injected from onepassword below before connecting.
-  url: "sunpump-sunagent-postsql-v2.c9w4kaa66fyg.us-east-1.rds.amazonaws.com:5432/x402_facilitator_prod"
+  url: "postgresql+asyncpg://sunpump-sunagent-postsql-v2.c9w4kaa66fyg.us-east-1.rds.amazonaws.com:5432/x402_facilitator_prod"
   ssl_mode: "require"
   max_open_conns: 100
 
