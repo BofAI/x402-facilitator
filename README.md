@@ -32,9 +32,8 @@ A TypeScript/Node service. The earlier Python/FastAPI implementation is kept und
 ### Install and run
 
 ```bash
-npm install
-cp config/facilitator.config.example.yaml config/facilitator.config.yaml
-npm run dev          # tsx watch; or: npm run build && npm start
+npm ci
+FACILITATOR_SERVICE_ENV=dev npm run dev
 ```
 
 Default listen address: `http://0.0.0.0:8001`.
@@ -51,9 +50,10 @@ Default listen address: `http://0.0.0.0:8001`.
 
 ## Configuration
 
-YAML config (`config/facilitator.config.yaml`; template:
-[`config/facilitator.config.example.yaml`](config/facilitator.config.example.yaml)).
-Path override: `FACILITATOR_CONFIG_PATH`.
+Choose a YAML configuration source explicitly. Set `FACILITATOR_SERVICE_ENV=dev` or
+`FACILITATOR_SERVICE_ENV=prod` to select the matching baked-in environment config, or
+set `FACILITATOR_CONFIG_PATH` to an explicit YAML file; the explicit path takes
+precedence. The process fails before startup when neither is set.
 
 Required: `database.url`, `facilitator.networks` (≥1 network, listed = enabled).
 
@@ -63,6 +63,8 @@ is set). Relevant env vars:
 
 | Var | Purpose |
 |---|---|
+| `FACILITATOR_SERVICE_ENV` | `dev` or `prod`; selects the matching baked-in config file |
+| `FACILITATOR_CONFIG_PATH` | Explicit config path; overrides `FACILITATOR_SERVICE_ENV` |
 | `AGENT_WALLET_PASSWORD` | Unlock the agent-wallet provider |
 | `TRON_GRID_API_KEY` | TronGrid rate limits (shared across TRON networks) |
 | `GASFREE_API_KEY[_NILE\|_MAINNET]` / `GASFREE_API_SECRET[...]` | GasFree relayer creds (gate `exact_gasfree`) |
@@ -109,9 +111,8 @@ npm, declared as `^1.0.1` in `package.json`.
 docker build -t x402-facilitator .
 
 docker run -p 8001:8001 -p 9001:9001 \
-  -e OP_SERVICE_ACCOUNT_TOKEN="" \
-  -e AGENT_WALLET_PASSWORD="" \
-  -v "$PWD/config/facilitator.config.yaml:/app/config/facilitator.config.yaml:ro" \
+  -e FACILITATOR_SERVICE_ENV=dev \
+  -e OP_SERVICE_ACCOUNT_TOKEN \
   -v "$PWD/logs:/app/logs" \
   x402-facilitator
 ```
@@ -122,8 +123,17 @@ password is resolved from `OP_SERVICE_ACCOUNT_TOKEN` (1Password) when set;
 otherwise pass it directly via `AGENT_WALLET_PASSWORD`. Port `9001` is only
 needed when `monitoring.port` differs from `server.port`.
 
+Both `config/facilitator.config.dev.yaml` and
+`config/facilitator.config.prod.yaml` are baked into the image. Select one at
+runtime with `FACILITATOR_SERVICE_ENV=dev` or `FACILITATOR_SERVICE_ENV=prod`; no
+config-directory mount is required. `FACILITATOR_CONFIG_PATH` remains available
+for an explicit custom path.
+`OP_SERVICE_ACCOUNT_TOKEN` must be injected only at container runtime (for
+example by the deployment platform's secret environment-variable facility);
+it is never stored in the image or either YAML file.
+
 ## Status
 
 Feature-complete and unit-tested; **not yet validated against live chains** (real
-verify+settle on tron:nile / bsc:testnet and GasFree end-to-end are pending), and
+verify+settle on `tron:0xcd8690dc` / `eip155:97` and GasFree end-to-end are pending), and
 without integration tests yet.

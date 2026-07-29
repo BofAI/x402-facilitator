@@ -1,8 +1,16 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
-import { loadConfig, enabledNetworks, getDatabaseUrl, serverPort } from "../src/config.js";
+import {
+  configPath,
+  loadConfig,
+  enabledNetworks,
+  getDatabaseUrl,
+  databaseUrlWithCredentials,
+  serverPort,
+} from "../src/config.js";
+import { redactDatabaseUrl } from "../src/runtime.js";
 
 function writeConfig(body: string): string {
   const dir = mkdtempSync(join(tmpdir(), "facilitator-cfg-"));
@@ -16,28 +24,35 @@ database:
   url: "postgresql://user@localhost:5432/db"
 facilitator:
   networks:
-    tron:nile:
+    tron:0xcd8690dc:
       schemes: ["exact", "upto", "batch-settlement"]
-    bsc:testnet:
+    eip155:97:
       schemes: ["exact"]
 `;
 
 describe("loadConfig", () => {
   it("loads and lists enabled networks", () => {
     const cfg = loadConfig(writeConfig(VALID));
-    expect(enabledNetworks(cfg)).toEqual(["tron:nile", "bsc:testnet"]);
+    expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97"]);
+  });
+
+  it("loads built-in configs with uppercase logging levels", () => {
+    for (const environment of ["dev", "prod"]) {
+      const cfg = loadConfig(resolve(process.cwd(), `config/facilitator.config.${environment}.yaml`));
+      expect(cfg.logging?.level).toBe("info");
+    }
   });
 
   it("throws when database.url is missing", () => {
-    expect(() => loadConfig(writeConfig(`facilitator:\n  networks:\n    tron:nile: {}\n`))).toThrow(
-      /database.url is required/,
+    expect(() => loadConfig(writeConfig(`facilitator:\n  networks:\n    tron:0xcd8690dc: {}\n`))).toThrow(
+      /database: Required/,
     );
   });
 
   it("throws when facilitator.networks is empty", () => {
     expect(() =>
       loadConfig(writeConfig(`database:\n  url: "x"\nfacilitator:\n  networks: {}\n`)),
-    ).toThrow(/facilitator.networks is required/);
+    ).toThrow(/facilitator.networks: must be a non-empty object/);
   });
 
   it("parses a per-network schemes list (absent on networks that omit it)", () => {
@@ -47,18 +62,114 @@ database:
   url: "x"
 facilitator:
   networks:
-    tron:nile:
+    tron:0xcd8690dc:
       schemes: ["exact", "upto", "batch-settlement"]
-    bsc:testnet: {}
+    eip155:97: {}
 `),
     );
-    expect(cfg.facilitator.networks["tron:nile"].schemes).toEqual([
+    expect(cfg.facilitator.networks["tron:0xcd8690dc"].schemes).toEqual([
       "exact",
       "upto",
       "batch-settlement",
     ]);
-    // Omitted → undefined; the build step defaults it to ["exact"].
-    expect(cfg.facilitator.networks["bsc:testnet"].schemes).toBeUndefined();
+    // Omitted → undefined; the build step defaults it to all supported schemes.
+    expect(cfg.facilitator.networks["eip155:97"].schemes).toBeUndefined();
+  });
+
+  it("rejects invalid schemes, duplicate schemes, unsupported networks, and unknown keys", () => {
+    expect(() =>
+      loadConfig(
+        writeConfig(`
+database:
+  url: "x"
+facilitator:
+  networks:
+    eip155:97:
+      schemes: ["excat", "exact"]
+`),
+      ),
+    ).toThrow(/facilitator.networks.eip155:97.schemes.0/);
+
+    expect(() =>
+      loadConfig(
+        writeConfig(`
+database:
+  url: "x"
+facilitator:
+  networks:
+    eip155:97:
+      schemes: ["exact", "exact"]
+`),
+      ),
+    ).toThrow(/must not contain duplicates/);
+
+    expect(() =>
+      loadConfig(
+        writeConfig(`
+database:
+  url: "x"
+facilitator:
+  networks:
+    eip155:1: {}
+`),
+      ),
+    ).toThrow(/Unsupported canonical CAIP-2 network/);
+
+    expect(() =>
+      loadConfig(
+        writeConfig(`
+database:
+  url: "x"
+  password: "not-supported"
+facilitator:
+  networks:
+    eip155:97: {}
+`),
+      ),
+    ).toThrow(/database: Unrecognized key/);
+  });
+
+});
+
+describe("configPath", () => {
+  const serviceEnv = process.env.FACILITATOR_SERVICE_ENV;
+  const explicitPath = process.env.FACILITATOR_CONFIG_PATH;
+
+  afterEach(() => {
+    if (serviceEnv === undefined) delete process.env.FACILITATOR_SERVICE_ENV;
+    else process.env.FACILITATOR_SERVICE_ENV = serviceEnv;
+    if (explicitPath === undefined) delete process.env.FACILITATOR_CONFIG_PATH;
+    else process.env.FACILITATOR_CONFIG_PATH = explicitPath;
+  });
+
+  it("selects the development config for FACILITATOR_SERVICE_ENV=dev", () => {
+    delete process.env.FACILITATOR_CONFIG_PATH;
+    process.env.FACILITATOR_SERVICE_ENV = "dev";
+    expect(configPath()).toBe(resolve(process.cwd(), "config/facilitator.config.dev.yaml"));
+  });
+
+  it("selects the production config for FACILITATOR_SERVICE_ENV=prod", () => {
+    delete process.env.FACILITATOR_CONFIG_PATH;
+    process.env.FACILITATOR_SERVICE_ENV = "prod";
+    expect(configPath()).toBe(resolve(process.cwd(), "config/facilitator.config.prod.yaml"));
+  });
+
+  it("prefers FACILITATOR_CONFIG_PATH over FACILITATOR_SERVICE_ENV", () => {
+    process.env.FACILITATOR_SERVICE_ENV = "prod";
+    process.env.FACILITATOR_CONFIG_PATH = "config/custom.yaml";
+    expect(configPath()).toBe(resolve("config/custom.yaml"));
+  });
+
+  it("requires an explicit configuration source", () => {
+    delete process.env.FACILITATOR_SERVICE_ENV;
+    delete process.env.FACILITATOR_CONFIG_PATH;
+    expect(configPath).toThrow(/Configuration source is required/);
+  });
+
+  it("rejects an unsupported FACILITATOR_SERVICE_ENV", () => {
+    delete process.env.FACILITATOR_CONFIG_PATH;
+    process.env.FACILITATOR_SERVICE_ENV = "staging";
+    expect(configPath).toThrow(/must be either 'dev' or 'prod'/);
   });
 });
 
@@ -68,21 +179,74 @@ describe("getDatabaseUrl", () => {
     expect(await getDatabaseUrl(cfg)).toBe("postgresql://user@localhost:5432/db");
   });
 
-  it("ignores a literal database.password field (only the 1Password ref injects)", async () => {
-    // The redundant `database.password` literal was dropped; the password is now
-    // resolved solely from the `onepassword.database_password` ref (absent here,
-    // so the url is returned unchanged). Local dev embeds the password in the url.
-    const cfg = loadConfig(
-      writeConfig(`
+  it("does not resolve 1Password when the URL already has complete credentials", async () => {
+    const cfg = loadConfig(writeConfig(`
 database:
-  url: "postgresql://user@localhost:5432/db"
-  password: "p@ss"
+  url: "postgresql://user:password@localhost:5432/db"
+onepassword:
+  database_user: "invalid"
+  database_password: "invalid"
 facilitator:
   networks:
-    tron:nile: {}
-`),
+    tron:0xcd8690dc: {}
+`));
+    expect(await getDatabaseUrl(cfg)).toBe("postgresql://user:password@localhost:5432/db");
+  });
+
+  it("rejects incomplete database credential configuration before opening a pool", async () => {
+    const cfg = loadConfig(writeConfig(`
+database:
+  url: "postgresql://localhost:5432/db"
+onepassword:
+  database_user: "vault/item/user"
+facilitator:
+  networks:
+    tron:0xcd8690dc: {}
+`));
+    await expect(getDatabaseUrl(cfg)).rejects.toThrow(/must be configured together/);
+  });
+
+  it("rejects missing 1Password token when database credentials are required", async () => {
+    delete process.env.OP_SERVICE_ACCOUNT_TOKEN;
+    const cfg = loadConfig(writeConfig(`
+database:
+  url: "postgresql://localhost:5432/db"
+onepassword:
+  database_user: "vault/item/user"
+  database_password: "vault/item/password"
+facilitator:
+  networks:
+    tron:0xcd8690dc: {}
+`));
+    await expect(getDatabaseUrl(cfg)).rejects.toThrow(/requires a valid OP_SERVICE_ACCOUNT_TOKEN/);
+  });
+
+  it("injects resolved 1Password database credentials into the URL", () => {
+    expect(
+      databaseUrlWithCredentials(
+        "postgresql+asyncpg://host:5432/x402_facilitator",
+        "db-user",
+        "p@ss/word",
+      ),
+    ).toBe("postgresql+asyncpg://db-user:p%40ss%2Fword@host:5432/x402_facilitator");
+  });
+});
+
+describe("redactDatabaseUrl", () => {
+  it("keeps the connection target visible while masking the password", () => {
+    expect(redactDatabaseUrl("postgresql+asyncpg://ec2-user:secret@onaws.com:5432/x402_facilitator")).toBe(
+      "postgresql+asyncpg://ec2-user:***@onaws.com:5432/x402_facilitator",
     );
-    expect(await getDatabaseUrl(cfg)).toBe("postgresql://user@localhost:5432/db");
+  });
+
+  it("masks sensitive query values without leaking a sentinel secret", () => {
+    const redacted = redactDatabaseUrl(
+      "postgresql://user:sentinel-userinfo@db.example/app?password=sentinel-query&TOKEN=sentinel-token&sslmode=require",
+    );
+    expect(redacted).not.toContain("sentinel-userinfo");
+    expect(redacted).not.toContain("sentinel-query");
+    expect(redacted).not.toContain("sentinel-token");
+    expect(redacted).toContain("sslmode=require");
   });
 });
 
@@ -108,7 +272,7 @@ server:
   port: 9999
 facilitator:
   networks:
-    tron:nile: {}
+    tron:0xcd8690dc: {}
 `),
     );
     process.env.SERVER_PORT = "8001";
@@ -125,7 +289,7 @@ server:
   port: 9999
 facilitator:
   networks:
-    tron:nile: {}
+    tron:0xcd8690dc: {}
 `),
     );
     expect(serverPort(cfg)).toBe(9999);

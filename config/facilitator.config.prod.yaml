@@ -1,0 +1,59 @@
+# Local runtime config for the production environment.
+# Start with:
+#   FACILITATOR_SERVICE_ENV=prod npm start
+
+database:
+  # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form; credentials
+  # are injected from onepassword below before connecting.
+  url: "postgresql+asyncpg://sunpump-sunagent-postsql-v2.c9w4kaa66fyg.us-east-1.rds.amazonaws.com:5432/x402_facilitator_prod"
+  ssl_mode: "require"
+  max_open_conns: 100
+
+onepassword:
+  database_user: "x402-facilitator/psql/user"
+  database_password: "x402-facilitator/psql/password"
+  trongrid_api_key: "x402-facilitator/trongrid/trongrid_api_key"
+  gasfree_api_key_nile: "x402-facilitator/gasfree/gasfree_api_key_nile"
+  gasfree_api_secret_nile: "x402-facilitator/gasfree/gasfree_api_secret_nile"
+  gasfree_api_key_mainnet: "x402-facilitator/gasfree/gasfree_api_key_mainnet"
+  gasfree_api_secret_mainnet: "x402-facilitator/gasfree/gasfree_api_secret_mainnet"
+  agent_wallet_password: "x402-facilitator/wallet/agent_wallet_password"
+
+server:
+  host: "0.0.0.0"
+  port: 8001
+
+logging:
+  dir: "logs"
+  filename: "app.log"
+  level: "INFO"
+
+rate_limit:
+  api_key_refresh_interval: 5
+  authenticated: "1000/minute"
+  anonymous: "1/minute"
+
+monitoring:
+  port: 9001
+  endpoint: "/metrics"
+
+facilitator:
+  networks:
+    # TRON Nile testnet
+    tron:0xcd8690dc:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # TRON Mainnet
+    tron:0x2b6653dc:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # BSC Testnet
+    eip155:97:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # BSC Mainnet
+    eip155:56:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # Base Sepolia testnet
+    eip155:84532:
+      schemes: ["exact", "upto", "batch-settlement"]
+    # Base Mainnet
+    eip155:8453:
+      schemes: ["exact", "upto", "batch-settlement"]

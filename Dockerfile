@@ -13,6 +13,11 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
+# Bake the non-secret environment configs into the image. They contain only
+# 1Password references; OP_SERVICE_ACCOUNT_TOKEN remains a runtime env variable.
+# Copy explicitly so a local config/facilitator.config.yaml is never included.
+COPY config/facilitator.config.dev.yaml ./config/facilitator.config.dev.yaml
+COPY config/facilitator.config.prod.yaml ./config/facilitator.config.prod.yaml
 
 # Non-root runtime user matching legacy v1 exactly: `ec2-user` at uid/gid 1000 with
 # HOME /home/ec2-user. The ops `docker run` bind-mounts the provisioned agent-wallet

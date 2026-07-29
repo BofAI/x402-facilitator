@@ -177,7 +177,6 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       return c.json({ success: false, errorReason: "missing_parameters" }, 400);
     }
     const { paymentPayload, paymentRequirements } = parsed;
-
     const requirements = paymentRequirements;
     const accepted = paymentPayload.accepted;
     const network = requirements.network ?? accepted?.network ?? "";

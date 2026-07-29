@@ -15,14 +15,15 @@ npm run dev          # tsx watch (reload on change)
 npm run build        # tsc -> dist/
 npm start            # run compiled dist/index.js
 npm run typecheck    # tsc --noEmit — the primary static check (see lint note below)
-npm test             # vitest run (37 tests, no DB required)
+npm test             # vitest run (no DB required)
 npm test -- test/settlement.test.ts          # single file
 npm test -- -t "applies the authenticated tier"   # single test by name
 ```
 
-Before running, copy the config template: `cp config/facilitator.config.example.yaml config/facilitator.config.yaml`.
+Before running, select a config explicitly: `FACILITATOR_SERVICE_ENV=dev npm run dev`,
+`FACILITATOR_SERVICE_ENV=prod npm start`, or set `FACILITATOR_CONFIG_PATH`.
 
-**Lint:** `npm run lint` references eslint, but eslint is **not installed and not configured** — the script does not work. Use `npm run typecheck` as the static check. CI (`.github/workflows/ci.yml`, `lint-and-test` job) runs `npm ci` → `typecheck` → `test`.
+**Lint:** run `npm run lint` alongside `npm run typecheck`. CI (`.github/workflows/ci.yml`, `lint-and-test` job) runs `npm ci` → production dependency audit → lint → typecheck → test.
 
 ## Architecture
 
@@ -41,13 +42,13 @@ Key seams:
 
 - **Auth (`src/auth.ts`)** is **advisory, not a hard gate** — anonymous requests are allowed at the anonymous rate. A valid `X-API-KEY` selects the authenticated rate tier and scopes payment lookups to that seller. Keys are held in an in-memory cache refreshed periodically from the DB, checked in constant time.
 
-- **Config & secrets (`src/config.ts`)** — YAML (`config/facilitator.config.yaml`, override path via `FACILITATOR_CONFIG_PATH`). Secrets resolve **env first, then 1Password**: any `onepassword.*` value is a `vault/item/field` ref resolved when `OP_SERVICE_ACCOUNT_TOKEN` / `onepassword.token` is set. A network listed under `facilitator.networks` is enabled.
+- **Config & secrets (`src/config.ts`)** — `FACILITATOR_SERVICE_ENV=dev|prod` selects the matching baked-in YAML; `FACILITATOR_CONFIG_PATH` is an explicit override. Secrets resolve **env first, then 1Password**: any `onepassword.*` value is a `vault/item/field` ref resolved when `OP_SERVICE_ACCOUNT_TOKEN` / `onepassword.token` is set. A network listed under `facilitator.networks` is enabled.
 
 - **Database (`src/db/`, drizzle + `pg`)** — v2 owns a new `settlements` table (created on startup), keyed on the on-chain **authorization identity** `(network, scheme, asset, payer, nonce)`, with a partial-unique index enforcing one successful settlement per authorization. The shared `sellers` / `api_keys_plus` tables are reused unchanged. v1's `payment_records` is unused.
 
 ## Conventions & gotchas
 
-- Networks use **CAIP-2** ids (`tron:nile`, `tron:mainnet`, `bsc:testnet`, `eip155:*`). `isTron`/`isEvm` in `facilitator.ts` route by prefix.
+- Networks use supported canonical **CAIP-2** ids only (for example `tron:0xcd8690dc`, `tron:0x2b6653dc`, `eip155:97`, `eip155:84532`). Friendly aliases are rejected; `facilitator.ts` routes by the registered network family.
 - The `@bankofai/x402-*` packages (`x402-core`, `x402-evm`, `x402-tron`, `x402-extensions`) come from the npm registry. Pin to the tested version deliberately — bumping is a separate, deliberate upgrade (API drift risk). When the SDK's interface is awkward, surface the gap rather than silently `any`-adapting around it.
 - Fees were removed from the TRON schemes in SDK `1.0.1`; there is no `base_fee` config and no `/fee/quote` endpoint.
 - Stale Python artifacts (`src/**/__pycache__`, `tests/__pycache__`) are leftovers from v1 — ignore them; the live tests are TS files under `test/`.

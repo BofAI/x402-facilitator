@@ -71,8 +71,23 @@ export async function initSecrets(cfg: FacilitatorConfig): Promise<void> {
 }
 
 /** Stage 3: database pool. */
+export function redactDatabaseUrl(databaseUrl: string): string {
+  try {
+    const url = new URL(databaseUrl);
+    if (url.password) url.password = "***";
+    const sensitiveKeys = new Set(["password", "pass", "pwd", "token", "secret", "api_key", "apikey"]);
+    for (const [key] of url.searchParams) {
+      if (sensitiveKeys.has(key.toLowerCase())) url.searchParams.set(key, "***");
+    }
+    return url.toString();
+  } catch {
+    return "<invalid database URL>";
+  }
+}
+
 export async function initDb(cfg: FacilitatorConfig): Promise<void> {
   const databaseUrl = await getDatabaseUrl(cfg);
+  logger.info("Initializing database", { url: redactDatabaseUrl(databaseUrl) });
   await initDatabase({
     url: databaseUrl,
     poolSize: databaseMaxIdleConns(cfg),

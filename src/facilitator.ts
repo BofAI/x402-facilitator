@@ -32,11 +32,7 @@ import {
   buildTronAuthorizerSigner,
   buildEvmAuthorizerSigner,
 } from "./signer.js";
-import {
-  normalize,
-  familyOf,
-  type CanonicalNetwork,
-} from "./network.js";
+import { requireCanonicalNetwork, familyOf, type CanonicalNetwork } from "./network.js";
 import {
   type FacilitatorConfig,
   type Scheme,
@@ -186,21 +182,11 @@ export async function buildFacilitator(
   const networks = cfg.facilitator.networks ?? {};
   const evmGasSponsoringSigners: Record<string, GasSponsoringFacilitatorEvmSigner> = {};
 
-  const seen = new Set<CanonicalNetwork>();
   for (const network of enabledNetworks(cfg)) {
     const net = networks[network];
-    // Normalize once: any registered input (alias or canonical) resolves to the
-    // canonical CAIP-2. Unknown inputs throw here so misconfiguration fails at
-    // startup (P0-04).
-    const caip = normalize(network);
-    if (seen.has(caip)) {
-      // Reject alias+canonical of the same chain (and any duplicate) instead of
-      // registering twice (P1-10).
-      throw new Error(
-        `Duplicate network configuration: ${network} normalizes to ${caip}, which is already configured`,
-      );
-    }
-    seen.add(caip);
+    // Config uses canonical CAIP-2 identifiers directly; validation does not
+    // rewrite the value before handing it to the SDK.
+    const caip = requireCanonicalNetwork(network);
 
     const setup: NetworkSetup = {
       facilitator,
