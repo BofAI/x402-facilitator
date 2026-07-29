@@ -9,8 +9,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
+import { z } from "zod";
 import { getSecretFromOnePassword, isUsableToken, parseOpRef } from "./onepassword.js";
 import { logger, type Level } from "./logger.js";
+import { requireCanonicalNetwork } from "./network.js";
 
 /** Payment schemes a network can enable. `exact_gasfree` (TRON) rides with `exact`. */
 export type Scheme = "exact" | "upto" | "batch-settlement";
@@ -18,39 +20,77 @@ export type Scheme = "exact" | "upto" | "batch-settlement";
 /** Every payment scheme — the default registered for a network when `schemes` is omitted. */
 export const ALL_SCHEMES: readonly Scheme[] = ["exact", "upto", "batch-settlement"];
 
-export interface NetworkConfig {
-  /** Schemes to register for this network. Defaults to all schemes when omitted. */
-  schemes?: Scheme[];
-}
+const port = z.number().int().min(1).max(65_535);
+const nonNegativeInt = z.number().int().nonnegative();
+const positiveInt = z.number().int().positive();
+const schemeSchema = z.enum(["exact", "upto", "batch-settlement"]);
 
-export interface FacilitatorConfig {
-  server?: { host?: string; port?: number };
-  logging?: {
-    level?: "debug" | "info" | "warn" | "error";
-    /** Directory for the log file; combined with `filename`. File logging is off unless both are set. */
-    dir?: string;
-    /** Log file name (fixed; not timestamped). Written in append mode across restarts. */
-    filename?: string;
-  };
-  database: {
-    url: string;
-    ssl_mode?: string;
-    max_open_conns?: number;
-    max_idle_conns?: number;
-    max_life_time?: number;
-  };
-  onepassword?: Record<string, string | undefined> & { token?: string };
-  rate_limit?: {
-    api_key_refresh_interval?: number;
-    authenticated?: string;
-    anonymous?: string;
-  };
-  monitoring?: { port?: number; endpoint?: string };
-  facilitator: {
-    trongrid_api_key?: string;
-    networks: Record<string, NetworkConfig>;
-  };
-}
+const networkConfigSchema = z
+  .object({ schemes: z.array(schemeSchema).min(1).optional() })
+  .strict()
+  .superRefine((network, ctx) => {
+    if (network.schemes && new Set(network.schemes).size !== network.schemes.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["schemes"], message: "must not contain duplicates" });
+    }
+  });
+
+const facilitatorConfigSchema = z
+  .object({
+    server: z.object({ host: z.string().min(1).optional(), port: port.optional() }).strict().optional(),
+    logging: z
+      .object({
+        level: z
+          .string()
+          .transform((value) => value.toLowerCase())
+          .pipe(z.enum(["debug", "info", "warn", "error"]))
+          .optional(),
+        dir: z.string().min(1).optional(),
+        filename: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    database: z
+      .object({
+        url: z.string().min(1),
+        ssl_mode: z.enum(["disable", "require", "verify-ca", "verify-full"]).optional(),
+        max_open_conns: positiveInt.optional(),
+        max_idle_conns: nonNegativeInt.optional(),
+        max_life_time: positiveInt.optional(),
+      })
+      .strict(),
+    onepassword: z.record(z.string(), z.string().optional()).optional(),
+    rate_limit: z
+      .object({
+        api_key_refresh_interval: positiveInt.optional(),
+        authenticated: z.string().min(1).optional(),
+        anonymous: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    monitoring: z.object({ port: port.optional(), endpoint: z.string().startsWith("/").optional() }).strict().optional(),
+    facilitator: z
+      .object({
+        trongrid_api_key: z.string().min(1).optional(),
+        networks: z.record(z.string(), networkConfigSchema).refine((networks) => Object.keys(networks).length > 0, {
+          message: "must be a non-empty object",
+        }),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((cfg, ctx) => {
+    const { max_open_conns: open, max_idle_conns: idle } = cfg.database;
+    if (open !== undefined && idle !== undefined && idle > open) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["database", "max_idle_conns"],
+        message: "must not exceed database.max_open_conns",
+      });
+    }
+  });
+
+export type NetworkConfig = z.infer<typeof networkConfigSchema>;
+export type FacilitatorConfig = z.infer<typeof facilitatorConfigSchema>;
 
 /** Resolve the runtime config path from an explicit path or service environment. */
 export function configPath(): string {
@@ -61,7 +101,9 @@ export function configPath(): string {
   switch (process.env.FACILITATOR_SERVICE_ENV) {
     case undefined:
     case "":
-      return resolve(process.cwd(), "config/facilitator.config.yaml");
+      throw new Error(
+        "Configuration source is required. Set FACILITATOR_SERVICE_ENV=dev|prod or FACILITATOR_CONFIG_PATH=/path/to/config.yaml",
+      );
     case "dev":
       return resolve(process.cwd(), "config/facilitator.config.dev.yaml");
     case "prod":
@@ -75,27 +117,27 @@ export function configPath(): string {
  * Load, parse and validate the facilitator YAML config from disk.
  *
  * @param path - Optional explicit path; otherwise uses FACILITATOR_CONFIG_PATH,
- * FACILITATOR_SERVICE_ENV, or config/facilitator.config.yaml.
+ * FACILITATOR_SERVICE_ENV or FACILITATOR_CONFIG_PATH.
  * @returns The parsed configuration object.
  */
 export function loadConfig(path: string = configPath()): FacilitatorConfig {
   const raw = readFileSync(path, "utf8");
-  const cfg = (parse(raw) as FacilitatorConfig) ?? ({} as FacilitatorConfig);
-  validateRequired(cfg);
+  const parsed = facilitatorConfigSchema.safeParse(parse(raw));
+  if (!parsed.success) {
+    const errors = parsed.error.issues
+      .map((issue) => `${issue.path.join(".") || "config"}: ${issue.message}`)
+      .join("; ");
+    throw new Error(`Configuration validation failed. ${errors}`);
+  }
+  const cfg = parsed.data;
+  for (const network of Object.keys(cfg.facilitator.networks)) {
+    try {
+      requireCanonicalNetwork(network);
+    } catch (err) {
+      throw new Error(`Configuration validation failed. facilitator.networks.${network}: ${String(err)}`);
+    }
+  }
   return cfg;
-}
-
-/** Force a startup failure when critical config is missing (mirrors v1 _validate_required). */
-function validateRequired(cfg: FacilitatorConfig): void {
-  const errors: string[] = [];
-  if (!cfg.database?.url) errors.push("database.url is required and must be non-empty");
-  const networks = cfg.facilitator?.networks;
-  if (!networks || typeof networks !== "object" || Object.keys(networks).length === 0) {
-    errors.push("facilitator.networks is required and must be a non-empty object");
-  }
-  if (errors.length) {
-    throw new Error("Configuration validation failed. " + errors.join(" "));
-  }
 }
 
 /** List of enabled CAIP network ids from config (listed = enabled). */
@@ -146,16 +188,6 @@ export async function injectAgentWalletPasswordEnv(cfg: FacilitatorConfig): Prom
   }
 }
 
-/** Database username from 1Password. */
-async function getDatabaseUser(cfg: FacilitatorConfig): Promise<string | undefined> {
-  return resolveOpField(cfg, "database_user");
-}
-
-/** Database password from 1Password. */
-async function getDatabasePassword(cfg: FacilitatorConfig): Promise<string | undefined> {
-  return resolveOpField(cfg, "database_password");
-}
-
 /** Inject resolved database credentials into a connection URL. */
 export function databaseUrlWithCredentials(
   rawUrl: string,
@@ -173,9 +205,57 @@ export function databaseUrlWithCredentials(
 export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
   const rawUrl = cfg.database?.url;
   if (!rawUrl) throw new Error("database.url is required");
-  const user = await getDatabaseUser(cfg);
-  const password = await getDatabasePassword(cfg);
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error("database.url must be a valid connection URL before resolving credentials");
+  }
+
+  const urlHasUser = Boolean(url.username);
+  const urlHasPassword = Boolean(url.password);
+  const userRef = cfg.onepassword?.database_user;
+  const passwordRef = cfg.onepassword?.database_password;
+  if (urlHasUser && urlHasPassword) return rawUrl;
+  if (urlHasUser || urlHasPassword) {
+    if (userRef || passwordRef) {
+      throw new Error(
+        "database.url userinfo cannot be combined with onepassword database credential references",
+      );
+    }
+    return rawUrl;
+  }
+  if (!userRef && !passwordRef) return rawUrl;
+  if (!userRef || !passwordRef) {
+    throw new Error(
+      "onepassword.database_user and onepassword.database_password must be configured together when database.url has no credentials",
+    );
+  }
+
+  const user = await resolveRequiredDatabaseSecret(cfg, "database_user", userRef);
+  const password = await resolveRequiredDatabaseSecret(cfg, "database_password", passwordRef);
   return databaseUrlWithCredentials(rawUrl, user, password);
+}
+
+/** Resolve a database credential reference, failing before a pool is created. */
+async function resolveRequiredDatabaseSecret(
+  cfg: FacilitatorConfig,
+  key: "database_user" | "database_password",
+  value: string,
+): Promise<string> {
+  const ref = parseOpRef(value);
+  if (!ref) throw new Error(`onepassword.${key} must be a vault/item/field reference`);
+  const token = opToken(cfg);
+  if (!isUsableToken(token)) {
+    throw new Error(`onepassword.${key} requires a valid OP_SERVICE_ACCOUNT_TOKEN or onepassword.token`);
+  }
+  try {
+    const secret = await getSecretFromOnePassword(ref, token);
+    if (!secret) throw new Error("resolved to an empty value");
+    return secret;
+  } catch (err) {
+    throw new Error(`Unable to resolve onepassword.${key}: ${err instanceof Error ? err.message : "provider error"}`);
+  }
 }
 
 /** GasFree Open API credentials for a network. Env per-suffix/global first, then 1Password. */

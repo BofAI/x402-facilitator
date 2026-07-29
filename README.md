@@ -32,9 +32,8 @@ A TypeScript/Node service. The earlier Python/FastAPI implementation is kept und
 ### Install and run
 
 ```bash
-npm install
-cp config/facilitator.config.example.yaml config/facilitator.config.yaml
-npm run dev          # tsx watch; or: npm run build && npm start
+npm ci
+FACILITATOR_SERVICE_ENV=dev npm run dev
 ```
 
 Default listen address: `http://0.0.0.0:8001`.
@@ -51,11 +50,10 @@ Default listen address: `http://0.0.0.0:8001`.
 
 ## Configuration
 
-YAML config (`config/facilitator.config.yaml`; template:
-[`config/facilitator.config.example.yaml`](config/facilitator.config.example.yaml)).
-Set `FACILITATOR_SERVICE_ENV=dev` or `FACILITATOR_SERVICE_ENV=prod` to select the
-matching baked-in environment config. `FACILITATOR_CONFIG_PATH` remains an explicit
-path override and takes precedence.
+Choose a YAML configuration source explicitly. Set `FACILITATOR_SERVICE_ENV=dev` or
+`FACILITATOR_SERVICE_ENV=prod` to select the matching baked-in environment config, or
+set `FACILITATOR_CONFIG_PATH` to an explicit YAML file; the explicit path takes
+precedence. The process fails before startup when neither is set.
 
 Required: `database.url`, `facilitator.networks` (≥1 network, listed = enabled).
 

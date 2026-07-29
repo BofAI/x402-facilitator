@@ -75,6 +75,10 @@ export function redactDatabaseUrl(databaseUrl: string): string {
   try {
     const url = new URL(databaseUrl);
     if (url.password) url.password = "***";
+    const sensitiveKeys = new Set(["password", "pass", "pwd", "token", "secret", "api_key", "apikey"]);
+    for (const [key] of url.searchParams) {
+      if (sensitiveKeys.has(key.toLowerCase())) url.searchParams.set(key, "***");
+    }
     return url.toString();
   } catch {
     return "<invalid database URL>";

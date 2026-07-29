@@ -15,14 +15,15 @@ npm run dev          # tsx watch (reload on change)
 npm run build        # tsc -> dist/
 npm start            # run compiled dist/index.js
 npm run typecheck    # tsc --noEmit — the primary static check (see lint note below)
-npm test             # vitest run (37 tests, no DB required)
+npm test             # vitest run (no DB required)
 npm test -- test/settlement.test.ts          # single file
 npm test -- -t "applies the authenticated tier"   # single test by name
 ```
 
-Before running, copy the config template: `cp config/facilitator.config.example.yaml config/facilitator.config.yaml`.
+Before running, select a config explicitly: `FACILITATOR_SERVICE_ENV=dev npm run dev`,
+`FACILITATOR_SERVICE_ENV=prod npm start`, or set `FACILITATOR_CONFIG_PATH`.
 
-**Lint:** `npm run lint` references eslint, but eslint is **not installed and not configured** — the script does not work. Use `npm run typecheck` as the static check. CI (`.github/workflows/ci.yml`, `lint-and-test` job) runs `npm ci` → `typecheck` → `test`.
+**Lint:** run `npm run lint` alongside `npm run typecheck`. CI (`.github/workflows/ci.yml`, `lint-and-test` job) runs `npm ci` → production dependency audit → lint → typecheck → test.
 
 ## Architecture
 
