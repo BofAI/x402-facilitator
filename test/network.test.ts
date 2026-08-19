@@ -1,7 +1,7 @@
 /**
  * Canonical CAIP-2 network registry.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   requireCanonicalNetwork,
   familyOf,
@@ -9,8 +9,6 @@ import {
   receiptRpcFor,
   chainIdOf,
 } from "../src/network.js";
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe("network registry", () => {
   it.each([
@@ -55,15 +53,6 @@ describe("network registry rpc + chainId", () => {
     expect(rpcFor(requireCanonicalNetwork("eip155:8453"))).toBe("https://mainnet.base.org");
     expect(receiptRpcFor(requireCanonicalNetwork("eip155:8453"))).toBeUndefined();
     expect(rpcFor(requireCanonicalNetwork("tron:0xcd8690dc"))).toBe("https://nile.trongrid.io");
-  });
-
-  it("allows BSC mainnet primary and receipt RPC environment overrides", () => {
-    vi.stubEnv("BSC_MAINNET_RPC_URL", "https://primary.example");
-    vi.stubEnv("BSC_MAINNET_RECEIPT_RPC_URL", "https://receipt.example");
-    const network = requireCanonicalNetwork("eip155:56");
-
-    expect(rpcFor(network)).toBe("https://primary.example");
-    expect(receiptRpcFor(network)).toBe("https://receipt.example");
   });
 
   it("returns chainId for EVM and undefined for TRON", () => {

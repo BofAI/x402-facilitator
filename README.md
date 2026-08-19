@@ -67,8 +67,6 @@ is set). Relevant env vars:
 | `FACILITATOR_CONFIG_PATH` | Explicit config path; overrides `FACILITATOR_SERVICE_ENV` |
 | `AGENT_WALLET_PASSWORD` | Unlock the agent-wallet provider |
 | `TRON_GRID_API_KEY` | TronGrid rate limits (shared across TRON networks) |
-| `BSC_MAINNET_RPC_URL` | Optional BSC primary RPC override; default is `https://bsc-dataseed.bnbchain.org` |
-| `BSC_MAINNET_RECEIPT_RPC_URL` | Optional BSC receipt fallback override; default is `https://bsc-dataseed-public.bnbchain.org` |
 | `GASFREE_API_KEY[_NILE\|_MAINNET]` / `GASFREE_API_SECRET[...]` | GasFree relayer creds (gate `exact_gasfree`) |
 | `UPSTREAM_NILE_BASE` / `UPSTREAM_MAINNET_BASE` | Override GasFree upstream bases |
 | `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service-account token |
