@@ -1,8 +1,16 @@
 /**
  * Canonical CAIP-2 network registry.
  */
-import { describe, expect, it } from "vitest";
-import { requireCanonicalNetwork, familyOf, rpcFor, chainIdOf } from "../src/network.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  requireCanonicalNetwork,
+  familyOf,
+  rpcFor,
+  receiptRpcFor,
+  chainIdOf,
+} from "../src/network.js";
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("network registry", () => {
   it.each([
@@ -40,8 +48,22 @@ describe("network registry family lookup", () => {
 describe("network registry rpc + chainId", () => {
   it("returns RPC endpoints", () => {
     expect(rpcFor(requireCanonicalNetwork("eip155:97"))).toBe("https://bsc-testnet-rpc.publicnode.com");
+    expect(rpcFor(requireCanonicalNetwork("eip155:56"))).toBe("https://bsc-dataseed.bnbchain.org");
+    expect(receiptRpcFor(requireCanonicalNetwork("eip155:56"))).toBe(
+      "https://bsc-dataseed-public.bnbchain.org",
+    );
     expect(rpcFor(requireCanonicalNetwork("eip155:8453"))).toBe("https://mainnet.base.org");
+    expect(receiptRpcFor(requireCanonicalNetwork("eip155:8453"))).toBeUndefined();
     expect(rpcFor(requireCanonicalNetwork("tron:0xcd8690dc"))).toBe("https://nile.trongrid.io");
+  });
+
+  it("allows BSC mainnet primary and receipt RPC environment overrides", () => {
+    vi.stubEnv("BSC_MAINNET_RPC_URL", "https://primary.example");
+    vi.stubEnv("BSC_MAINNET_RECEIPT_RPC_URL", "https://receipt.example");
+    const network = requireCanonicalNetwork("eip155:56");
+
+    expect(rpcFor(network)).toBe("https://primary.example");
+    expect(receiptRpcFor(network)).toBe("https://receipt.example");
   });
 
   it("returns chainId for EVM and undefined for TRON", () => {

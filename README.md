@@ -67,12 +67,18 @@ is set). Relevant env vars:
 | `FACILITATOR_CONFIG_PATH` | Explicit config path; overrides `FACILITATOR_SERVICE_ENV` |
 | `AGENT_WALLET_PASSWORD` | Unlock the agent-wallet provider |
 | `TRON_GRID_API_KEY` | TronGrid rate limits (shared across TRON networks) |
+| `BSC_MAINNET_RPC_URL` | Optional BSC primary RPC override; default is `https://bsc-dataseed.bnbchain.org` |
+| `BSC_MAINNET_RECEIPT_RPC_URL` | Optional BSC receipt fallback override; default is `https://bsc-dataseed-public.bnbchain.org` |
 | `GASFREE_API_KEY[_NILE\|_MAINNET]` / `GASFREE_API_SECRET[...]` | GasFree relayer creds (gate `exact_gasfree`) |
 | `UPSTREAM_NILE_BASE` / `UPSTREAM_MAINNET_BASE` | Override GasFree upstream bases |
 | `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service-account token |
 | `RATE_LIMIT_STORE` | `memory` (default) or `redis` for shared counters across replicas |
 | `RATE_LIMIT_REDIS_URL` / `REDIS_URL` | Redis connection URL (required when `RATE_LIMIT_STORE=redis`; needs the optional `ioredis` dep) |
 | `TRUST_PROXY_FOR_RATELIMIT` | `true` to key anonymous limits on `X-Forwarded-For` (set **only** when the direct peer is a trusted proxy; the rightmost XFF entry is used, so append-style proxies like nginx `$proxy_add_x_forwarded_for` are safe. Default off keys on the socket peer) |
+
+BSC transaction creation and broadcast use the primary RPC. Receipt confirmation waits up
+to 15 seconds on the primary, then up to 45 seconds on the independent fallback for the
+same transaction hash; it never rebroadcasts the transaction.
 
 > Fees were removed from the TRON facilitator schemes in SDK `1.0.1` — the `exact`/`upto` proxies transfer exactly `amount` and the GasFree relayer handles its own fee terms. There is no `base_fee` config and no `/fee/quote` endpoint.
 

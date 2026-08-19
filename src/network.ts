@@ -21,6 +21,12 @@ interface NetworkEntry {
   canonical: CanonicalNetwork;
   family: NetworkFamily;
   rpc: string;
+  /** Optional environment override for the primary RPC. */
+  rpcEnv?: string;
+  /** Independent endpoint used only to confirm EVM transaction receipts. */
+  receiptRpc?: string;
+  /** Optional environment override for the receipt fallback RPC. */
+  receiptRpcEnv?: string;
   /** Numeric chain id for EVM; undefined for TRON. */
   chainId?: number;
 }
@@ -54,7 +60,10 @@ const REGISTRY: readonly NetworkEntry[] = [
   {
     canonical: "eip155:56" as CanonicalNetwork,
     family: "evm",
-    rpc: "https://bsc-rpc.publicnode.com",
+    rpc: "https://bsc-dataseed.bnbchain.org",
+    rpcEnv: "BSC_MAINNET_RPC_URL",
+    receiptRpc: "https://bsc-dataseed-public.bnbchain.org",
+    receiptRpcEnv: "BSC_MAINNET_RECEIPT_RPC_URL",
     chainId: 56,
   },
   {
@@ -98,7 +107,18 @@ export function familyOf(canonical: CanonicalNetwork): NetworkFamily {
 export function rpcFor(canonical: CanonicalNetwork): string {
   const entry = BY_CAIP.get(canonical);
   if (!entry) throw new Error(`Unsupported or unknown network: ${canonical}`);
-  return entry.rpc;
+  const override = entry.rpcEnv ? process.env[entry.rpcEnv]?.trim() : undefined;
+  return override || entry.rpc;
+}
+
+/** Optional independent RPC used only when the primary receipt query fails. */
+export function receiptRpcFor(canonical: CanonicalNetwork): string | undefined {
+  const entry = BY_CAIP.get(canonical);
+  if (!entry) throw new Error(`Unsupported or unknown network: ${canonical}`);
+  const override = entry.receiptRpcEnv
+    ? process.env[entry.receiptRpcEnv]?.trim()
+    : undefined;
+  return override || entry.receiptRpc;
 }
 
 /** Numeric chain id for an EVM canonical network (undefined for TRON). */

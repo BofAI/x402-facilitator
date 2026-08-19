@@ -20,9 +20,11 @@ import {
 } from "@bankofai/x402-tron";
 import {
   rpcFor,
+  receiptRpcFor,
   chainIdOf,
   type CanonicalNetwork,
 } from "./network.js";
+import { createReceiptWaiter, withReceiptFallback } from "./evm-receipt.js";
 import {
   createFacilitatorEvmSigner,
   createAuthorizerEvmSigner,
@@ -86,9 +88,19 @@ export async function buildEvmFacilitatorSigner(
   // resolves chain metadata from its KNOWN_CHAINS table (BSC 56/97 included),
   // using the registry RPC endpoint for the transport. The wallet signs the built tx — no raw key
   // in the SDK — and the gas-sponsoring `sendTransactions` capability rides along.
-  return createFacilitatorEvmSigner(wallet, {
+  const primaryRpcUrl = rpcFor(canonical);
+  const signer = await createFacilitatorEvmSigner(wallet, {
     network: `eip155:${chainId}`,
-    rpcUrl: rpcFor(canonical),
+    rpcUrl: primaryRpcUrl,
+  });
+
+  const fallbackRpcUrl = receiptRpcFor(canonical);
+  if (!fallbackRpcUrl || fallbackRpcUrl === primaryRpcUrl) return signer;
+
+  return withReceiptFallback(signer, {
+    network: canonical,
+    primary: createReceiptWaiter(chainId, primaryRpcUrl, 15_000),
+    fallback: createReceiptWaiter(chainId, fallbackRpcUrl, 45_000),
   });
 }
 
