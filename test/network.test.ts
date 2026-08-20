@@ -2,7 +2,13 @@
  * Canonical CAIP-2 network registry.
  */
 import { describe, expect, it } from "vitest";
-import { requireCanonicalNetwork, familyOf, rpcFor, chainIdOf } from "../src/network.js";
+import {
+  requireCanonicalNetwork,
+  familyOf,
+  rpcFor,
+  receiptRpcFor,
+  chainIdOf,
+} from "../src/network.js";
 
 describe("network registry", () => {
   it.each([
@@ -40,7 +46,12 @@ describe("network registry family lookup", () => {
 describe("network registry rpc + chainId", () => {
   it("returns RPC endpoints", () => {
     expect(rpcFor(requireCanonicalNetwork("eip155:97"))).toBe("https://bsc-testnet-rpc.publicnode.com");
+    expect(rpcFor(requireCanonicalNetwork("eip155:56"))).toBe("https://bsc-dataseed.bnbchain.org");
+    expect(receiptRpcFor(requireCanonicalNetwork("eip155:56"))).toBe(
+      "https://bsc-dataseed-public.bnbchain.org",
+    );
     expect(rpcFor(requireCanonicalNetwork("eip155:8453"))).toBe("https://mainnet.base.org");
+    expect(receiptRpcFor(requireCanonicalNetwork("eip155:8453"))).toBeUndefined();
     expect(rpcFor(requireCanonicalNetwork("tron:0xcd8690dc"))).toBe("https://nile.trongrid.io");
   });
 
