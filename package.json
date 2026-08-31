@@ -1,6 +1,6 @@
 {
   "name": "x402-facilitator",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "x402 Facilitator service (TypeScript, @bankofai/x402-* ecosystem)",
   "type": "module",
   "private": true,

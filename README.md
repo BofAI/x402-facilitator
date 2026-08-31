@@ -48,6 +48,17 @@ Default listen address: `http://0.0.0.0:8001`.
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Unit tests (vitest) |
 
+## Development and releases
+
+The repository uses `develop` for normal integration and `main` for stable,
+deployable releases. Create ordinary work from `develop` and open
+`feature/*` pull requests back to `develop`. Service versions and release
+tags are prepared only on release or hotfix branches.
+
+- [Contributing guide](./CONTRIBUTING.md)
+- [Branching and Docker release workflow](./BRANCHING.md)
+- [Changelog](./CHANGELOG.md)
+
 ## Configuration
 
 Choose a YAML configuration source explicitly. Set `FACILITATOR_SERVICE_ENV=dev` or
