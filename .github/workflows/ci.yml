@@ -2,7 +2,12 @@ name: CI
 
 on:
   push:
+    branches: [develop, main]
+    tags:
+      - "v*"
+      - "test-v*"
   pull_request:
+    branches: [develop, main]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -25,6 +30,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify release tag matches package version
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#test-v}"
+          TAG_VERSION="${TAG_VERSION#v}"
+
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Tag version $TAG_VERSION does not match package version $PACKAGE_VERSION"
+            exit 1
+          fi
+
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
@@ -36,6 +54,9 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Build
+        run: npm run build
 
   build-and-push:
     needs: lint-and-test

@@ -23,7 +23,17 @@ npm test -- -t "applies the authenticated tier"   # single test by name
 Before running, select a config explicitly: `FACILITATOR_SERVICE_ENV=dev npm run dev`,
 `FACILITATOR_SERVICE_ENV=prod npm start`, or set `FACILITATOR_CONFIG_PATH`.
 
-**Lint:** run `npm run lint` alongside `npm run typecheck`. CI (`.github/workflows/ci.yml`, `lint-and-test` job) runs `npm ci` → production dependency audit → lint → typecheck → test.
+**Lint:** run `npm run lint` alongside `npm run typecheck`. CI
+(`.github/workflows/ci.yml`, `lint-and-test` job) runs `npm ci` →
+production dependency audit → lint → typecheck → test → build.
+
+## Contribution workflow
+
+Create normal work as `feature/*` from `develop` and open the pull request
+back to `develop`. Do not change `package.json` or `package-lock.json`
+versions in ordinary feature work. Release and hotfix preparation follows
+[`BRANCHING.md`](BRANCHING.md), including Docker tag handling and the
+required back-merge.
 
 ## Architecture
 
