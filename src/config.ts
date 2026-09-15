@@ -13,6 +13,7 @@ import { z } from "zod";
 import { getSecretFromOnePassword, isUsableToken, parseOpRef } from "./onepassword.js";
 import { logger, type Level } from "./logger.js";
 import { requireCanonicalNetwork } from "./network.js";
+import { sponsoringConfigSchema } from "./sponsoring/config.js";
 
 /** Payment schemes a network can enable. `exact_gasfree` (TRON) rides with `exact`. */
 export type Scheme = "exact" | "upto" | "batch-settlement";
@@ -36,6 +37,7 @@ const networkConfigSchema = z
 
 const facilitatorConfigSchema = z
   .object({
+    resource_sponsoring: sponsoringConfigSchema.optional(),
     server: z.object({ host: z.string().min(1).optional(), port: port.optional() }).strict().optional(),
     logging: z
       .object({
@@ -137,6 +139,10 @@ export function loadConfig(path: string = configPath()): FacilitatorConfig {
       throw new Error(`Configuration validation failed. facilitator.networks.${network}: ${String(err)}`);
     }
   }
+  const canonicalNetworks = Object.keys(cfg.facilitator.networks).map(requireCanonicalNetwork);
+  if (new Set(canonicalNetworks).size !== canonicalNetworks.length) throw new Error("Duplicate canonical network configuration");
+  if (cfg.resource_sponsoring && !canonicalNetworks.includes(requireCanonicalNetwork(cfg.resource_sponsoring.network)))
+    throw new Error("resource_sponsoring.network must be enabled in facilitator.networks");
   return cfg;
 }
 

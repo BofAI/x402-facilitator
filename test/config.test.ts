@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
@@ -36,11 +36,25 @@ describe("loadConfig", () => {
     expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97"]);
   });
 
-  it("loads built-in configs with uppercase logging levels", () => {
-    for (const environment of ["dev", "prod"]) {
-      const cfg = loadConfig(resolve(process.cwd(), `config/facilitator.config.${environment}.yaml`));
-      expect(cfg.logging?.level).toBe("info");
-    }
+  it("loads the built-in production config with an uppercase logging level", () => {
+    const cfg = loadConfig(resolve(process.cwd(), "config/facilitator.config.prod.yaml"));
+    expect(cfg.logging?.level).toBe("info");
+  });
+
+  it("requires operator addresses before loading the dev PG sponsoring deployment", () => {
+    const path = resolve(process.cwd(), "config/facilitator.config.dev.yaml");
+    expect(() => loadConfig(path)).toThrow(/resource_sponsoring\.owner: invalid TRON address/);
+    const provisioned = readFileSync(path, "utf8")
+      .replace("REPLACE_WITH_DEV_RESOURCE_OWNER", "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9")
+      .replace("REPLACE_WITH_DEV_PAYMENT_RECIPIENT", "TFmohhTQMoD4nuZnD7H7hqZ8HUZa924vFF");
+    const cfg = loadConfig(writeConfig(provisioned));
+    expect(cfg.logging?.level).toBe("info");
+    expect(cfg.resource_sponsoring?.storage).toEqual({ type: "postgres" });
+    expect(cfg.resource_sponsoring?.network).toBe("tron:3448148188");
+    expect(cfg.resource_sponsoring?.wallet_id).toBe("resource-active");
+    expect(cfg.resource_sponsoring?.wallet_dir).toBeUndefined();
+    expect(cfg.database.url).toContain("/x402_facilitator");
+    expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97", "eip155:84532"]);
   });
 
   it("throws when database.url is missing", () => {

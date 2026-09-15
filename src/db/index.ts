@@ -92,8 +92,8 @@ export async function initDatabase(opts: DbInitOptions): Promise<void> {
     connectionTimeoutMillis: 10_000,
     ssl: sslFor(opts.sslMode),
   });
-  db = drizzle(pool);
   await pool.query(CREATE_TABLES_SQL);
+  db = drizzle(pool);
   logger.info("Database initialized");
 }
 
@@ -109,6 +109,12 @@ export async function disposeDatabase(): Promise<void> {
 function getDb(): NodePgDatabase {
   if (!db) throw new Error("Database not initialized. Call initDatabase first.");
   return db;
+}
+
+/** Borrow the initialized pool. Its lifecycle remains owned by this module. */
+export function getDatabasePool(): Pool {
+  if (!pool || !db) throw new Error("Database not initialized. Call initDatabase first.");
+  return pool;
 }
 
 /** Active API keys with their seller id (for the in-memory auth + seller cache). */

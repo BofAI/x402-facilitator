@@ -5,7 +5,7 @@
   "type": "module",
   "private": true,
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -13,16 +13,17 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:postgres": "SPONSORING_REQUIRE_POSTGRES=1 vitest run test/sponsoring-postgres.test.ts test/sponsoring-service-postgres.test.ts",
     "test:watch": "vitest",
     "lint": "eslint ."
   },
   "dependencies": {
     "@1password/sdk": "^0.3.1",
-    "@bankofai/agent-wallet": "^2.3.0",
-    "@bankofai/x402-core": "^1.0.1",
-    "@bankofai/x402-evm": "^1.0.1",
-    "@bankofai/x402-extensions": "^1.0.1",
-    "@bankofai/x402-tron": "^1.0.1",
+    "@bankofai/agent-wallet": "3.0.0",
+    "@bankofai/x402-core": "1.1.1-beta.1",
+    "@bankofai/x402-evm": "1.1.0",
+    "@bankofai/x402-extensions": "1.2.0",
+    "@bankofai/x402-tron": "2.0.0-beta.1",
     "@hono/node-server": "^2.0.12",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
@@ -41,9 +42,10 @@
     "tsx": "^4.21.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.64.0",
-    "vitest": "^3.0.5"
+    "vitest": "^4.1.11"
   },
   "overrides": {
+    "@bankofai/x402-core": "$@bankofai/x402-core",
     "ws": "^8.21.1",
     "esbuild": "^0.28.1"
   },

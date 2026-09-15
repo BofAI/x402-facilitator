@@ -1,6 +1,9 @@
 # Local runtime config for the development environment.
 # Start with:
 #   FACILITATOR_SERVICE_ENV=dev npm run dev
+# Before deploying, replace the two REPLACE_WITH_* addresses below and provision
+# the Owner permission/resources. Unfilled addresses intentionally fail startup.
+# Provision Agent Wallet on the server and mount its directory into the container.
 
 database:
   # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form; credentials
@@ -15,6 +18,7 @@ onepassword:
   trongrid_api_key: "x402-facilitator_dev/trongrid/trongrid_api_key"
   gasfree_api_key_nile: "x402-facilitator_dev/gasfree/gasfree_api_key_nile"
   gasfree_api_secret_nile: "x402-facilitator_dev/gasfree/gasfree_api_secret_nile"
+  # Legacy compatibility only; this does not unlock an Agent Wallet v3 provider.
   agent_wallet_password: "x402-facilitator_dev/wallet/agent_wallet_password"
 
 server:
@@ -46,3 +50,34 @@ facilitator:
     # Base Sepolia testnet
     eip155:84532:
       schemes: ["exact", "upto", "batch-settlement"]
+
+# Nile Approval sponsoring, sharing the application's PostgreSQL connection.
+# Never attach an Owner with outstanding debt in another DB/schema to this DB.
+resource_sponsoring:
+  network: "tron:3448148188"
+  storage:
+    type: postgres
+
+  # OP: set the development deployment's Owner, NOT a local acceptance-test Owner.
+  # Keep the Owner master key off the server. Owner, signer and settlement must differ.
+  owner: "REPLACE_WITH_DEV_RESOURCE_OWNER"
+  wallet_id: "resource-active"
+  # wallet_dir is omitted: use AGENT_WALLET_DIR, otherwise ~/.agent-wallet.
+  # Provision resource-active alongside settlement, but keep settlement active.
+  # For a separate mounted directory, uncomment and adapt this container path:
+  # wallet_dir: /run/resource-wallet
+  # OP: match the actual on-chain Active permission ID (only delegate/undelegate).
+  permission_id: 2
+
+  # Nile USDT. OP: configure the permitted payment recipient(s), not the signer.
+  assets: ["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]
+  pay_to: ["REPLACE_WITH_DEV_PAYMENT_RECIPIENT"]
+
+  # OP: review against actual stake and concurrency before the first deployment.
+  # These are service limits, NOT automatic staking or guaranteed chain capacity.
+  # Stake/budget amounts are SUN; 1 TRX = 1,000,000 SUN.
+  energy_stake_sun: "10000000000"
+  bandwidth_stake_sun: "20000000000"
+  budget_sun: "500000000"
+  # Management bandwidth units reserved for delegate/undelegate actions.
+  management_bandwidth: "20000"

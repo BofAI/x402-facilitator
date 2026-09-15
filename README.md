@@ -12,8 +12,8 @@ A TypeScript/Node service. The earlier Python/FastAPI implementation is kept und
 - `verify` / `settle` / `supported` endpoints backed by `@bankofai/x402-core`.
 - TRON `exact` (EIP-3009 / Permit2) + `exact_gasfree`; EVM (BSC) `exact`.
 - `upto` (Permit2 up-to-max settlement, TRON + EVM) and `batch-settlement` (channel deposit/voucher/claim/settle/refund, TRON + EVM).
-- **Non-custodial signing** — settlement keys never enter this process; wallets are
-  resolved through `@bankofai/agent-wallet` and only signing crosses the boundary.
+- Wallet signing through `@bankofai/agent-wallet`: external providers keep keys
+  outside this process; `raw_secret` loads keys locally.
 - Settlement persistence keyed on the on-chain authorization identity, with
   seller-scoped query APIs.
 - API-key auth, dynamic rate limiting, Prometheus metrics.
@@ -26,7 +26,7 @@ A TypeScript/Node service. The earlier Python/FastAPI implementation is kept und
 
 - Node 22+
 - PostgreSQL
-- A wallet provider resolvable by `@bankofai/agent-wallet` (unlocked via `AGENT_WALLET_PASSWORD`)
+- A configured agent-wallet v3 provider (`raw_secret`, `privy`, or `wallet_cli`)
 - Optional: 1Password service-account token (`OP_SERVICE_ACCOUNT_TOKEN`)
 
 ### Install and run
@@ -47,6 +47,7 @@ Default listen address: `http://0.0.0.0:8001`.
 | `npm start` | Run the compiled server (`dist/index.js`) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Unit tests (vitest) |
+| `npm run test:postgres` | Real PostgreSQL tests; requires a disposable local `SPONSORING_TEST_DATABASE_URL` |
 
 ## Development and releases
 
@@ -68,6 +69,12 @@ precedence. The process fails before startup when neither is set.
 
 Required: `database.url`, `facilitator.networks` (≥1 network, listed = enabled).
 
+Optional Nile/Shasta Approval resource sponsoring supports SQLite or shared PostgreSQL
+storage. Dev requires operator-provisioned Owner/recipient addresses and a
+restricted `resource-active` wallet; prod leaves TRC-20 sponsorship disabled.
+SQLite still requires business PostgreSQL. Shared Owners must use the same PG
+ledger and configuration; do not switch ledgers while recovery debt remains.
+
 Secrets resolve **env first, then 1Password** (each `onepassword.*` value is a
 `vault/item/field` ref, used when `OP_SERVICE_ACCOUNT_TOKEN` / `onepassword.token`
 is set). Relevant env vars:
@@ -76,7 +83,7 @@ is set). Relevant env vars:
 |---|---|
 | `FACILITATOR_SERVICE_ENV` | `dev` or `prod`; selects the matching baked-in config file |
 | `FACILITATOR_CONFIG_PATH` | Explicit config path; overrides `FACILITATOR_SERVICE_ENV` |
-| `AGENT_WALLET_PASSWORD` | Unlock the agent-wallet provider |
+| `AGENT_WALLET_PASSWORD` | Legacy compatibility hook; v3 removed `local_secure`; not a wallet-cli keystore password |
 | `TRON_GRID_API_KEY` | TronGrid rate limits (shared across TRON networks) |
 | `GASFREE_API_KEY[_NILE\|_MAINNET]` / `GASFREE_API_SECRET[...]` | GasFree relayer creds (gate `exact_gasfree`) |
 | `UPSTREAM_NILE_BASE` / `UPSTREAM_MAINNET_BASE` | Override GasFree upstream bases |
@@ -133,9 +140,11 @@ docker run -p 8001:8001 -p 9001:9001 \
 ```
 
 The container runs as non-root (uid/gid 1000); make sure the host `logs/`
-directory is writable by that uid before bind-mounting it. The agent-wallet
-password is resolved from `OP_SERVICE_ACCOUNT_TOKEN` (1Password) when set;
-otherwise pass it directly via `AGENT_WALLET_PASSWORD`. Port `9001` is only
+directory is writable by that uid before bind-mounting it. Configure the selected
+v3 wallet provider and mount its required configuration; `wallet_cli` needs its
+optional peer dependency and its own keystore password. The retained 1Password /
+`AGENT_WALLET_PASSWORD` hook does not unlock a v3 provider automatically.
+Port `9001` is only
 needed when `monitoring.port` differs from `server.port`.
 
 Both `config/facilitator.config.dev.yaml` and
@@ -149,6 +158,14 @@ it is never stored in the image or either YAML file.
 
 ## Status
 
-Feature-complete and unit-tested; **not yet validated against live chains** (real
-verify+settle on `tron:0xcd8690dc` / `eip155:97` and GasFree end-to-end are pending), and
-without integration tests yet.
+With the currently pinned published npm SDK, Nile ordinary payments and
+PostgreSQL-sponsored payments have passed live-chain validation, including
+Approval, delegation and withdrawal. SQLite container startup and automated
+tests passed, but fresh SQLite-sponsored live payment validation remains pending
+available test resource capacity. Earlier SQLite live results used a different
+dependency artifact and do not validate the current SDK. Transaction summaries
+and remaining acceptance checks are recorded in the pull request.
+PostgreSQL integration tests require a disposable test database and are not run
+by the default CI job unless that connection is supplied. Shasta sponsorship,
+production credentials/wallets, and full cross-network/GasFree acceptance are not
+claimed as validated by these Nile results.

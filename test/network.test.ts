@@ -16,11 +16,17 @@ describe("network registry", () => {
     "eip155:56",
     "eip155:8453",
     "eip155:84532",
-    "tron:0x2b6653dc",
-    "tron:0xcd8690dc",
-    "tron:0x94a9059e",
+    "tron:728126428",
+    "tron:3448148188",
+    "tron:2494104990",
   ])("accepts supported canonical CAIP-2 %s unchanged", input => {
     expect(requireCanonicalNetwork(input)).toBe(input);
+  });
+
+  it("normalizes legacy hex configuration IDs for the beta SDK", () => {
+    expect(requireCanonicalNetwork("tron:0xcd8690dc")).toBe("tron:3448148188");
+    expect(requireCanonicalNetwork("tron:0x2b6653dc")).toBe("tron:728126428");
+    expect(requireCanonicalNetwork("tron:0x94a9059e")).toBe("tron:2494104990");
   });
 
   it("rejects aliases and unknown networks", () => {
