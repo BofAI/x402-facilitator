@@ -36,9 +36,29 @@ describe("loadConfig", () => {
     expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97"]);
   });
 
-  it("loads the built-in production config with an uppercase logging level", () => {
-    const cfg = loadConfig(resolve(process.cwd(), "config/facilitator.config.prod.yaml"));
+  it("requires operator addresses and limits prod PG sponsoring to Nile without removing payment networks", () => {
+    const path = resolve(process.cwd(), "config/facilitator.config.prod.yaml");
+    expect(() => loadConfig(path)).toThrow(/resource_sponsoring\.owner: invalid TRON address/);
+    const provisioned = readFileSync(path, "utf8")
+      .replace("REPLACE_WITH_PROD_NILE_RESOURCE_OWNER", "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9")
+      .replace("REPLACE_WITH_PROD_NILE_PAYMENT_RECIPIENT", "TFmohhTQMoD4nuZnD7H7hqZ8HUZa924vFF");
+    const cfg = loadConfig(writeConfig(provisioned));
     expect(cfg.logging?.level).toBe("info");
+    expect(cfg.resource_sponsoring?.storage).toEqual({ type: "postgres" });
+    expect(cfg.resource_sponsoring?.network).toBe("tron:3448148188");
+    expect(cfg.resource_sponsoring?.wallet_id).toBe("resource-active");
+    expect(cfg.resource_sponsoring?.wallet_dir).toBeUndefined();
+    expect(cfg.resource_sponsoring?.assets).toEqual(["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]);
+    expect(enabledNetworks(cfg)).toEqual([
+      "tron:0xcd8690dc", "tron:0x2b6653dc", "eip155:97", "eip155:56", "eip155:84532", "eip155:8453",
+    ]);
+    for (const network of Object.values(cfg.facilitator.networks)) {
+      expect(network.schemes).toEqual(["exact", "upto", "batch-settlement"]);
+    }
+    expect(cfg.onepassword?.gasfree_api_key_nile).toBe("x402-facilitator/gasfree/gasfree_api_key_nile");
+    expect(cfg.onepassword?.gasfree_api_secret_nile).toBe("x402-facilitator/gasfree/gasfree_api_secret_nile");
+    expect(cfg.onepassword?.gasfree_api_key_mainnet).toBe("x402-facilitator/gasfree/gasfree_api_key_mainnet");
+    expect(cfg.onepassword?.gasfree_api_secret_mainnet).toBe("x402-facilitator/gasfree/gasfree_api_secret_mainnet");
   });
 
   it("requires operator addresses before loading the dev PG sponsoring deployment", () => {

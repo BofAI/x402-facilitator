@@ -1,6 +1,8 @@
 # Local runtime config for the production environment.
 # Start with:
 #   FACILITATOR_SERVICE_ENV=prod npm start
+# Before deploying, replace the Nile sponsoring addresses below and provision
+# resource-active in Agent Wallet. Unfilled addresses intentionally fail startup.
 
 database:
   # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form; credentials
@@ -57,3 +59,31 @@ facilitator:
     # Base Mainnet
     eip155:8453:
       schemes: ["exact", "upto", "batch-settlement"]
+
+# Only Nile receives Approval resource sponsorship; all payment networks above
+# and their GasFree configuration remain enabled independently.
+resource_sponsoring:
+  network: "tron:3448148188"
+  storage:
+    type: postgres
+
+  # Use a Nile Owner dedicated to this PG ledger; never reuse an Owner with
+  # outstanding obligations in another database. Keep its master key off-server.
+  owner: "REPLACE_WITH_PROD_NILE_RESOURCE_OWNER"
+  wallet_id: "resource-active"
+  # Uses AGENT_WALLET_DIR; keep settlement as the active/default wallet.
+  # Owner, resource-active signer and settlement must be distinct addresses.
+  # Match the actual on-chain Active permission (delegate/undelegate only).
+  permission_id: 2
+
+  # Nile USDT and the permitted Nile payment recipient(s).
+  assets: ["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]
+  pay_to: ["REPLACE_WITH_PROD_NILE_PAYMENT_RECIPIENT"]
+
+  # Review limits against actual stake and concurrency before deployment.
+  # These do not automatically stake funds. 1 TRX = 1,000,000 SUN.
+  energy_stake_sun: "10000000000"
+  bandwidth_stake_sun: "20000000000"
+  budget_sun: "500000000"
+  # Bandwidth units reserved for resource management transactions.
+  management_bandwidth: "20000"
