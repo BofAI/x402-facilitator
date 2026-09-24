@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Use published stable SDK releases: x402-core 1.1.1, x402-tron 2.0.0 and
+  x402-evm 1.1.1, retaining x402-extensions 1.2.0 and Agent Wallet 3.0.0.
 - Upgraded Agent Wallet to 3.0.0.
 - Prepared the development and production configs for Nile-only PostgreSQL sponsorship; operators must
   replace Owner/recipient placeholders and provision the restricted signer before

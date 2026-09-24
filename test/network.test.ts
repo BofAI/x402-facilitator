@@ -23,7 +23,7 @@ describe("network registry", () => {
     expect(requireCanonicalNetwork(input)).toBe(input);
   });
 
-  it("normalizes legacy hex configuration IDs for the beta SDK", () => {
+  it("normalizes legacy hex configuration IDs for the SDK", () => {
     expect(requireCanonicalNetwork("tron:0xcd8690dc")).toBe("tron:3448148188");
     expect(requireCanonicalNetwork("tron:0x2b6653dc")).toBe("tron:728126428");
     expect(requireCanonicalNetwork("tron:0x94a9059e")).toBe("tron:2494104990");

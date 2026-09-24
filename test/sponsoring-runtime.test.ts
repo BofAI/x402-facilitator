@@ -7,7 +7,7 @@ import { createTrc20ApprovalResourceSponsoringRuntime, TRON_NILE, type Trc20Appr
 import { SqliteSponsoringCoordinator } from "../src/sponsoring/store.js";
 import { guardSponsoringChain } from "../src/sponsoring/chain.js";
 
-describe("beta SDK with durable coordinator and allowance confirmation", () => {
+describe("SDK with durable coordinator and allowance confirmation", () => {
   it.each(["none", "energy", "bandwidth", "both"])("executes %s plan and persists each action before broadcast", async (mode) => {
     const payer = "TJRyWwFs9wTFGZg3JbrVriFbNfCug5tDeC";
     const token = "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf";
