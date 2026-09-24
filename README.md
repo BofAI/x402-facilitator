@@ -100,8 +100,26 @@ credentials retain their existing fallback/disabled behavior. Relevant env vars:
 | `OP_CONNECT_HOST` | Connect base URL accessible from the Facilitator container (connect mode only) |
 | `OP_CONNECT_TOKEN` | Connect access token with read access to the referenced vaults (not a Service Account token) |
 | `RATE_LIMIT_STORE` | `memory` (default) or `redis` for shared counters across replicas |
-| `RATE_LIMIT_REDIS_URL` / `REDIS_URL` | Redis connection URL (required when `RATE_LIMIT_STORE=redis`; needs the optional `ioredis` dep) |
+| `RATE_LIMIT_REDIS_URL` / `REDIS_URL` | Redis/Valkey connection URL; use `rediss://host:6379` for TLS (required when `RATE_LIMIT_STORE=redis`; needs the optional `ioredis` dep) |
+| `RATE_LIMIT_REDIS_PASSWORD` | Optional raw Redis/Valkey password; overrides 1Password and the URL password, without URL encoding |
 | `TRUST_PROXY_FOR_RATELIMIT` | `true` to key anonymous limits on `X-Forwarded-For` (set **only** when the direct peer is a trusted proxy; the rightmost XFF entry is used, so append-style proxies like nginx `$proxy_add_x_forwarded_for` are safe. Default off keys on the socket peer) |
+
+For shared Valkey rate limits, set `RATE_LIMIT_STORE=redis` and
+`RATE_LIMIT_REDIS_URL=rediss://your-valkey-host:6379`. To read the password from
+1Password, configure `onepassword.redis_password` with a vault/item/field reference
+(for example `x402-facilitator_dev/valkey/password`). This uses the same
+`onepassword.mode` and Connect or Service Account credentials as the other secrets.
+Password precedence is `RATE_LIMIT_REDIS_PASSWORD` → `onepassword.redis_password`
+→ credentials embedded in the URL. Explicitly empty passwords or failed configured
+secret lookups abort startup; memory storage does not read this secret.
+An ACL username can be supplied in the URL (`rediss://limiter@your-valkey-host:6379`).
+TLS certificate verification remains enabled. For a private CA, mount its PEM file
+and set `NODE_EXTRA_CA_CERTS` to its container path before starting Node.js.
+Alternatively, set `rate_limit.store` and `rate_limit.redis_url` in YAML;
+the store environment variable and either URL environment variable override YAML.
+The dev config enables TLS Valkey and references
+`x402-facilitator-nile_dev/redis/VALKEY_PASSWORD` through Connect.
+`VALKEY_EXPIRE` is not used: counter expiration follows each configured rate-limit window.
 
 BSC transaction creation and broadcast use the primary RPC. Receipt confirmation waits up
 to 15 seconds on the primary, then up to 45 seconds on the independent fallback for the

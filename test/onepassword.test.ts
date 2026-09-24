@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer } from "node:http";
 import { once } from "node:events";
+import { initSecrets } from "../src/runtime.js";
 import { parseOpRef, isUsableToken, getSecretFromOnePassword } from "../src/onepassword.js";
 import { getDatabaseUrl, getGasFreeCredentials, getTrongridApiKey, type FacilitatorConfig } from "../src/config.js";
 
@@ -23,6 +24,70 @@ function connectResponse(fields = [{ id: "password", label: "password", value: "
 }
 
 describe("1Password providers", () => {
+  const redisConfig: FacilitatorConfig = { database: { url: "postgresql://localhost/db" },
+    facilitator: { networks: { "tron:3448148188": {} } },
+    onepassword: { mode: "connect", redis_password: "test-vault/credentials/password" } };
+
+  it("uses YAML Redis settings at startup unless environment overrides them", async () => {
+    vi.stubEnv("RATE_LIMIT_STORE", undefined);
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", undefined);
+    vi.stubEnv("REDIS_URL", undefined);
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", "test-only-password");
+    const cfg = { ...redisConfig, rate_limit: { store: "redis" as const, redis_url: "rediss://yaml.example:6379" } };
+    await initSecrets(cfg);
+    expect(process.env.RATE_LIMIT_STORE).toBe("redis");
+    expect(process.env.RATE_LIMIT_REDIS_URL).toBe("rediss://yaml.example:6379");
+    vi.stubEnv("RATE_LIMIT_STORE", "memory");
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", undefined);
+    vi.stubEnv("REDIS_URL", "rediss://override.example:6379");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", undefined);
+    await initSecrets(cfg);
+    expect(process.env.RATE_LIMIT_STORE).toBe("memory");
+    expect(process.env.RATE_LIMIT_REDIS_URL).toBeUndefined();
+  });
+
+  it("loads the Valkey password through Connect during startup", async () => {
+    vi.stubEnv("RATE_LIMIT_STORE", "redis");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", undefined);
+    vi.stubEnv("OP_CONNECT_HOST", connect.host);
+    vi.stubEnv("OP_CONNECT_TOKEN", "connect-test-token");
+    connectResponse();
+    await initSecrets(redisConfig);
+    expect(process.env.RATE_LIMIT_REDIS_PASSWORD).toBe("p@ss/word");
+  });
+
+  it("prefers an explicit Valkey password without resolving the provider", async () => {
+    vi.stubEnv("RATE_LIMIT_STORE", "redis");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", " @:#/ pass ");
+    vi.stubEnv("OP_CONNECT_TOKEN", undefined);
+    await initSecrets(redisConfig);
+    expect(process.env.RATE_LIMIT_REDIS_PASSWORD).toBe(" @:#/ pass ");
+  });
+
+  it("fails startup on a configured but unavailable Valkey secret even with URL credentials", async () => {
+    vi.stubEnv("RATE_LIMIT_STORE", "redis");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", undefined);
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", "rediss://:old-password@localhost:6379");
+    vi.stubEnv("OP_CONNECT_TOKEN", undefined);
+    await expect(initSecrets(redisConfig)).rejects.toThrow(/redis_password.*OP_CONNECT_TOKEN/);
+  });
+
+  it("loads the Valkey password through Service Accounts too", async () => {
+    vi.stubEnv("RATE_LIMIT_STORE", "redis");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", undefined);
+    vi.stubEnv("OP_SERVICE_ACCOUNT_TOKEN", "service-test-token");
+    sdk.resolve.mockResolvedValue("service-redis-password");
+    await initSecrets({ ...redisConfig, onepassword: { ...redisConfig.onepassword, mode: "service_account" } });
+    expect(process.env.RATE_LIMIT_REDIS_PASSWORD).toBe("service-redis-password");
+  });
+
+  it("does not read the Valkey secret for memory storage", async () => {
+    vi.stubEnv("RATE_LIMIT_STORE", "memory");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", undefined);
+    vi.stubEnv("OP_CONNECT_TOKEN", undefined);
+    await initSecrets(redisConfig);
+    expect(process.env.RATE_LIMIT_REDIS_PASSWORD).toBeUndefined();
+  });
   it("resolves Connect names and IDs using bearer authentication", async () => {
     connectResponse();
     expect(await getSecretFromOnePassword(ref, "connect-test-token", connect)).toBe("p@ss/word");

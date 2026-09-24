@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Independent Redis/Valkey rate-limit passwords via `RATE_LIMIT_REDIS_PASSWORD` or
+  `onepassword.redis_password`, including TLS (`rediss://`) connections.
 - 1Password Connect secret resolution for development deployments, selected
   explicitly with `onepassword.mode`, using `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN`.
   Production retains Service Account authentication.

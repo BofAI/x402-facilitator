@@ -66,6 +66,8 @@ const facilitatorConfigSchema = z
     ).optional(),
     rate_limit: z
       .object({
+        store: z.enum(["memory", "redis"]).optional(),
+        redis_url: z.string().min(1).optional(),
         api_key_refresh_interval: positiveInt.optional(),
         authenticated: z.string().min(1).optional(),
         anonymous: z.string().min(1).optional(),
@@ -246,15 +248,15 @@ export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
     );
   }
 
-  const user = await resolveRequiredDatabaseSecret(cfg, "database_user", userRef);
-  const password = await resolveRequiredDatabaseSecret(cfg, "database_password", passwordRef);
+  const user = await resolveRequiredSecret(cfg, "database_user", userRef);
+  const password = await resolveRequiredSecret(cfg, "database_password", passwordRef);
   return databaseUrlWithCredentials(rawUrl, user, password);
 }
 
-/** Resolve a database credential reference, failing before a pool is created. */
-async function resolveRequiredDatabaseSecret(
+/** Resolve a required credential reference before creating service clients. */
+async function resolveRequiredSecret(
   cfg: FacilitatorConfig,
-  key: "database_user" | "database_password",
+  key: "database_user" | "database_password" | "redis_password",
   value: string,
 ): Promise<string> {
   const ref = parseOpRef(value);
@@ -271,6 +273,17 @@ async function resolveRequiredDatabaseSecret(
   } catch (err) {
     throw new Error(`Unable to resolve onepassword.${key}: ${err instanceof Error ? err.message : "provider error"}`);
   }
+}
+
+/** Explicit env first, then 1Password; undefined preserves URL credentials. */
+export async function getRateLimitRedisPassword(cfg: FacilitatorConfig): Promise<string | undefined> {
+  const password = process.env.RATE_LIMIT_REDIS_PASSWORD;
+  if (password !== undefined) {
+    if (!password) throw new Error("RATE_LIMIT_REDIS_PASSWORD must not be empty");
+    return password;
+  }
+  const ref = cfg.onepassword?.redis_password;
+  return ref === undefined ? undefined : resolveRequiredSecret(cfg, "redis_password", ref);
 }
 
 /** GasFree Open API credentials for a network. Env per-suffix/global first, then 1Password. */

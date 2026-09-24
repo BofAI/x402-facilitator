@@ -17,6 +17,7 @@ onepassword:
   mode: connect
   database_user: "x402-facilitator_dev/psql/user"
   database_password: "x402-facilitator_dev/psql/password"
+  redis_password: "x402-facilitator-nile_dev/redis/VALKEY_PASSWORD"
   trongrid_api_key: "x402-facilitator_dev/trongrid/trongrid_api_key"
   gasfree_api_key_nile: "x402-facilitator_dev/gasfree/gasfree_api_key_nile"
   gasfree_api_secret_nile: "x402-facilitator_dev/gasfree/gasfree_api_secret_nile"
@@ -33,6 +34,8 @@ logging:
   level: "INFO"
 
 rate_limit:
+  store: redis
+  redis_url: "rediss://master.use1-sun-test-v2-valkey.ivwjem.use1.cache.amazonaws.com:6379"
   api_key_refresh_interval: 60
   authenticated: "1000/minute"
   anonymous: "1/minute"

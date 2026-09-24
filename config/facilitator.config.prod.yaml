@@ -15,6 +15,8 @@ onepassword:
   mode: service_account
   database_user: "x402-facilitator/psql/user"
   database_password: "x402-facilitator/psql/password"
+  # Optional shared rate-limit password; read only when RATE_LIMIT_STORE=redis.
+  # redis_password: "x402-facilitator/valkey/password"
   trongrid_api_key: "x402-facilitator/trongrid/trongrid_api_key"
   gasfree_api_key_nile: "x402-facilitator/gasfree/gasfree_api_key_nile"
   gasfree_api_secret_nile: "x402-facilitator/gasfree/gasfree_api_secret_nile"

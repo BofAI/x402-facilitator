@@ -31,6 +31,12 @@ facilitator:
 `;
 
 describe("loadConfig", () => {
+  it("accepts a TLS Redis rate-limit backend in YAML", () => {
+    const cfg = loadConfig(writeConfig(VALID + '\nrate_limit:\n  store: redis\n  redis_url: "rediss://valkey.example:6379"\n'));
+    expect(cfg.rate_limit?.store).toBe("redis");
+    expect(cfg.rate_limit?.redis_url).toBe("rediss://valkey.example:6379");
+  });
+
   it("loads and lists enabled networks", () => {
     const cfg = loadConfig(writeConfig(VALID));
     expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97"]);
