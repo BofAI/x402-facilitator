@@ -1,17 +1,16 @@
 /**
  * Facilitator signer construction.
  *
- * Like the v1 service, this process never holds settlement private keys. Wallets
- * are resolved through the @bankofai/agent-wallet provider (config- or env-based,
- * unlocked out-of-band via AGENT_WALLET_PASSWORD); the key stays inside the wallet
- * and only signing operations cross the boundary.
+ * Wallets are resolved through the @bankofai/agent-wallet provider. External
+ * wallet_cli/Privy providers keep keys outside this process; raw_secret providers
+ * hold keys inside the wallet. Only signing operations cross the SDK boundary.
  *
  * The SDK's `create*FacilitatorSigner` factories take the agent-wallet
  * directly and build the chain client (TronWeb / viem) internally from the CAIP-2
  * network id. The transaction is built by the SDK, handed to the wallet to sign,
  * then broadcast — the raw key never enters the SDK.
  */
-import { resolveWallet, type Wallet } from "@bankofai/agent-wallet";
+import { resolveWallet, type Wallet, type Eip712Capable } from "@bankofai/agent-wallet";
 import {
   createFacilitatorTronSigner,
   createAuthorizerTronSigner,
@@ -33,18 +32,19 @@ import {
 } from "@bankofai/x402-evm/adapters/agent-wallet";
 
 /**
- * A resolved agent-wallet that also signs typed data. `resolveWallet` is typed as
- * the base `Wallet` (no `signTypedData`), but for `evm`/`tron` it returns an
- * `EvmSigner`/`TronSigner` (both `Eip712Capable`). The batch-settlement scheme
- * uses `signTypedData` to act as the receiver-authorizer.
+ * The base Wallet contract does not promise typed-data capability. Check it
+ * before constructing the batch-settlement receiver-authorizer.
  */
-type SignerWallet = Wallet & {
-  signTypedData(data: Record<string, unknown>, options?: unknown): Promise<string>;
-};
+function requireTypedData(wallet: Wallet): Wallet & Eip712Capable {
+  if (!("signTypedData" in wallet) || typeof wallet.signTypedData !== "function") {
+    throw new Error("Wallet does not support typed-data signing");
+  }
+  return wallet as Wallet & Eip712Capable;
+}
 
 /**
  * Build a TRON facilitator signer for a given network, backed by the active
- * agent-wallet (no private key in this process). The SDK builds TronWeb
+ * agent-wallet. The SDK builds TronWeb
  * internally from the network id; `rpcUrl` pins our fullHost and `apiKey`
  * forwards the optional TronGrid key.
  *
@@ -53,8 +53,15 @@ type SignerWallet = Wallet & {
  */
 export async function buildTronFacilitatorSigner(canonical: CanonicalNetwork): Promise<FacilitatorTronSigner> {
   const fullHost = rpcFor(canonical);
-  const wallet: Wallet = await resolveWallet({ network: "tron" });
-  return createFacilitatorTronSigner(wallet, {
+  const wallet = await resolveWallet({ network: canonical });
+  return createFacilitatorTronSigner({
+    getAddress: () => wallet.getAddress(),
+    async signTransaction(payload) {
+      const signed = await wallet.signTransaction(payload);
+      if (signed.family !== "tron") throw new Error("Expected TRON signed transaction artifact");
+      return signed.transaction;
+    },
+  }, {
     network: canonical,
     rpcUrl: fullHost,
     apiKey: process.env.TRON_GRID_API_KEY,
@@ -76,20 +83,21 @@ export async function buildEvmFacilitatorSigner(
   const chainId = chainIdOf(canonical);
   if (chainId === undefined) throw new Error(`Not an EVM network: ${canonical}`);
 
-  // agent-wallet's parseNetworkFamily accepts only "tron"/"eip155" (or their CAIP
-  // forms), NOT the Network enum value "evm" — an asymmetry in agent-wallet 2.4.0
-  // (Network.EVM === "evm", yet the input parser rejects "evm" and maps "eip155" to
-  // it). v1 sidestepped this entirely (EvmFacilitatorSigner.create() resolved the
-  // eip155 wallet with no network arg). Pass the family token agent-wallet expects;
-  // the EVM key is chain-agnostic so the family alone suffices.
-  const wallet: Wallet = await resolveWallet({ network: "eip155" });
+  const wallet = await resolveWallet({ network: canonical });
 
   // The SDK derives the chainId from the CAIP-2 reference (eip155:<chainId>) and
   // resolves chain metadata from its KNOWN_CHAINS table (BSC 56/97 included),
   // using the registry RPC endpoint for the transport. The wallet signs the built tx — no raw key
   // in the SDK — and the gas-sponsoring `sendTransactions` capability rides along.
   const primaryRpcUrl = rpcFor(canonical);
-  const signer = await createFacilitatorEvmSigner(wallet, {
+  const signer = await createFacilitatorEvmSigner({
+    getAddress: () => wallet.getAddress(),
+    async signTransaction(payload) {
+      const signed = await wallet.signTransaction(payload);
+      if (signed.family !== "evm") throw new Error("Expected EVM signed transaction artifact");
+      return signed.rawTransaction;
+    },
+  }, {
     network: `eip155:${chainId}`,
     rpcUrl: primaryRpcUrl,
   });
@@ -113,9 +121,9 @@ export async function buildEvmFacilitatorSigner(
  *
  * @returns An EvmAuthorizerSigner ({ address, signTypedData }).
  */
-export async function buildEvmAuthorizerSigner(): Promise<EvmAuthorizerSigner> {
-  // Same family token as buildEvmFacilitatorSigner — one wallet, two roles.
-  const wallet = (await resolveWallet({ network: "eip155" })) as SignerWallet;
+export async function buildEvmAuthorizerSigner(canonical: CanonicalNetwork = "eip155:1"): Promise<EvmAuthorizerSigner> {
+  // Mainnet default retains legacy no-argument callers; production passes its network.
+  const wallet = requireTypedData(await resolveWallet({ network: canonical }));
   return createAuthorizerEvmSigner(wallet);
 }
 
@@ -126,7 +134,8 @@ export async function buildEvmAuthorizerSigner(): Promise<EvmAuthorizerSigner> {
  *
  * @returns A TRON authorizer signer ({ address, signTypedData }).
  */
-export async function buildTronAuthorizerSigner(): Promise<TronAuthorizerSignerLike> {
-  const wallet = (await resolveWallet({ network: "tron" })) as SignerWallet;
+export async function buildTronAuthorizerSigner(canonical: CanonicalNetwork = "tron:728126428"): Promise<TronAuthorizerSignerLike> {
+  // Mainnet default retains legacy no-argument callers; production passes its network.
+  const wallet = requireTypedData(await resolveWallet({ network: canonical }));
   return createAuthorizerTronSigner(wallet);
 }

@@ -1,0 +1,12 @@
+# Only these inputs may enter the build context; local wallets and ledgers stay out.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/
+!src/**
+!config/
+!config/facilitator.config.dev.yaml
+!config/facilitator.config.prod.yaml

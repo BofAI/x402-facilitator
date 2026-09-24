@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
@@ -31,22 +31,68 @@ facilitator:
 `;
 
 describe("loadConfig", () => {
+  it("accepts a TLS Redis rate-limit backend in YAML", () => {
+    const cfg = loadConfig(writeConfig(VALID + '\nrate_limit:\n  store: redis\n  redis_url: "rediss://valkey.example:6379"\n'));
+    expect(cfg.rate_limit?.store).toBe("redis");
+    expect(cfg.rate_limit?.redis_url).toBe("rediss://valkey.example:6379");
+  });
+
   it("loads and lists enabled networks", () => {
     const cfg = loadConfig(writeConfig(VALID));
     expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97"]);
   });
 
-  it("loads built-in configs with uppercase logging levels", () => {
-    for (const environment of ["dev", "prod"]) {
-      const cfg = loadConfig(resolve(process.cwd(), `config/facilitator.config.${environment}.yaml`));
-      expect(cfg.logging?.level).toBe("info");
+  it("requires operator addresses and limits prod PG sponsoring to Nile without removing payment networks", () => {
+    const path = resolve(process.cwd(), "config/facilitator.config.prod.yaml");
+    expect(() => loadConfig(path)).toThrow(/resource_sponsoring\.owner: invalid TRON address/);
+    const provisioned = readFileSync(path, "utf8")
+      .replace("REPLACE_WITH_PROD_NILE_RESOURCE_OWNER", "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9")
+      .replace("REPLACE_WITH_PROD_NILE_PAYMENT_RECIPIENT", "TFmohhTQMoD4nuZnD7H7hqZ8HUZa924vFF");
+    const cfg = loadConfig(writeConfig(provisioned));
+    expect(cfg.logging?.level).toBe("info");
+    expect(cfg.onepassword?.mode).toBe("service_account");
+    expect(cfg.resource_sponsoring?.storage).toEqual({ type: "postgres" });
+    expect(cfg.resource_sponsoring?.network).toBe("tron:3448148188");
+    expect(cfg.resource_sponsoring?.wallet_id).toBe("resource-active");
+    expect(cfg.resource_sponsoring?.wallet_dir).toBeUndefined();
+    expect(cfg.resource_sponsoring?.assets).toEqual(["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]);
+    expect(enabledNetworks(cfg)).toEqual([
+      "tron:0xcd8690dc", "tron:0x2b6653dc", "eip155:97", "eip155:56", "eip155:84532", "eip155:8453",
+    ]);
+    for (const network of Object.values(cfg.facilitator.networks)) {
+      expect(network.schemes).toEqual(["exact", "upto", "batch-settlement"]);
     }
+    expect(cfg.onepassword?.gasfree_api_key_nile).toBe("x402-facilitator/gasfree/gasfree_api_key_nile");
+    expect(cfg.onepassword?.gasfree_api_secret_nile).toBe("x402-facilitator/gasfree/gasfree_api_secret_nile");
+    expect(cfg.onepassword?.gasfree_api_key_mainnet).toBe("x402-facilitator/gasfree/gasfree_api_key_mainnet");
+    expect(cfg.onepassword?.gasfree_api_secret_mainnet).toBe("x402-facilitator/gasfree/gasfree_api_secret_mainnet");
+  });
+
+  it("requires operator addresses before loading the dev PG sponsoring deployment", () => {
+    const path = resolve(process.cwd(), "config/facilitator.config.dev.yaml");
+    expect(() => loadConfig(path)).toThrow(/resource_sponsoring\.owner: invalid TRON address/);
+    const provisioned = readFileSync(path, "utf8")
+      .replace("REPLACE_WITH_DEV_RESOURCE_OWNER", "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9")
+      .replace("REPLACE_WITH_DEV_PAYMENT_RECIPIENT", "TFmohhTQMoD4nuZnD7H7hqZ8HUZa924vFF");
+    const cfg = loadConfig(writeConfig(provisioned));
+    expect(cfg.onepassword?.mode).toBe("connect");
+    expect(cfg.logging?.level).toBe("info");
+    expect(cfg.resource_sponsoring?.storage).toEqual({ type: "postgres" });
+    expect(cfg.resource_sponsoring?.network).toBe("tron:3448148188");
+    expect(cfg.resource_sponsoring?.wallet_id).toBe("resource-active");
+    expect(cfg.resource_sponsoring?.wallet_dir).toBeUndefined();
+    expect(cfg.database.url).toContain("/x402_facilitator");
+    expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97", "eip155:84532"]);
   });
 
   it("throws when database.url is missing", () => {
     expect(() => loadConfig(writeConfig(`facilitator:\n  networks:\n    tron:0xcd8690dc: {}\n`))).toThrow(
       /database: Required/,
     );
+  });
+
+  it("rejects an unknown 1Password mode instead of falling back to Service Accounts", () => {
+    expect(() => loadConfig(writeConfig(VALID + "\nonepassword:\n  mode: conenct\n"))).toThrow(/mode must be/);
   });
 
   it("throws when facilitator.networks is empty", () => {
