@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- 1Password Connect secret resolution for development deployments, selected
+  explicitly with `onepassword.mode`, using `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN`.
+  Production retains Service Account authentication.
 - Optional Nile/Shasta TRC-20 Approval resource sponsoring with restricted Owner
   signing, authenticated admission, durable recovery, and resource accounting.
 - SQLite single-instance and shared PostgreSQL sponsorship coordinators, with
@@ -17,9 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Upgraded Agent Wallet to 3.0.0.
-- Prepared the development config for PostgreSQL sponsorship; operators must
+- Prepared the development and production configs for Nile-only PostgreSQL sponsorship; operators must
   replace Owner/recipient placeholders and provision the restricted signer before
-  startup. Production TRC-20 sponsorship remains disabled.
+  startup. Other configured payment networks and GasFree remain available.
 
 - Adopted the `develop` integration branch and explicit feature, release, and
   hotfix pull request routes.

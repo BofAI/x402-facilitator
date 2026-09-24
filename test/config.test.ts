@@ -44,6 +44,7 @@ describe("loadConfig", () => {
       .replace("REPLACE_WITH_PROD_NILE_PAYMENT_RECIPIENT", "TFmohhTQMoD4nuZnD7H7hqZ8HUZa924vFF");
     const cfg = loadConfig(writeConfig(provisioned));
     expect(cfg.logging?.level).toBe("info");
+    expect(cfg.onepassword?.mode).toBe("service_account");
     expect(cfg.resource_sponsoring?.storage).toEqual({ type: "postgres" });
     expect(cfg.resource_sponsoring?.network).toBe("tron:3448148188");
     expect(cfg.resource_sponsoring?.wallet_id).toBe("resource-active");
@@ -68,6 +69,7 @@ describe("loadConfig", () => {
       .replace("REPLACE_WITH_DEV_RESOURCE_OWNER", "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9")
       .replace("REPLACE_WITH_DEV_PAYMENT_RECIPIENT", "TFmohhTQMoD4nuZnD7H7hqZ8HUZa924vFF");
     const cfg = loadConfig(writeConfig(provisioned));
+    expect(cfg.onepassword?.mode).toBe("connect");
     expect(cfg.logging?.level).toBe("info");
     expect(cfg.resource_sponsoring?.storage).toEqual({ type: "postgres" });
     expect(cfg.resource_sponsoring?.network).toBe("tron:3448148188");
@@ -81,6 +83,10 @@ describe("loadConfig", () => {
     expect(() => loadConfig(writeConfig(`facilitator:\n  networks:\n    tron:0xcd8690dc: {}\n`))).toThrow(
       /database: Required/,
     );
+  });
+
+  it("rejects an unknown 1Password mode instead of falling back to Service Accounts", () => {
+    expect(() => loadConfig(writeConfig(VALID + "\nonepassword:\n  mode: conenct\n"))).toThrow(/mode must be/);
   });
 
   it("throws when facilitator.networks is empty", () => {

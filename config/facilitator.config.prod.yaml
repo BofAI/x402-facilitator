@@ -12,6 +12,7 @@ database:
   max_open_conns: 100
 
 onepassword:
+  mode: service_account
   database_user: "x402-facilitator/psql/user"
   database_password: "x402-facilitator/psql/password"
   trongrid_api_key: "x402-facilitator/trongrid/trongrid_api_key"

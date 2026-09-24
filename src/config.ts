@@ -2,15 +2,15 @@
  * Configuration loading + secret resolution. Faithful port of legacy/src/config.py.
  *
  * The YAML shape is unchanged from v1 (minus /fee/quote). Secrets are resolved on
- * demand: each value under `onepassword.*` is a `vault/item/field` reference resolved
- * via @1password/sdk when OP_SERVICE_ACCOUNT_TOKEN (or onepassword.token) is set.
+ * demand: secret fields under `onepassword.*` are `vault/item/field` references
+ * resolved through the configured Connect or Service Account provider.
  * Environment variables always take precedence over 1Password.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { getSecretFromOnePassword, isUsableToken, parseOpRef } from "./onepassword.js";
+import { getSecretFromOnePassword, isUsableToken, parseOpRef, type OnePasswordOptions } from "./onepassword.js";
 import { logger, type Level } from "./logger.js";
 import { requireCanonicalNetwork } from "./network.js";
 import { sponsoringConfigSchema } from "./sponsoring/config.js";
@@ -60,7 +60,10 @@ const facilitatorConfigSchema = z
         max_life_time: positiveInt.optional(),
       })
       .strict(),
-    onepassword: z.record(z.string(), z.string().optional()).optional(),
+    onepassword: z.record(z.string(), z.string().optional()).refine(
+      (cfg) => cfg.mode === undefined || cfg.mode === "connect" || cfg.mode === "service_account",
+      { message: "mode must be connect or service_account", path: ["mode"] },
+    ).optional(),
     rate_limit: z
       .object({
         api_key_refresh_interval: positiveInt.optional(),
@@ -155,8 +158,13 @@ export function enabledNetworks(cfg: FacilitatorConfig): string[] {
 // Secret resolution
 // ---------------------------------------------------------------------------
 
-/** The 1Password service-account token: env OP_SERVICE_ACCOUNT_TOKEN, else config. */
+/** Explicit mode selection avoids accidentally using a token for the wrong provider. */
+function opOptions(cfg: FacilitatorConfig): OnePasswordOptions {
+  return { mode: cfg.onepassword?.mode === "connect" ? "connect" : "service_account", host: process.env.OP_CONNECT_HOST };
+}
+
 function opToken(cfg: FacilitatorConfig): string | undefined {
+  if (opOptions(cfg).mode === "connect") return process.env.OP_CONNECT_TOKEN;
   return process.env.OP_SERVICE_ACCOUNT_TOKEN || cfg.onepassword?.token;
 }
 
@@ -166,7 +174,7 @@ async function resolveOpField(cfg: FacilitatorConfig, key: string): Promise<stri
   const token = opToken(cfg);
   if (!ref || !isUsableToken(token)) return undefined;
   try {
-    return await getSecretFromOnePassword(ref, token);
+    return await getSecretFromOnePassword(ref, token, opOptions(cfg));
   } catch {
     return undefined;
   }
@@ -253,10 +261,11 @@ async function resolveRequiredDatabaseSecret(
   if (!ref) throw new Error(`onepassword.${key} must be a vault/item/field reference`);
   const token = opToken(cfg);
   if (!isUsableToken(token)) {
+    if (opOptions(cfg).mode === "connect") throw new Error(`onepassword.${key} requires a valid OP_CONNECT_TOKEN`);
     throw new Error(`onepassword.${key} requires a valid OP_SERVICE_ACCOUNT_TOKEN or onepassword.token`);
   }
   try {
-    const secret = await getSecretFromOnePassword(ref, token);
+    const secret = await getSecretFromOnePassword(ref, token, opOptions(cfg));
     if (!secret) throw new Error("resolved to an empty value");
     return secret;
   } catch (err) {

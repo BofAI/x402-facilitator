@@ -70,14 +70,23 @@ precedence. The process fails before startup when neither is set.
 Required: `database.url`, `facilitator.networks` (≥1 network, listed = enabled).
 
 Optional Nile/Shasta Approval resource sponsoring supports SQLite or shared PostgreSQL
-storage. Dev requires operator-provisioned Owner/recipient addresses and a
-restricted `resource-active` wallet; prod leaves TRC-20 sponsorship disabled.
+storage. Both built-in configs enable Nile-only sponsorship and require
+operator-provisioned Owner/recipient addresses and a restricted `resource-active`
+wallet before startup. Other configured payment networks remain enabled.
 SQLite still requires business PostgreSQL. Shared Owners must use the same PG
 ledger and configuration; do not switch ledgers while recovery debt remains.
 
-Secrets resolve **env first, then 1Password** (each `onepassword.*` value is a
-`vault/item/field` ref, used when `OP_SERVICE_ACCOUNT_TOKEN` / `onepassword.token`
-is set). Relevant env vars:
+Secrets resolve **env first, then 1Password**. Secret references keep the
+`vault/item/field` format. `onepassword.mode` selects `connect` (built-in dev)
+or `service_account` (built-in prod and the default when omitted); providers do
+not fall back to one another. Connect uses `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN`;
+Service Accounts use `OP_SERVICE_ACCOUNT_TOKEN` / `onepassword.token`.
+Connect supports vault/item names or IDs and field IDs or unique labels. Duplicate
+names/labels are rejected; use IDs to disambiguate. Requests have a 10-second
+resolution timeout and do not follow redirects. Use HTTPS, or HTTP only over a
+trusted private connection to Connect. Inject tokens at runtime, never in Git.
+Required PG credential resolution failures prevent startup; optional RPC/GasFree
+credentials retain their existing fallback/disabled behavior. Relevant env vars:
 
 | Var | Purpose |
 |---|---|
@@ -88,6 +97,8 @@ is set). Relevant env vars:
 | `GASFREE_API_KEY[_NILE\|_MAINNET]` / `GASFREE_API_SECRET[...]` | GasFree relayer creds (gate `exact_gasfree`) |
 | `UPSTREAM_NILE_BASE` / `UPSTREAM_MAINNET_BASE` | Override GasFree upstream bases |
 | `OP_SERVICE_ACCOUNT_TOKEN` | 1Password service-account token |
+| `OP_CONNECT_HOST` | Connect base URL accessible from the Facilitator container (connect mode only) |
+| `OP_CONNECT_TOKEN` | Connect access token with read access to the referenced vaults (not a Service Account token) |
 | `RATE_LIMIT_STORE` | `memory` (default) or `redis` for shared counters across replicas |
 | `RATE_LIMIT_REDIS_URL` / `REDIS_URL` | Redis connection URL (required when `RATE_LIMIT_STORE=redis`; needs the optional `ioredis` dep) |
 | `TRUST_PROXY_FOR_RATELIMIT` | `true` to key anonymous limits on `X-Forwarded-For` (set **only** when the direct peer is a trusted proxy; the rightmost XFF entry is used, so append-style proxies like nginx `$proxy_add_x_forwarded_for` are safe. Default off keys on the socket peer) |

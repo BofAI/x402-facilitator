@@ -13,6 +13,8 @@ database:
   max_open_conns: 100
 
 onepassword:
+  # Connect endpoint and token are injected via OP_CONNECT_HOST / OP_CONNECT_TOKEN.
+  mode: connect
   database_user: "x402-facilitator_dev/psql/user"
   database_password: "x402-facilitator_dev/psql/password"
   trongrid_api_key: "x402-facilitator_dev/trongrid/trongrid_api_key"
