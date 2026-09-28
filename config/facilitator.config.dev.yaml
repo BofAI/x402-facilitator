@@ -15,21 +15,19 @@ database:
 onepassword:
   # Connect endpoint and token are injected via OP_CONNECT_HOST / OP_CONNECT_TOKEN.
   mode: connect
-  database_user: "x402-facilitator_dev/psql/user"
-  database_password: "x402-facilitator_dev/psql/password"
+  database_user: "x402-facilitator-nile_dev/psql/user"
+  database_password: "x402-facilitator-nile_dev/psql/password"
   redis_password: "x402-facilitator-nile_dev/redis/VALKEY_PASSWORD"
-  trongrid_api_key: "x402-facilitator_dev/trongrid/trongrid_api_key"
-  gasfree_api_key_nile: "x402-facilitator_dev/gasfree/gasfree_api_key_nile"
-  gasfree_api_secret_nile: "x402-facilitator_dev/gasfree/gasfree_api_secret_nile"
-  # Legacy compatibility only; this does not unlock an Agent Wallet v3 provider.
-  agent_wallet_password: "x402-facilitator_dev/wallet/agent_wallet_password"
+  trongrid_api_key: "x402-facilitator-nile_dev/trongrid/trongrid_api_key"
+  gasfree_api_key_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_key_nile"
+  gasfree_api_secret_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_secret_nile"
 
 server:
   host: "0.0.0.0"
   port: 8001
 
 logging:
-  dir: "logs"
+  dir: "/data/logs/facilitator"
   filename: "app.log"
   level: "INFO"
 
@@ -74,7 +72,7 @@ resource_sponsoring:
   # For a separate mounted directory, uncomment and adapt this container path:
   # wallet_dir: /run/resource-wallet
   # OP: match the actual on-chain Active permission ID (only delegate/undelegate).
-  permission_id: 2
+  permission_id: 3
 
   # Nile USDT. Sponsoring does not restrict payment recipients.
   assets: ["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]
@@ -86,4 +84,4 @@ resource_sponsoring:
   bandwidth_stake_sun: "20000000000"
   budget_sun: "500000000"
   # Management bandwidth units reserved for delegate/undelegate actions.
-  management_bandwidth: "20000"
+  management_bandwidth: "5000"
