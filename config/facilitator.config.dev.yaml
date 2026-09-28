@@ -60,6 +60,8 @@ facilitator:
 # Never attach an Owner with outstanding debt in another DB/schema to this DB.
 resource_sponsoring:
   network: "tron:3448148188"
+  # Nile only: anonymous requests still use the anonymous rate limit and resource budgets.
+  require_api_key: false
   storage:
     type: postgres
 

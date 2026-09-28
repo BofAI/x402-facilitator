@@ -6,6 +6,23 @@ import { resetRateLimitState } from "../src/rate-limit.js";
 import type { SponsoringService } from "../src/sponsoring/service.js";
 
 describe("resource sponsoring HTTP boundary", () => {
+  it.each(["/verify", "/settle"])("allows opted-in anonymous Nile on %s but retains anonymous rate limits", async route => {
+    const payTo = "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8";
+    // No chain action: the SDK boundary reports owner contention after admission.
+    const facilitator = { verify: async () => ({ isValid: false, invalidReason: "sponsor_owner_busy" }),
+      settle: async () => ({ success: false, errorReason: "sponsor_owner_busy" }), getSupported: () => ({}) };
+    const sponsoring = { access: () => ({ network: "tron:3448148188", ready: true, payTo: [payTo], requireApiKey: false }) } as SponsoringService;
+    const app = createApp(facilitator as unknown as x402Facilitator, { rateLimit: { authenticated: "1000/minute", anonymous: "1/minute" },
+      gasfreeSettings: () => null, metricsOnMainPort: false, metricsEndpoint: "/metrics", maxRequestBodyBytes: 100000, sponsoring });
+    const requirements = { network: "tron:3448148188", scheme: "exact", asset: "token", amount: "1", payTo, maxTimeoutSeconds: 600 };
+    const request = () => app.request(route, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paymentRequirements: requirements, paymentPayload: { x402Version: 2, accepted: requirements, payload: {},
+        extensions: { trc20ApprovalResourceSponsoring: {} } } }) });
+    const response = await request();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject(route === "/verify" ? { invalidReason: "sponsor_owner_busy" } : { errorReason: "sponsor_owner_busy" });
+    expect((await request()).status).toBe(429);
+  });
   it.each(["/verify", "/settle"])("returns HTTP 503 and Retry-After for runtime owner contention on %s", async route => {
     const payTo = "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8";
     const facilitator = { verify: async () => ({ isValid: false, invalidReason: "sponsor_owner_busy" }),

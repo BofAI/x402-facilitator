@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { sponsoringAccessError } from "../src/sponsoring/access.js";
 const requirements = { network: "tron:0xcd8690dc", payTo: "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8" };
 describe("resource sponsoring request gate", () => {
+  it("permits anonymous Nile only when explicitly enabled and preserves other gates", () => {
+    const extension = { trc20ApprovalResourceSponsoring: {} };
+    const access = { network: "tron:3448148188", payTo: [requirements.payTo], ready: true, requireApiKey: false };
+    expect(sponsoringAccessError(extension, requirements, false, access)).toBeUndefined();
+    expect(sponsoringAccessError(extension, requirements, false, { ...access, requireApiKey: true })).toBe("sponsor_auth_required");
+    expect(sponsoringAccessError(extension, requirements, false, { ...access, requireApiKey: undefined })).toBe("sponsor_auth_required");
+    expect(sponsoringAccessError(extension, requirements, false, { ...access, ready: false })).toBe("sponsor_recovery_in_progress");
+    expect(sponsoringAccessError(extension, { ...requirements, payTo: "other" }, false, access)).toBe("sponsor_pay_to_forbidden");
+    expect(sponsoringAccessError(extension, { ...requirements, network: "tron:2494104990" }, false, access)).toBe("sponsor_auth_required");
+    expect(sponsoringAccessError(extension, requirements, false, { ...access, network: "tron:2494104990" })).toBe("sponsor_auth_required");
+    expect(sponsoringAccessError(extension, requirements, false)).toBe("sponsor_auth_required");
+  });
   it("routes recovery retries to runtime while preserving authentication and receiver checks", () => {
     const extension = { trc20ApprovalResourceSponsoring: {} };
     const access = { network: requirements.network, payTo: [requirements.payTo], ready: false, canRetryExisting: true };

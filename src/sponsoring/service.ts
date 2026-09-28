@@ -252,7 +252,7 @@ export async function createSponsoringService(config: SponsoringConfig, settleme
         },
       },
       access: () => ({ network: config.network, payTo: config.pay_to, ready: mode === "READY" && !stopping,
-        canRetryExisting: canRetryExisting() }),
+        canRetryExisting: canRetryExisting(), requireApiKey: config.require_api_key ?? true }),
       readiness: () => ({ ready: mode === "READY" && !stopping, mode, network: config.network }),
       start() { if (!running && !timer) schedule(); },
       async close() {

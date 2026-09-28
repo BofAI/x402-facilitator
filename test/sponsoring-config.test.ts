@@ -5,6 +5,16 @@ const config = { network: "tron:0xcd8690dc", database: "/data/sponsor.sqlite", o
   pay_to: ["TJRabPrwbZy45sbavfcjinPJC18kjpRTv8"], energy_stake_sun: "1000000000", bandwidth_stake_sun: "1000000000",
   budget_sun: "100000000", management_bandwidth: "10000" };
 describe("sponsoring config", () => {
+  it.each(["tron:3448148188", "tron:0xcd8690dc"])("allows disabling API keys only for Nile %s", network => {
+    expect(sponsoringConfigSchema.parse({ ...config, network, require_api_key: false }).require_api_key).toBe(false);
+  });
+  it("rejects disabling authentication on Shasta and non-boolean switches", () => {
+    for (const network of ["tron:2494104990", "tron:0x94a9059e"]) {
+      expect(sponsoringConfigSchema.safeParse({ ...config, network, require_api_key: false }).success).toBe(false);
+      expect(sponsoringConfigSchema.safeParse({ ...config, network, require_api_key: true }).success).toBe(true);
+    }
+    expect(sponsoringConfigSchema.safeParse({ ...config, require_api_key: "false" }).success).toBe(false);
+  });
   it.each(["tron:2494104990", "tron:0x94a9059e"])("accepts isolated Shasta sponsoring configuration %s", network => {
     expect(sponsoringConfigSchema.parse({ ...config, network }).network).toBe("tron:2494104990");
   });

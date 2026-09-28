@@ -9,6 +9,7 @@ const positiveAmount = z.string().regex(/^[1-9][0-9]*$/).max(78);
 
 export const sponsoringConfigSchema = z.object({
   network: z.enum(["tron:0xcd8690dc", TRON_NILE, "tron:0x94a9059e", TRON_SHASTA]).transform(normalizeTronNetwork),
+  require_api_key: z.boolean().optional(),
   database: z.string().refine(isAbsolute, "must be an absolute persistent path").optional(),
   storage: z.discriminatedUnion("type", [
     z.object({ type: z.literal("sqlite"), path: z.string().refine(isAbsolute, "must be an absolute persistent path") }).strict(),
@@ -25,6 +26,8 @@ export const sponsoringConfigSchema = z.object({
   budget_sun: positiveAmount,
   management_bandwidth: positiveAmount,
 }).strict().refine(value => (value.database !== undefined) !== (value.storage !== undefined),
-  "specify exactly one of database or storage");
+  "specify exactly one of database or storage")
+  .refine(value => value.require_api_key !== false || value.network === TRON_NILE,
+    { message: "may be false only for Nile", path: ["require_api_key"] });
 
 export type SponsoringConfig = z.infer<typeof sponsoringConfigSchema>;

@@ -67,6 +67,7 @@ facilitator:
 # and their GasFree configuration remain enabled independently.
 resource_sponsoring:
   network: "tron:3448148188"
+  require_api_key: true
   storage:
     type: postgres
 

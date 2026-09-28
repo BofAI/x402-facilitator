@@ -76,6 +76,17 @@ wallet before startup. Other configured payment networks remain enabled.
 SQLite still requires business PostgreSQL. Shared Owners must use the same PG
 ledger and configuration; do not switch ledgers while recovery debt remains.
 
+`resource_sponsoring.require_api_key` defaults to `true`. Set it to `false` only
+for Nile to allow sponsorship without `X-API-KEY`; other networks reject this
+setting at startup. Built-in dev opts out of API-key authentication; prod keeps it
+enabled. Receiver/asset restrictions, signed approval validation, resource budgets,
+recovery and concurrency checks remain enforced. Anonymous requests retain the
+anonymous rate limit (dev: `1/minute`); with Redis/Valkey, verify and settle share
+the anonymous counter, so sequential calls may need to wait for `Retry-After`.
+This opt-out exposes test resources to anonymous consumption. Restart the service
+after changing the setting; it does not grant an authenticated identity or access
+to merchant settlement feeds.
+
 Secrets resolve **env first, then 1Password**. Secret references keep the
 `vault/item/field` format. `onepassword.mode` selects `connect` (built-in dev)
 or `service_account` (built-in prod and the default when omitted); providers do

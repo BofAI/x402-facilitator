@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Optional anonymous Nile sponsorship via `resource_sponsoring.require_api_key: false`.
+  Dev opts in; production and omitted settings still require API keys. Other networks cannot opt out.
 - Independent Redis/Valkey rate-limit passwords via `RATE_LIMIT_REDIS_PASSWORD` or
   `onepassword.redis_password`, including TLS (`rediss://`) connections.
 - 1Password Connect secret resolution for development deployments, selected

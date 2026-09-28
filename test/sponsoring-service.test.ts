@@ -14,6 +14,7 @@ import { createSponsoringService } from "../src/sponsoring/service.js";
 import { SqliteSponsoringCoordinator } from "../src/sponsoring/store.js";
 import { recoveryErrors } from "../src/sponsoring/metrics.js";
 import { SponsoringStorageError } from "../src/sponsoring/recovery-errors.js";
+import { sponsoringAccessError } from "../src/sponsoring/access.js";
 
 const signerCallbacks = vi.hoisted(() => ({
   rememberExpiration: undefined as undefined | ((txID: string, expiration: number) => Promise<void>),
@@ -67,6 +68,15 @@ function requestDigest(request: Trc20ApprovalResourceSponsoringRequest): string 
 }
 
 describe("sponsoring service lifecycle", () => {
+  it.each([undefined, true, false])("propagates require_api_key=%s to the HTTP access gate", async requireApiKey => {
+    const config = { ...testConfig(), require_api_key: requireApiKey };
+    const service = await createSponsoringService(config, settlement);
+    try {
+      const reason = sponsoringAccessError({ trc20ApprovalResourceSponsoring: {} },
+        { network: config.network, payTo: config.pay_to[0] }, false, service.access());
+      expect(reason).toBe(requireApiKey === false ? "sponsor_recovery_in_progress" : "sponsor_auth_required");
+    } finally { await service.close(); }
+  });
   it.each(["rememberExpiration", "assertOwnership"] as const)("tags signer %s storage failures at their origin", async method => {
     const failure = new Error(`${method} unavailable`);
     const storage = vi.spyOn(SqliteSponsoringCoordinator.prototype, method).mockImplementation(() => { throw failure; });
