@@ -67,12 +67,13 @@ describe("loadConfig", () => {
     expect(cfg.onepassword?.gasfree_api_secret_mainnet).toBe("x402-facilitator/gasfree/gasfree_api_secret_mainnet");
   });
 
-  it("requires an Owner before loading the dev PG sponsoring deployment", () => {
+  it("loads the configured dev Owner and rejects an invalid replacement", () => {
     const path = resolve(process.cwd(), "config/facilitator.config.dev.yaml");
-    expect(() => loadConfig(path)).toThrow(/resource_sponsoring\.owner: invalid TRON address/);
-    const provisioned = readFileSync(path, "utf8")
-      .replace("REPLACE_WITH_DEV_RESOURCE_OWNER", "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9");
-    const cfg = loadConfig(writeConfig(provisioned));
+    const cfg = loadConfig(path);
+    expect(cfg.resource_sponsoring?.owner).toBe("TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y");
+    const invalid = readFileSync(path, "utf8")
+      .replace("TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y", "REPLACE_WITH_DEV_RESOURCE_OWNER");
+    expect(() => loadConfig(writeConfig(invalid))).toThrow(/resource_sponsoring\.owner: invalid TRON address/);
     expect(cfg.onepassword?.mode).toBe("connect");
     expect(cfg.logging?.level).toBe("info");
     expect(cfg.resource_sponsoring?.storage).toEqual({ type: "postgres" });

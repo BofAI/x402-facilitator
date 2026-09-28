@@ -1,8 +1,8 @@
 # Local runtime config for the development environment.
 # Start with:
 #   FACILITATOR_SERVICE_ENV=dev npm run dev
-# Before deploying, replace the Owner address below and provision
-# the Owner permission/resources. An unfilled Owner intentionally fails startup.
+# Before deploying, verify the Owner address below and provision
+# the Owner permission/resources for this deployment.
 # Provision Agent Wallet on the server and mount its directory into the container.
 
 database:
@@ -67,7 +67,7 @@ resource_sponsoring:
 
   # OP: set the development deployment's Owner, NOT a local acceptance-test Owner.
   # Keep the Owner master key off the server. Owner, signer and settlement must differ.
-  owner: "REPLACE_WITH_DEV_RESOURCE_OWNER"
+  owner: "TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y"
   wallet_id: "resource-active"
   # wallet_dir is omitted: use AGENT_WALLET_DIR, otherwise ~/.agent-wallet.
   # Provision resource-active alongside settlement, but keep settlement active.
