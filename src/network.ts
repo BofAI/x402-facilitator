@@ -5,7 +5,7 @@
  * family, RPC, and chain id. Configuration uses these identifiers directly, so
  * they flow unchanged to signers, scheme registration, /supported, and GasFree.
  */
-import { TRON_MAINNET, TRON_NILE, TRON_SHASTA } from "@bankofai/x402-tron";
+import { TRON_MAINNET, TRON_NILE, TRON_SHASTA, normalizeTronNetwork } from "@bankofai/x402-tron";
 
 export type NetworkFamily = "tron" | "evm";
 
@@ -82,10 +82,10 @@ const BY_CAIP: Map<string, NetworkEntry> = (() => {
 })();
 
 /**
- * Validate a canonical CAIP-2 identifier from configuration. The returned value is
- * exactly the input; no alias resolution or identifier conversion is performed.
+ * Normalize legacy hex TRON IDs to the SDK's decimal CAIP-2 representation.
  */
 export function requireCanonicalNetwork(input: string): CanonicalNetwork {
+  if (/^tron:0x[0-9a-f]+$/i.test(input)) input = normalizeTronNetwork(input);
   if (!BY_CAIP.has(input)) throw new Error(`Unsupported canonical CAIP-2 network: ${input}`);
   return input as CanonicalNetwork;
 }

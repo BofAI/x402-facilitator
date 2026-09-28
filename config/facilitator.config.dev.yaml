@@ -1,35 +1,40 @@
 # Local runtime config for the development environment.
 # Start with:
 #   FACILITATOR_SERVICE_ENV=dev npm run dev
+# Before deploying, verify the Owner address below and provision
+# the Owner permission/resources for this deployment.
+# Provision Agent Wallet on the server and mount its directory into the container.
 
 database:
   # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form; credentials
   # are injected from onepassword below before connecting.
-  url: "postgresql+asyncpg://sun-agent-postgresql.chqcqywoo8fb.us-east-1.rds.amazonaws.com:5432/x402_facilitator"
+  url: "postgresql+asyncpg://sun-test-psql.cpey4w6a4f9o.us-east-1.rds.amazonaws.com:5432/x402_facilitator"
   ssl_mode: "require"
   max_open_conns: 100
 
 onepassword:
-  database_user: "x402-facilitator_dev/psql/user"
-  database_password: "x402-facilitator_dev/psql/password"
-  trongrid_api_key: "x402-facilitator_dev/trongrid/trongrid_api_key"
-  gasfree_api_key_nile: "x402-facilitator_dev/gasfree/gasfree_api_key_nile"
-  gasfree_api_secret_nile: "x402-facilitator_dev/gasfree/gasfree_api_secret_nile"
-  agent_wallet_password: "x402-facilitator_dev/wallet/agent_wallet_password"
+  # Connect endpoint and token are injected via OP_CONNECT_HOST / OP_CONNECT_TOKEN.
+  mode: connect
+  database_user: "x402-facilitator-nile_dev/psql/user"
+  database_password: "x402-facilitator-nile_dev/psql/password"
+  trongrid_api_key: "x402-facilitator-nile_dev/trongrid/trongrid_api_key"
+  gasfree_api_key_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_key_nile"
+  gasfree_api_secret_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_secret_nile"
 
 server:
   host: "0.0.0.0"
   port: 8001
 
 logging:
-  dir: "logs"
+  dir: "/data/logs/facilitator"
   filename: "app.log"
   level: "INFO"
 
 rate_limit:
+  store: memory
   api_key_refresh_interval: 60
   authenticated: "1000/minute"
-  anonymous: "1/minute"
+  anonymous: "10/minute"
 
 monitoring:
   port: 9001
@@ -46,3 +51,35 @@ facilitator:
     # Base Sepolia testnet
     eip155:84532:
       schemes: ["exact", "upto", "batch-settlement"]
+
+# Nile Approval sponsoring, sharing the application's PostgreSQL connection.
+# Never attach an Owner with outstanding debt in another DB/schema to this DB.
+resource_sponsoring:
+  network: "tron:3448148188"
+  # Nile only: anonymous requests still use the anonymous rate limit and resource budgets.
+  require_api_key: false
+  storage:
+    type: postgres
+
+  # OP: set the development deployment's Owner, NOT a local acceptance-test Owner.
+  # Keep the Owner master key off the server. Owner, signer and settlement must differ.
+  owner: "TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y"
+  wallet_id: "resource-active"
+  # wallet_dir is omitted: use AGENT_WALLET_DIR, otherwise ~/.agent-wallet.
+  # Provision resource-active alongside settlement, but keep settlement active.
+  # For a separate mounted directory, uncomment and adapt this container path:
+  # wallet_dir: /run/resource-wallet
+  # OP: match the actual on-chain Active permission ID (only delegate/undelegate).
+  permission_id: 3
+
+  # Nile USDT. Sponsoring does not restrict payment recipients.
+  assets: ["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]
+
+  # OP: review against actual stake and concurrency before the first deployment.
+  # These are service limits, NOT automatic staking or guaranteed chain capacity.
+  # Stake/budget amounts are SUN; 1 TRX = 1,000,000 SUN.
+  energy_stake_sun: "10000000000"
+  bandwidth_stake_sun: "20000000000"
+  budget_sun: "500000000"
+  # Management bandwidth units reserved for delegate/undelegate actions.
+  management_bandwidth: "5000"

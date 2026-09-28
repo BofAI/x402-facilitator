@@ -1,7 +1,47 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import Redis from "ioredis";
 import { Hono } from "hono";
-import { parseLimit, rateLimit, resetRateLimitState } from "../src/rate-limit.js";
+import { parseLimit, rateLimit, resetRateLimitState, rateLimitRedisUrl } from "../src/rate-limit.js";
 import { authMiddleware, setApiKeyCacheForTest, type AuthVars } from "../src/auth.js";
+
+describe("Valkey connection credentials", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("overrides URL password with the separate password while preserving TLS and ACL username", () => {
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", "rediss://limiter:old-password@valkey.example:6380/2");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", " @:/#%密码 ");
+    const client = new Redis(rateLimitRedisUrl(), { lazyConnect: true });
+    try {
+      expect(client.options.password).toBe(" @:/#%密码 ");
+      expect(client.options.username).toBe("limiter");
+      expect(client.options.host).toBe("valkey.example");
+      expect(client.options.db).toBe(2);
+      expect(client.options.tls).toBeDefined();
+      expect(client.options.tls?.rejectUnauthorized).not.toBe(false);
+    } finally { client.disconnect(); }
+  });
+
+  it("preserves URL authentication when no separate password is configured", () => {
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", undefined);
+    vi.stubEnv("REDIS_URL", "rediss://:legacy%40password@valkey.example:6379");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", undefined);
+    const client = new Redis(rateLimitRedisUrl(), { lazyConnect: true });
+    try { expect(client.options.password).toBe("legacy@password"); }
+    finally { client.disconnect(); }
+  });
+
+  it("rejects an explicitly empty password rather than using URL credentials", () => {
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", "rediss://:old@valkey.example:6379");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", "");
+    expect(() => rateLimitRedisUrl()).toThrow(/RATE_LIMIT_REDIS_PASSWORD/);
+  });
+
+  it.each(["https://user:secret@host", "invalid-secret-url"])("rejects invalid connection URL without exposing it", (url) => {
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", url);
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", undefined);
+    expect(() => rateLimitRedisUrl()).toThrow(/^Invalid Redis\/Valkey URL/);
+  });
+});
 
 describe("parseLimit", () => {
   it("parses N/period forms", () => {

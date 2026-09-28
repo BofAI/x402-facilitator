@@ -87,20 +87,34 @@ function clientIp(c: Ctx): string {
   return ip;
 }
 
-/**
- * Build a RedisStore from `ioredis`, adapting it to the 4-method client the library
- * expects. `ioredis` is an optional dependency, loaded only when Redis is selected.
- *
- * NOTE: the adapter below is coupled to hono-rate-limiter's internal RedisClient
- * contract (scriptLoad/evalsha/decr/del). hono-rate-limiter is pinned to an exact
- * version in package.json so this contract can't shift on install; re-verify this
- * mapping when bumping it.
- */
-function makeRedisStore(prefix: string): Store<RLEnv> {
-  const url = process.env.RATE_LIMIT_REDIS_URL ?? process.env.REDIS_URL;
-  if (!url) {
+/** Resolve credentials without changing the requested transport or logging secrets. */
+export function rateLimitRedisUrl(): string {
+  const rawUrl = process.env.RATE_LIMIT_REDIS_URL ?? process.env.REDIS_URL;
+  if (!rawUrl) {
     throw new Error('RATE_LIMIT_STORE="redis" requires RATE_LIMIT_REDIS_URL (or REDIS_URL)');
   }
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+    if (!["redis:", "rediss:"].includes(url.protocol) || !url.hostname) throw new Error();
+  } catch {
+    throw new Error("Invalid Redis/Valkey URL: expected redis:// or rediss:// with a hostname");
+  }
+  const password = process.env.RATE_LIMIT_REDIS_PASSWORD;
+  if (password !== undefined) {
+    if (!password) throw new Error("RATE_LIMIT_REDIS_PASSWORD must not be empty");
+    // Encode the raw secret once; ioredis otherwise prioritizes URL credentials.
+    url.password = encodeURIComponent(password);
+  }
+  return url.toString();
+}
+
+/**
+ * Adapt ioredis to hono-rate-limiter's scriptLoad/evalsha/decr/del contract.
+ * Re-verify this mapping when updating the pinned hono-rate-limiter version.
+ */
+function makeRedisStore(prefix: string): Store<RLEnv> {
+  const url = rateLimitRedisUrl();
   const require = createRequire(import.meta.url);
   let IORedis: { default?: unknown } & Record<string, unknown>;
   try {
@@ -116,7 +130,8 @@ function makeRedisStore(prefix: string): Store<RLEnv> {
     del(key: string): Promise<number>;
   };
   const client = new RedisCtor(url);
-  client.on?.("error", (err) => logger.error("rate-limit redis error", { err: String(err) }));
+  // Provider errors may contain credentials or the connection URL.
+  client.on?.("error", () => logger.error("rate-limit redis connection/command error"));
   return new RedisStore<RLEnv>({
     prefix,
     client: {

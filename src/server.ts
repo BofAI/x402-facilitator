@@ -35,8 +35,11 @@ import {
   type Settlement,
 } from "./db/index.js";
 import { logger } from "./logger.js";
+import { sponsoringAccessError } from "./sponsoring/access.js";
+import type { SponsoringService } from "./sponsoring/service.js";
 
 export interface AppDeps {
+  sponsoring?: SponsoringService;
   /** Dynamic rate-limit tiers for /settle. */
   rateLimit: { authenticated: string; anonymous: string };
   /** Current GasFree proxy settings (resolved at startup), or null if disabled. */
@@ -139,8 +142,12 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
   }
 
   app.get("/supported", (c) => c.json(facilitator.getSupported()));
+  app.get("/sponsoring/ready", (c) => {
+    const state = deps.sponsoring?.readiness() ?? { ready: false, mode: "DISABLED" };
+    return c.json(state, state.ready ? 200 : 503);
+  });
 
-  app.post("/verify", async (c) => {
+  app.post("/verify", rateLimit(deps.rateLimit), async (c) => {
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -153,8 +160,18 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       return c.json({ isValid: false, invalidReason: "missing_parameters" }, 400);
     }
     try {
+      const reason = sponsoringAccessError(parsed.paymentPayload.extensions, parsed.paymentRequirements,
+        c.get("isAuthenticated") === true, deps.sponsoring?.access());
+      if (reason) {
+        if (reason === "sponsor_recovery_in_progress") c.header("Retry-After", "15");
+        return c.json({ isValid: false, invalidReason: reason }, reason === "sponsor_recovery_in_progress" ? 503 : 403);
+      }
       const result = await facilitator.verify(parsed.paymentPayload, parsed.paymentRequirements);
       if (!result.isValid) logger.warn("verify invalid", { reason: result.invalidReason });
+      if (["sponsor_owner_busy", "sponsor_recovery_in_progress", "sponsor_storage_unavailable"].includes(result.invalidReason ?? "")) {
+        c.header("Retry-After", "15");
+        return c.json(result, 503);
+      }
       return c.json(result);
     } catch (err) {
       logger.error("verify error", { err: String(err) });
@@ -177,6 +194,12 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       return c.json({ success: false, errorReason: "missing_parameters" }, 400);
     }
     const { paymentPayload, paymentRequirements } = parsed;
+    const sponsorError = sponsoringAccessError(paymentPayload.extensions, paymentRequirements,
+      c.get("isAuthenticated") === true, deps.sponsoring?.access());
+    if (sponsorError) {
+      c.header("Retry-After", "15");
+      return c.json({ success: false, errorReason: sponsorError }, sponsorError === "sponsor_recovery_in_progress" ? 503 : 403);
+    }
     const requirements = paymentRequirements;
     const accepted = paymentPayload.accepted;
     const network = requirements.network ?? accepted?.network ?? "";
@@ -221,6 +244,10 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       });
     }
 
+    if (["sponsor_owner_busy", "sponsor_recovery_in_progress", "sponsor_storage_unavailable"].includes(result.errorReason ?? "")) {
+      c.header("Retry-After", "15");
+      return c.json(result, 503);
+    }
     return c.json(result);
   });
 

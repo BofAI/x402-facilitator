@@ -120,6 +120,26 @@ describe("buildFacilitator", () => {
     vi.clearAllMocks();
   });
 
+  it.each([
+    ["eip155:97", "eip155:97"],
+    ["eip155:84532", "eip155:84532"],
+    [TRON_NILE, "tron:3448148188"],
+    ["tron:0xcd8690dc", "tron:3448148188"],
+  ])("registers batch authorizer for configured %s using canonical %s", async (network, canonical) => {
+    const isTron = canonical.startsWith("tron:");
+    if (isTron) mocks.buildTronAuthorizerSigner.mockResolvedValueOnce({ address: "Tauthorizer", signTypedData: vi.fn() });
+
+    const facilitator = await buildFacilitator({
+      database: { url: "postgresql://localhost/test" },
+      facilitator: { networks: { [network]: { schemes: ["batch-settlement"] } } },
+    }, { gasfreeBaseUrlFor: () => null }) as InstanceType<typeof mocks.FakeFacilitator>;
+
+    const authorizer = isTron ? mocks.buildTronAuthorizerSigner : mocks.buildEvmAuthorizerSigner;
+    expect(authorizer).toHaveBeenCalledExactlyOnceWith(canonical);
+    expect(isTron ? mocks.buildEvmAuthorizerSigner : mocks.buildTronAuthorizerSigner).not.toHaveBeenCalled();
+    expect(facilitator.registrations).toEqual([expect.objectContaining({ network: canonical })]);
+  });
+
   it("registers the ERC-20 approval gas-sponsoring extension for BSC/EVM networks", async () => {
     const facilitator = (await buildFacilitator(
       {
