@@ -23,7 +23,19 @@ type HttpMethod = Parameters<InstanceType<typeof providers.HttpProvider>["reques
 class RecoverableHttpProvider extends providers.HttpProvider {
   override async request<T = unknown>(url: string, payload?: object,
     method?: HttpMethod): Promise<T> {
-    return recoverableChainBoundary(() => super.request<T>(url, payload, method));
+    const result = await recoverableChainBoundary(() => super.request<T>(url, payload, method));
+    // HTTP success does not imply broadcast acceptance. Classify explicit node
+    // rejections here, before the SDK turns them into plain Errors. Recovery
+    // must retain the original txID as unknown and reconcile its receipt;
+    // local validation and storage failures never pass through this boundary.
+    if (url === "wallet/broadcasthex" && result !== null && typeof result === "object") {
+      const accepted = "result" in result ? result.result : undefined;
+      const code = "code" in result && typeof result.code === "string" ? result.code : undefined;
+      // Some node responses omit the protobuf boolean when it is false.
+      if (accepted === false || (accepted === undefined && code !== undefined))
+        throw new RecoverableChainError(new Error(`TRON broadcast rejected: ${code ?? "unknown"}`));
+    }
+    return result;
   }
 }
 

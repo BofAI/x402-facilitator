@@ -285,7 +285,13 @@ describe("sponsoring service lifecycle", () => {
     } finally { await service.close(); rpc.mockRestore(); vi.useRealTimers(); }
   });
 
-  it("broadcasts another receiver's prepared reclaim after an earlier receiver RPC failure", async () => {
+  it.each([
+    { rejection: undefined, receiptExists: true },
+    { rejection: "TRANSACTION_EXPIRATION_ERROR", receiptExists: true },
+    { rejection: "DUP_TRANSACTION_ERROR", receiptExists: true },
+    { rejection: "TRANSACTION_EXPIRATION_ERROR", receiptExists: true, omitResult: true },
+    { rejection: "TRANSACTION_EXPIRATION_ERROR", receiptExists: false },
+  ])("reconciles a persisted reclaim after node response $rejection (receipt=$receiptExists, omitResult=$omitResult)", async ({ rejection, receiptExists, omitResult }) => {
     vi.useFakeTimers();
     const config = testConfig();
     const now = Date.now();
@@ -304,10 +310,13 @@ describe("sponsoring service lifecycle", () => {
     }) as Trc20SponsoringOperation;
     await store.admit(operation("bad", config.owner, []));
     await store.admit(operation("healthy", settlement.getAddresses()[0], [
+      { txID: "delegate", signedTransaction: "aa", kind: "delegate", resource: "ENERGY", status: "confirmed" },
       { ...reclaim, kind: "undelegate", resource: "ENERGY", status: "prepared" },
     ]));
+    await store.rememberExpiration(reclaim.txID, 74000);
     store.close();
     const broadcasts: string[] = [];
+    const confirmations: string[] = [];
     const rpc = vi.spyOn(providers.HttpProvider.prototype, "request").mockImplementation(async (path, params) => {
       if (path === "walletsolidity/getdelegatedresourcev2") {
         const receiver = (params as { toAddress: string }).toAddress;
@@ -320,22 +329,31 @@ describe("sponsoring service lifecycle", () => {
         block_header: { raw_data: { number: 100, timestamp: now } } };
       if (path === "wallet/broadcasthex") {
         broadcasts.push(String((params as { transaction: string }).transaction));
+        if (rejection) return { ...(omitResult ? {} : { result: false }), code: rejection };
         return { result: true, txid: reclaim.txID, transaction: JSON.stringify({}) };
       }
-      if (path === "walletsolidity/gettransactioninfobyid") return { id: reclaim.txID, blockNumber: 100, receipt: { result: "SUCCESS" } };
+      if (path === "walletsolidity/gettransactioninfobyid") {
+        confirmations.push((params as { value: string }).value);
+        return receiptExists ? { id: reclaim.txID, blockNumber: 100, receipt: { result: "SUCCESS" } } : {};
+      }
+      if (path === "walletsolidity/getnowblock") return { block_header: { raw_data: { timestamp: now } } };
       if (path === "wallet/getaccountresource") return { EnergyLimit: 1000, NetLimit: 1000 };
       throw new Error(`Unexpected RPC: ${path}`);
     });
     const service = await createSponsoringService(config, settlement);
     try {
       service.start();
-      await vi.advanceTimersByTimeAsync(100);
+      await vi.advanceTimersByTimeAsync(receiptExists ? 100 : 90100);
       expect(broadcasts).toEqual([reclaim.signedTransaction]);
+      expect(confirmations.length).toBeGreaterThan(0);
+      expect(confirmations.every(txID => txID === reclaim.txID)).toBe(true);
       const db = new DatabaseSync(config.database, { readOnly: true });
       try {
         const row = db.prepare("SELECT payload FROM operations WHERE key='healthy'").get() as { payload: Uint8Array };
-        expect(deserialize(row.payload)).toMatchObject({ status: "recovered",
-          actions: [expect.objectContaining({ txID: reclaim.txID, status: "confirmed" })] });
+        // With no receipt the old tx is failed before reconcile attempts a new
+        // reclaim (the test signer deliberately cannot sign a replacement).
+        expect(deserialize(row.payload)).toMatchObject({ status: receiptExists ? "recovered" : "reclaiming",
+          actions: expect.arrayContaining([expect.objectContaining({ txID: reclaim.txID, status: receiptExists ? "confirmed" : "failed" })]) });
       } finally { db.close(); }
       expect(service.readiness().mode).toBe("DEGRADED");
     } finally { await service.close(); rpc.mockRestore(); vi.useRealTimers(); }
