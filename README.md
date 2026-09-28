@@ -81,7 +81,7 @@ for Nile to allow sponsorship without `X-API-KEY`; other networks reject this
 setting at startup. Built-in dev opts out of API-key authentication; prod keeps it
 enabled. Receiver address validity, asset restrictions, signed approval validation, resource budgets,
 recovery and concurrency checks remain enforced. Anonymous requests retain the
-anonymous rate limit (dev: `1/minute`); with Redis/Valkey, verify and settle share
+anonymous rate limit (dev: `10/minute`, in-memory per instance); with Redis/Valkey, verify and settle share
 the anonymous counter, so sequential calls may need to wait for `Retry-After`.
 This opt-out exposes test resources to anonymous consumption. Restart the service
 after changing the setting; it does not grant an authenticated identity or access

@@ -75,7 +75,6 @@ describe("loadConfig", () => {
       mode: "connect",
       database_user: "x402-facilitator-nile_dev/psql/user",
       database_password: "x402-facilitator-nile_dev/psql/password",
-      redis_password: "x402-facilitator-nile_dev/redis/VALKEY_PASSWORD",
       trongrid_api_key: "x402-facilitator-nile_dev/trongrid/trongrid_api_key",
       gasfree_api_key_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_key_nile",
       gasfree_api_secret_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_secret_nile",
@@ -85,8 +84,9 @@ describe("loadConfig", () => {
     expect(cfg.resource_sponsoring?.management_bandwidth).toBe("5000");
     expect(cfg.resource_sponsoring?.require_api_key).toBe(false);
     expect(cfg.resource_sponsoring?.pay_to).toBeUndefined();
-    expect(cfg.rate_limit?.store).toBe("redis");
-    expect(cfg.rate_limit?.redis_url).toBe("rediss://master.use1-sun-test-v2-valkey.ivwjem.use1.cache.amazonaws.com:6379");
+    expect(cfg.rate_limit?.store).toBe("memory");
+    expect(cfg.rate_limit?.redis_url).toBeUndefined();
+    expect(cfg.rate_limit?.anonymous).toBe("10/minute");
     const invalid = readFileSync(path, "utf8")
       .replace("TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y", "REPLACE_WITH_DEV_RESOURCE_OWNER");
     expect(() => loadConfig(writeConfig(invalid))).toThrow(/resource_sponsoring\.owner: invalid TRON address/);
