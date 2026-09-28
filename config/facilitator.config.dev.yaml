@@ -1,14 +1,14 @@
 # Local runtime config for the development environment.
 # Start with:
 #   FACILITATOR_SERVICE_ENV=dev npm run dev
-# Before deploying, replace the two REPLACE_WITH_* addresses below and provision
-# the Owner permission/resources. Unfilled addresses intentionally fail startup.
+# Before deploying, replace the Owner address below and provision
+# the Owner permission/resources. An unfilled Owner intentionally fails startup.
 # Provision Agent Wallet on the server and mount its directory into the container.
 
 database:
   # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form; credentials
   # are injected from onepassword below before connecting.
-  url: "postgresql+asyncpg://sun-agent-postgresql.chqcqywoo8fb.us-east-1.rds.amazonaws.com:5432/x402_facilitator"
+  url: "postgresql+asyncpg://sun-test-psql.cpey4w6a4f9o.us-east-1.rds.amazonaws.com:5432/x402_facilitator"
   ssl_mode: "require"
   max_open_conns: 100
 
@@ -76,9 +76,8 @@ resource_sponsoring:
   # OP: match the actual on-chain Active permission ID (only delegate/undelegate).
   permission_id: 2
 
-  # Nile USDT. OP: configure the permitted payment recipient(s), not the signer.
+  # Nile USDT. Sponsoring does not restrict payment recipients.
   assets: ["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]
-  pay_to: ["REPLACE_WITH_DEV_PAYMENT_RECIPIENT"]
 
   # OP: review against actual stake and concurrency before the first deployment.
   # These are service limits, NOT automatic staking or guaranteed chain capacity.

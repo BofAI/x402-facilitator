@@ -20,7 +20,8 @@ export const sponsoringConfigSchema = z.object({
   wallet_dir: z.string().refine(isAbsolute).optional(),
   permission_id: z.number().int().min(2).max(9),
   assets: z.array(address).min(1),
-  pay_to: z.array(address).min(1),
+  // Legacy configuration compatibility only; no receiver allowlist is enforced.
+  pay_to: z.array(z.string()).optional(),
   energy_stake_sun: positiveAmount,
   bandwidth_stake_sun: positiveAmount,
   budget_sun: positiveAmount,

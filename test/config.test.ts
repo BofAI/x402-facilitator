@@ -42,12 +42,11 @@ describe("loadConfig", () => {
     expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97"]);
   });
 
-  it("requires operator addresses and limits prod PG sponsoring to Nile without removing payment networks", () => {
+  it("requires an Owner and limits prod PG sponsoring to Nile without removing payment networks", () => {
     const path = resolve(process.cwd(), "config/facilitator.config.prod.yaml");
     expect(() => loadConfig(path)).toThrow(/resource_sponsoring\.owner: invalid TRON address/);
     const provisioned = readFileSync(path, "utf8")
-      .replace("REPLACE_WITH_PROD_NILE_RESOURCE_OWNER", "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9")
-      .replace("REPLACE_WITH_PROD_NILE_PAYMENT_RECIPIENT", "TFmohhTQMoD4nuZnD7H7hqZ8HUZa924vFF");
+      .replace("REPLACE_WITH_PROD_NILE_RESOURCE_OWNER", "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9");
     const cfg = loadConfig(writeConfig(provisioned));
     expect(cfg.logging?.level).toBe("info");
     expect(cfg.onepassword?.mode).toBe("service_account");
@@ -68,12 +67,11 @@ describe("loadConfig", () => {
     expect(cfg.onepassword?.gasfree_api_secret_mainnet).toBe("x402-facilitator/gasfree/gasfree_api_secret_mainnet");
   });
 
-  it("requires operator addresses before loading the dev PG sponsoring deployment", () => {
+  it("requires an Owner before loading the dev PG sponsoring deployment", () => {
     const path = resolve(process.cwd(), "config/facilitator.config.dev.yaml");
     expect(() => loadConfig(path)).toThrow(/resource_sponsoring\.owner: invalid TRON address/);
     const provisioned = readFileSync(path, "utf8")
-      .replace("REPLACE_WITH_DEV_RESOURCE_OWNER", "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9")
-      .replace("REPLACE_WITH_DEV_PAYMENT_RECIPIENT", "TFmohhTQMoD4nuZnD7H7hqZ8HUZa924vFF");
+      .replace("REPLACE_WITH_DEV_RESOURCE_OWNER", "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9");
     const cfg = loadConfig(writeConfig(provisioned));
     expect(cfg.onepassword?.mode).toBe("connect");
     expect(cfg.logging?.level).toBe("info");

@@ -1,8 +1,8 @@
 # Local runtime config for the production environment.
 # Start with:
 #   FACILITATOR_SERVICE_ENV=prod npm start
-# Before deploying, replace the Nile sponsoring addresses below and provision
-# resource-active in Agent Wallet. Unfilled addresses intentionally fail startup.
+# Before deploying, replace the Nile Owner address below and provision
+# resource-active in Agent Wallet. An unfilled Owner intentionally fails startup.
 
 database:
   # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form; credentials
@@ -80,9 +80,8 @@ resource_sponsoring:
   # Match the actual on-chain Active permission (delegate/undelegate only).
   permission_id: 2
 
-  # Nile USDT and the permitted Nile payment recipient(s).
+  # Nile USDT. Sponsoring does not restrict payment recipients.
   assets: ["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]
-  pay_to: ["REPLACE_WITH_PROD_NILE_PAYMENT_RECIPIENT"]
 
   # Review limits against actual stake and concurrency before deployment.
   # These do not automatically stake funds. 1 TRX = 1,000,000 SUN.

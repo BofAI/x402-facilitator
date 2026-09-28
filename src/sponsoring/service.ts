@@ -172,8 +172,7 @@ export async function createSponsoringService(config: SponsoringConfig, settleme
       // timestamp precedes the RPC round trip. Allow bounded construction skew.
       if (BigInt(request.approvalExpiration) - BigInt(request.approvalTimestamp) > 630000n)
         throw new Error("sponsor_approval_lifetime_exceeded");
-      if (!config.pay_to.some(address => TronWeb.address.toHex(address).toLowerCase() === TronWeb.address.toHex(request.paymentRequirements.payTo).toLowerCase()))
-        throw new Error("sponsor_pay_to_forbidden");
+      if (!TronWeb.isAddress(request.paymentRequirements.payTo)) throw new Error("sponsor_pay_to_invalid");
     }
 
     async function existingOperation(request: Trc20SponsoringOperation["request"]) {
@@ -251,7 +250,7 @@ export async function createSponsoringService(config: SponsoringConfig, settleme
           finally { sponsorWork.delete(work); }
         },
       },
-      access: () => ({ network: config.network, payTo: config.pay_to, ready: mode === "READY" && !stopping,
+      access: () => ({ network: config.network, ready: mode === "READY" && !stopping,
         canRetryExisting: canRetryExisting(), requireApiKey: config.require_api_key ?? true }),
       readiness: () => ({ ready: mode === "READY" && !stopping, mode, network: config.network }),
       start() { if (!running && !timer) schedule(); },

@@ -71,21 +71,27 @@ Required: `database.url`, `facilitator.networks` (≥1 network, listed = enabled
 
 Optional Nile/Shasta Approval resource sponsoring supports SQLite or shared PostgreSQL
 storage. Both built-in configs enable Nile-only sponsorship and require
-operator-provisioned Owner/recipient addresses and a restricted `resource-active`
-wallet before startup. Other configured payment networks remain enabled.
+an operator-provisioned Owner and a restricted `resource-active` wallet before
+startup. Other configured payment networks remain enabled.
 SQLite still requires business PostgreSQL. Shared Owners must use the same PG
 ledger and configuration; do not switch ledgers while recovery debt remains.
 
 `resource_sponsoring.require_api_key` defaults to `true`. Set it to `false` only
 for Nile to allow sponsorship without `X-API-KEY`; other networks reject this
 setting at startup. Built-in dev opts out of API-key authentication; prod keeps it
-enabled. Receiver/asset restrictions, signed approval validation, resource budgets,
+enabled. Receiver address validity, asset restrictions, signed approval validation, resource budgets,
 recovery and concurrency checks remain enforced. Anonymous requests retain the
 anonymous rate limit (dev: `1/minute`); with Redis/Valkey, verify and settle share
 the anonymous counter, so sequential calls may need to wait for `Retry-After`.
 This opt-out exposes test resources to anonymous consumption. Restart the service
 after changing the setting; it does not grant an authenticated identity or access
 to merchant settlement feeds.
+
+Resource sponsoring accepts any valid TRON payment recipient; there is no receiver
+allowlist. The legacy `resource_sponsoring.pay_to` string-list field is accepted
+but ignored for existing deployments and has been removed from both built-in configs.
+This broadens who can benefit from resources, without bypassing payment signatures,
+asset policy, API-key settings or resource limits.
 
 Secrets resolve **env first, then 1Password**. Secret references keep the
 `vault/item/field` format. `onepassword.mode` selects `connect` (built-in dev)

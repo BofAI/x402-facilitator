@@ -6,6 +6,7 @@ on:
     tags:
       - "v*"
       - "test-v*"
+      - "dev-v*"
   pull_request:
     branches: [develop, main]
 
@@ -36,6 +37,7 @@ jobs:
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           TAG_VERSION="${GITHUB_REF_NAME#test-v}"
+          TAG_VERSION="${TAG_VERSION#dev-v}"
           TAG_VERSION="${TAG_VERSION#v}"
 
           if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
@@ -60,12 +62,12 @@ jobs:
 
   build-and-push:
     needs: lint-and-test
-    if: github.event_name == 'push' && github.ref_type == 'tag' && (startsWith(github.ref_name, 'test-v') || startsWith(github.ref_name, 'v'))
+    if: github.event_name == 'push' && github.ref_type == 'tag' && (startsWith(github.ref_name, 'test-v') || startsWith(github.ref_name, 'dev-v') || startsWith(github.ref_name, 'v'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
-      IMAGE_TAG: ${{ startsWith(github.ref_name, 'test-v') && 'test' || github.ref_name }}
+      IMAGE_TAG: ${{ startsWith(github.ref_name, 'dev-v') && 'dev' || startsWith(github.ref_name, 'test-v') && 'test' || github.ref_name }}
 
     steps:
       - name: Checkout

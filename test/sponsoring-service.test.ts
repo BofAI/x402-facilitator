@@ -68,6 +68,21 @@ function requestDigest(request: Trc20ApprovalResourceSponsoringRequest): string 
 }
 
 describe("sponsoring service lifecycle", () => {
+  it.each(["verify", "sponsor"] as const)("ignores legacy allowlists but validates receiver addresses in runtime %s", async method => {
+    const config = { ...testConfig(), require_api_key: false };
+    const service = await createSponsoringService(config, settlement);
+    try {
+      const req = { network: config.network, approvalTimestamp: "1000", approvalExpiration: "601000",
+        paymentRequirements: { payTo: "TFmohhTQMoD4nuZnD7H7hqZ8HUZa924vFF" } };
+      expect(sponsoringAccessError({ trc20ApprovalResourceSponsoring: {} },
+        { network: config.network, payTo: req.paymentRequirements.payTo },
+        false, service.access())).toBe("sponsor_recovery_in_progress");
+      const reason = (result: unknown) => (result as { invalidReason?: string; errorReason?: string }).invalidReason
+        ?? (result as { errorReason?: string }).errorReason;
+      expect(reason(await service.runtime[method](req as never))).toBe("sponsor_recovery_in_progress");
+      expect(reason(await service.runtime[method]({ ...req, paymentRequirements: { payTo: "invalid" } } as never))).toBe("sponsor_pay_to_invalid");
+    } finally { await service.close(); }
+  });
   it.each([undefined, true, false])("propagates require_api_key=%s to the HTTP access gate", async requireApiKey => {
     const config = { ...testConfig(), require_api_key: requireApiKey };
     const service = await createSponsoringService(config, settlement);

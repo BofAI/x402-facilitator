@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Resource sponsoring accepts any valid TRON payment recipient. The legacy
+  `resource_sponsoring.pay_to` field is accepted but no longer enforced.
 - Optional anonymous Nile sponsorship via `resource_sponsoring.require_api_key: false`.
   Dev opts in; production and omitted settings still require API keys. Other networks cannot opt out.
 - Independent Redis/Valkey rate-limit passwords via `RATE_LIMIT_REDIS_PASSWORD` or
@@ -27,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   x402-evm 1.1.1, retaining x402-extensions 1.2.0 and Agent Wallet 3.0.0.
 - Upgraded Agent Wallet to 3.0.0.
 - Prepared the development and production configs for Nile-only PostgreSQL sponsorship; operators must
-  replace Owner/recipient placeholders and provision the restricted signer before
+  replace the Owner placeholder and provision the restricted signer before
   startup. Other configured payment networks and GasFree remain available.
 
 - Adopted the `develop` integration branch and explicit feature, release, and
