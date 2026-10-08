@@ -46,6 +46,9 @@
   },
   "overrides": {
     "@bankofai/x402-core": "$@bankofai/x402-core",
+    "tronweb": {
+      "axios": "1.20.0"
+    },
     "ws": "^8.21.1",
     "esbuild": "^0.28.1"
   },
