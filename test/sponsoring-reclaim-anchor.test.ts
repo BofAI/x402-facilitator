@@ -43,6 +43,18 @@ function action(ref = "1111111111111111") {
   return { txID, signedTransaction: serializeSignedTronTransaction({ ...transaction, txID, raw_data_hex: utils.transaction.txPbToRawDataHex(pb) }) };
 }
 describe("reclaim TAPOS anchor", () => {
+  it("distinguishes an absent Approval receipt from invalid inclusion evidence before expiry", async () => {
+    const { anchor, setReceipt } = fixture();
+    setReceipt({});
+    await expect(anchor.blockHeader(request)).rejects.toMatchObject({ name: "ApprovalPendingError" });
+    for (const receipt of [[], { id: approval }, { blockNumber: 100 },
+      { id: "b".repeat(64), blockNumber: 100, receipt: { result: "SUCCESS" } },
+      { id: approval, blockNumber: 100, receipt: { result: "REVERT" } }]) {
+      setReceipt(receipt);
+      await expect(anchor.blockHeader(request)).rejects.not.toMatchObject({ name: "ApprovalPendingError" });
+    }
+  });
+
   it("classifies anchor transport failure without classifying malformed signed bytes", async () => {
     const unavailable = createReclaimAnchor({ fullNode: { request: async () => { throw new Error("offline"); } } } as unknown as TronWeb);
     await expect(unavailable.blockHeader(request)).rejects.toBeInstanceOf(RecoverableChainError);

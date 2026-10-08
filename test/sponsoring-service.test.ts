@@ -11,6 +11,7 @@ import type { FacilitatorTronSigner, Trc20ApprovalResourceSponsoringRequest,
 import { serializeSignedTronTransaction } from "@bankofai/x402-tron";
 import { sponsoringConfigSchema } from "../src/sponsoring/config.js";
 import { createSponsoringService } from "../src/sponsoring/service.js";
+import { createSponsoringServices, closeSponsoringServices } from "../src/sponsoring/services.js";
 import { SqliteSponsoringCoordinator } from "../src/sponsoring/store.js";
 import { recoveryErrors } from "../src/sponsoring/metrics.js";
 import { SponsoringStorageError } from "../src/sponsoring/recovery-errors.js";
@@ -68,6 +69,98 @@ function requestDigest(request: Trc20ApprovalResourceSponsoringRequest): string 
 }
 
 describe("sponsoring service lifecycle", () => {
+  it.each(["absent", "rpc-failure", "malformed", "failed", "invalid-block"] as const)(
+    "classifies pre-expiry reclaim evidence %s without releasing delegated capacity", async evidence => {
+      vi.useFakeTimers();
+      const config = testConfig();
+      const now = Date.now();
+      const approvalTxID = "a".repeat(64);
+      const payer = settlement.getAddresses()[0];
+      const store = new SqliteSponsoringCoordinator(config.database,
+        { network: config.network, owner: config.owner, permissionId: config.permission_id },
+        { energy: 1000000000n, bandwidth: 1000000000n, budget: 100000000n, management: 10000n });
+      const request = { network: config.network, payer, approvalTxID, approvalExpiration: String(now + 120000),
+        requiredAllowance: "1", paymentRequirements: { amount: "1" } };
+      await store.admit({ key: "waiting", network: config.network, payer, approvalTxID, requestDigest: "waiting",
+        request, revision: 0, createdAtMs: now - 480000, status: "failed_recovering", budgetUnits: 1n,
+        plan: { energyRequired: 100n, bandwidthRequired: 0n, managementBandwidthRequired: 600n,
+          replacementCost: 1n, legs: [{ resource: "ENERGY", stakeSun: 1000000n, requiredUnits: 100n, delegatedUnits: 100n }] },
+        actions: [{ kind: "approval", txID: approvalTxID, signedTransaction: "aa", status: "prepared" },
+          { kind: "delegate", resource: "ENERGY", txID: "delegate", signedTransaction: "bb", status: "confirmed" }],
+      } as Trc20SponsoringOperation);
+      await store.admit({ key: "healthy", network: config.network, payer: config.owner, approvalTxID: "healthy-approval",
+        requestDigest: "healthy", request: { ...request, payer: config.owner }, revision: 0, createdAtMs: now - 480000,
+        status: "failed_recovering", budgetUnits: 0n, actions: [], plan: { energyRequired: 0n, bandwidthRequired: 0n,
+          managementBandwidthRequired: 0n, replacementCost: 0n, legs: [] },
+      } as Trc20SponsoringOperation);
+      store.close();
+      const writes: string[] = [];
+      const rpc = vi.spyOn(providers.HttpProvider.prototype, "request").mockImplementation(async (path, params) => {
+        if (path === "walletsolidity/getdelegatedresourcev2") return { delegatedResource: [{
+          from: TronWeb.address.toHex(config.owner), to: (params as { toAddress: string }).toAddress,
+          frozen_balance_for_energy: 1000000,
+        }] };
+        if (path === "walletsolidity/getdelegatedresourceaccountindexv2") return { toAccounts: [payer] };
+        if (path === "wallet/getnowblock") return evidence === "invalid-block" ? {} : {
+          blockID: `${"0".repeat(14)}64${"11".repeat(8)}${"0".repeat(32)}`,
+          block_header: { raw_data: { number: 100, timestamp: now } },
+        };
+        if (path === "wallet/gettransactioninfobyid") {
+          if (evidence === "rpc-failure") throw new Error("receipt lookup unavailable");
+          if (evidence === "malformed") return { id: approvalTxID };
+          if (evidence === "failed") return { id: approvalTxID, blockNumber: 100, receipt: { result: "REVERT" } };
+          return {};
+        }
+        if (["wallet/broadcasthex", "wallet/undelegateresource"].includes(path)) writes.push(path);
+        throw new Error(`Unexpected RPC: ${path}`);
+      });
+      const service = await createSponsoringService(config, settlement);
+      try {
+        const before = await recoveryErrorCount(config.network);
+        service.start();
+        await vi.advanceTimersByTimeAsync(100);
+        expect(service.readiness().mode).toBe(evidence === "absent" ? "RECOVERING" : "DEGRADED");
+        expect(service.access().ready).toBe(false);
+        expect(await recoveryErrorCount(config.network)).toBe(before + (evidence === "absent" ? 0 : 1));
+        const db = new DatabaseSync(config.database, { readOnly: true });
+        try {
+          const row = db.prepare("SELECT payload FROM operations WHERE key='waiting'").get() as { payload: Uint8Array };
+          expect(deserialize(row.payload)).toMatchObject({ budgetUnits: 1n,
+            plan: { legs: [{ resource: "ENERGY", stakeSun: 1000000n }] },
+            actions: expect.not.arrayContaining([expect.objectContaining({ kind: "undelegate" })]),
+          });
+          if (evidence === "absent") expect(db.prepare("SELECT status FROM operations WHERE key='healthy'").get()?.status).toBe("recovered");
+        } finally { db.close(); }
+        expect(writes).toEqual([]);
+        if (evidence === "absent") {
+          await vi.advanceTimersByTimeAsync(15000);
+          expect(service.readiness().mode).toBe("RECOVERING");
+          expect(await recoveryErrorCount(config.network)).toBe(before);
+        }
+      } finally { await service.close(); rpc.mockRestore(); vi.useRealTimers(); }
+    },
+  );
+
+  it("runs recovery independently for Nile and Shasta in the same process", async () => {
+    const calls: string[] = [];
+    const rpc = vi.spyOn(providers.HttpProvider.prototype, "request").mockImplementation(async function(path) {
+      if (path !== "walletsolidity/getdelegatedresourceaccountindexv2") throw new Error(`Unexpected RPC: ${path}`);
+      calls.push(this.host);
+      if (this.host.includes("shasta")) throw new Error("Shasta unavailable");
+      return {};
+    });
+    const configs = [testConfig(), { ...testConfig(), network: "tron:2494104990" }];
+    const services = await createSponsoringServices(configs, config => createSponsoringService(config, settlement));
+    try {
+      for (const service of services) service.start();
+      await vi.waitFor(() => {
+        expect(services[0].readiness()).toMatchObject({ ready: true, mode: "READY", network: "tron:3448148188" });
+        expect(services[1].readiness()).toMatchObject({ ready: false, mode: "DEGRADED", network: "tron:2494104990" });
+      });
+      expect(calls.some(host => host.includes("shasta"))).toBe(true);
+      expect(calls.some(host => host.includes("nile"))).toBe(true);
+    } finally { await closeSponsoringServices(services); rpc.mockRestore(); }
+  });
   it.each(["verify", "sponsor"] as const)("ignores legacy allowlists but validates receiver addresses in runtime %s", async method => {
     const config = { ...testConfig(), require_api_key: false };
     const service = await createSponsoringService(config, settlement);

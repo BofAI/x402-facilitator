@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TRON_NILE } from "@bankofai/x402-tron";
+import type { SponsoringService } from "../src/sponsoring/service.js";
 import { registerExactTronScheme } from "@bankofai/x402-tron/exact/facilitator";
 import { registerExactGasFreeTronScheme } from "@bankofai/x402-tron/gasfree/facilitator";
 
@@ -7,6 +8,12 @@ const mocks = vi.hoisted(() => {
   class FakeFacilitator {
     registrations: Array<{ network: string; scheme: unknown }> = [];
     extensions: Array<Record<string, unknown>> = [];
+    beforeSettleHooks: Array<(context: unknown) => Promise<unknown>> = [];
+
+    onBeforeSettle(hook: (context: unknown) => Promise<unknown>): FakeFacilitator {
+      this.beforeSettleHooks.push(hook);
+      return this;
+    }
 
     register(network: string, scheme: unknown): FakeFacilitator {
       this.registrations.push({ network, scheme });
@@ -92,7 +99,8 @@ vi.mock("@bankofai/x402-evm/batch-settlement/facilitator", () => ({
   },
 }));
 
-vi.mock("@bankofai/x402-extensions", () => ({
+vi.mock("@bankofai/x402-extensions", async original => ({
+  ...await original<object>(),
   createErc20ApprovalGasSponsoringExtension: vi.fn((signer, signerForNetwork) => ({
     key: "erc20ApprovalGasSponsoring",
     signer,
@@ -116,6 +124,42 @@ vi.mock("../src/signer.js", async (importOriginal) => {
 const { buildFacilitator } = await import("../src/facilitator.js");
 
 describe("buildFacilitator", () => {
+  it("checks the configured network's Permit2 nonce before settlement", async () => {
+    mocks.evmSigner97.readContract.mockResolvedValue(2n);
+    const facilitator = await buildFacilitator({ database: { url: "unused" },
+      facilitator: { networks: { "eip155:97": { schemes: ["exact"] } } } },
+    { gasfreeBaseUrlFor: () => null }) as unknown as InstanceType<typeof mocks.FakeFacilitator>;
+    expect(facilitator.beforeSettleHooks).toHaveLength(1);
+    expect(await facilitator.beforeSettleHooks[0]({
+      requirements: { scheme: "exact", network: "eip155:97" },
+      paymentPayload: { payload: { permit2Authorization: {
+        from: "0x1111111111111111111111111111111111111111", nonce: "1",
+      } } },
+    })).toEqual({ abort: true, reason: "permit2_nonce_consumed" });
+    expect(mocks.evmSigner97.readContract).toHaveBeenCalledWith(expect.objectContaining({
+      functionName: "nonceBitmap", args: ["0x1111111111111111111111111111111111111111", 0n],
+    }));
+  });
+  it("routes TRC-20 sponsoring to the configured runtime and fails closed for unknown networks", async () => {
+    const service = (network: string) => ({
+      access: () => ({ network, ready: true }),
+      runtime: { verify: async () => ({ isValid: false, invalidReason: network }),
+        sponsor: async () => ({ success: false, errorReason: network }) },
+    }) as SponsoringService;
+    const nile = service("tron:3448148188"), shasta = service("tron:2494104990");
+    const facilitator = await buildFacilitator({ database: { url: "unused" },
+      facilitator: { networks: { "eip155:97": { schemes: ["exact"] } } } }, { sponsoring: [shasta, nile] });
+    const extension = (facilitator as unknown as InstanceType<typeof mocks.FakeFacilitator>).extensions
+      .find(value => value.key === "trc20ApprovalResourceSponsoring")!;
+    const runtimeForNetwork = extension.runtimeForNetwork as (network: string) => SponsoringService["runtime"] | undefined;
+    expect(runtimeForNetwork("tron:0xcd8690dc")).toBe(nile.runtime);
+    expect(runtimeForNetwork("tron:0x94a9059e")).toBe(shasta.runtime);
+    expect(runtimeForNetwork("tron:728126428")).toBeUndefined();
+    const fallback = extension.runtime as SponsoringService["runtime"];
+    const request = { network: "tron:728126428" } as Parameters<typeof fallback.verify>[0];
+    expect(await fallback.verify(request)).toEqual({ isValid: false, invalidReason: "sponsor_network_disabled" });
+    expect(await fallback.sponsor(request)).toEqual({ success: false, errorReason: "sponsor_network_disabled" });
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });

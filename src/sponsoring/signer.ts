@@ -2,6 +2,7 @@ import { resolveWallet, type Wallet } from "@bankofai/agent-wallet";
 import { TronWeb } from "tronweb";
 import { normalizeSignedTronTransaction, type TronResourceOwnerSigner } from "@bankofai/x402-tron";
 import type { SponsoringConfig } from "./config.js";
+import { assertPermit2SettlementLease } from "../permit2-replay.js";
 
 const canonical = (address: string) => TronWeb.address.toHex(address).toLowerCase();
 type Permission = { id?: number; type?: number | string; threshold?: number; operations?: string;
@@ -29,6 +30,7 @@ export async function buildResourceOwnerSigner(config: SponsoringConfig, tron: T
   return {
     getAddress: async () => config.owner,
     async signResourceTransaction({ intent, transaction }) {
+      assertPermit2SettlementLease();
       await assertOwnership();
       if (intent.network !== config.network || canonical(intent.owner) !== canonical(config.owner) ||
           intent.permissionId !== config.permission_id || intent.lock !== false ||
@@ -42,7 +44,9 @@ export async function buildResourceOwnerSigner(config: SponsoringConfig, tron: T
       await validate();
       await assertOwnership();
       const original = structuredClone(transaction);
+      assertPermit2SettlementLease();
       const artifact = await wallet.signTransaction(transaction);
+      assertPermit2SettlementLease();
       await assertOwnership();
       if (artifact.family !== "tron") throw new Error("resource_owner_signed_transaction_family_invalid");
       const signed = normalizeSignedTronTransaction(artifact.transaction, original);
@@ -50,6 +54,7 @@ export async function buildResourceOwnerSigner(config: SponsoringConfig, tron: T
         throw new Error("resource_owner_signed_transaction_mismatch");
       await prepared(String(signed.txID), raw.expiration!);
       await assertOwnership();
+      assertPermit2SettlementLease();
       return signed;
     },
   };

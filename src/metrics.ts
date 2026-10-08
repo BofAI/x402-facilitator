@@ -1,6 +1,6 @@
 /**
  * Prometheus metrics. Mirrors v1's prometheus-fastapi-instrumentator default
- * metric set (legacy/src/monitoring.py -> Instrumentator().instrument(app)) so
+ * metric set so
  * existing dashboards/alerts keep working. The instrumentator default emits:
  *   - http_requests_total{method,status,handler}      (Counter)
  *   - http_request_size_bytes{handler}                (Summary, sum+count only)

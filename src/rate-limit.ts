@@ -1,6 +1,5 @@
 /**
- * Dynamic per-key rate limiting. Ports the slowapi setup in legacy/src/auth.py
- * onto `hono-rate-limiter`:
+ * Dynamic per-key rate limiting using `hono-rate-limiter`:
  *   - Authenticated requests keyed by `auth:<api_key>` at the authenticated limit.
  *   - Anonymous requests keyed by `anon:<ip>` at the anonymous limit.
  *

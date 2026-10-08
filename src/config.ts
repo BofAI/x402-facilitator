@@ -1,5 +1,5 @@
 /**
- * Configuration loading + secret resolution. Faithful port of legacy/src/config.py.
+ * Configuration loading and secret resolution.
  *
  * The YAML shape is unchanged from v1 (minus /fee/quote). Secrets are resolved on
  * demand: secret fields under `onepassword.*` are `vault/item/field` references
@@ -13,7 +13,7 @@ import { z } from "zod";
 import { getSecretFromOnePassword, isUsableToken, parseOpRef, type OnePasswordOptions } from "./onepassword.js";
 import { logger, type Level } from "./logger.js";
 import { requireCanonicalNetwork } from "./network.js";
-import { sponsoringConfigSchema } from "./sponsoring/config.js";
+import { sponsoringConfigsSchema } from "./sponsoring/config.js";
 
 /** Payment schemes a network can enable. `exact_gasfree` (TRON) rides with `exact`. */
 export type Scheme = "exact" | "upto" | "batch-settlement";
@@ -37,7 +37,7 @@ const networkConfigSchema = z
 
 const facilitatorConfigSchema = z
   .object({
-    resource_sponsoring: sponsoringConfigSchema.optional(),
+    resource_sponsoring: sponsoringConfigsSchema.optional(),
     server: z.object({ host: z.string().min(1).optional(), port: port.optional() }).strict().optional(),
     logging: z
       .object({
@@ -146,8 +146,10 @@ export function loadConfig(path: string = configPath()): FacilitatorConfig {
   }
   const canonicalNetworks = Object.keys(cfg.facilitator.networks).map(requireCanonicalNetwork);
   if (new Set(canonicalNetworks).size !== canonicalNetworks.length) throw new Error("Duplicate canonical network configuration");
-  if (cfg.resource_sponsoring && !canonicalNetworks.includes(requireCanonicalNetwork(cfg.resource_sponsoring.network)))
-    throw new Error("resource_sponsoring.network must be enabled in facilitator.networks");
+  for (const sponsoring of cfg.resource_sponsoring ?? []) {
+    if (!canonicalNetworks.includes(requireCanonicalNetwork(sponsoring.network)))
+      throw new Error("resource_sponsoring.network must be enabled in facilitator.networks");
+  }
   return cfg;
 }
 

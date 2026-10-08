@@ -1,5 +1,5 @@
 import type { Trc20ResourceLeg, Trc20ResourceSponsoringChain, Trc20SponsoringOperation, Trc20SponsoringCoordinator } from "@bankofai/x402-tron";
-import { RecoverableChainError, ReclaimValidationError } from "./recovery-errors.js";
+import { ApprovalPendingError, RecoverableChainError, ReclaimValidationError } from "./recovery-errors.js";
 
 /** Timed-out business actions cannot hold resources hostage. Only query pairs
  * present in the local operation, and never reclaim more than its reservation. */
@@ -29,7 +29,12 @@ export async function recoverExpiredOperation(
     let action = current.actions.find(action => action.kind === "undelegate" && action.resource === leg.resource);
     if (action?.status === "confirmed") throw new Error("sponsor_capacity_inconsistent");
     if (!action || action.status === "failed") {
-      const prepared = await attempt(() => chain.prepareUndelegate(current.request, { ...leg, stakeSun: outstanding }));
+      let prepared;
+      try { prepared = await attempt(() => chain.prepareUndelegate(current.request, { ...leg, stakeSun: outstanding })); }
+      catch (error) {
+        if (error instanceof ApprovalPendingError) continue;
+        throw error;
+      }
       if (!prepared) continue;
       action = { ...prepared, kind: "undelegate", resource: leg.resource, status: "prepared" };
       current = await store.save({ ...current, status: "failed_recovering", recoveryStartedAtMs: current.recoveryStartedAtMs ?? Date.now(),

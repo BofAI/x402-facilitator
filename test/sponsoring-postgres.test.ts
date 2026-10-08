@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { serialize } from "node:v8";
 import { Pool } from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Trc20SponsoringOperation } from "@bankofai/x402-tron";
@@ -37,6 +38,142 @@ describe.skipIf(!url)("PostgreSQL sponsoring coordination", () => {
   });
   const create = () => PostgresSponsoringCoordinator.create(pool, binding, limits);
 
+  it("uses only three tables and takes changed limits from configuration without losing debt", async () => {
+    const a = await create();
+    await a.admit(operation());
+    await a.close();
+    const b = await PostgresSponsoringCoordinator.create(pool, { ...binding, permissionId: 3 }, { ...limits, energy: 5_000_000n });
+    expect(b.instanceId).toBe(a.instanceId);
+    expect((await b.listRecoverable(100)).map(op => op.key)).toEqual(["approval-a"]);
+    expect((await b.admit(operation("next"))).kind).toBe("denied");
+    expect((await pool.query("SELECT tablename FROM pg_tables WHERE schemaname=current_schema() ORDER BY tablename")).rows.map(row => row.tablename))
+      .toEqual(["sponsoring_actions", "sponsoring_expirations", "sponsoring_operations"]);
+  });
+
+  it("isolates the same owner and transaction IDs across networks while sharing one database", async () => {
+    const nile = await create();
+    const shasta = await PostgresSponsoringCoordinator.create(pool, { ...binding, network: "tron:2494104990" }, limits);
+    const first = operation("tron:3448148188:same");
+    first.approvalTxID = "same";
+    const second = { ...operation("tron:2494104990:same"), network: "tron:2494104990", approvalTxID: "same" };
+    second.request = { ...second.request, network: second.network };
+    await nile.runExclusive("owner", async () => {
+      expect((await nile.admit(first)).kind).toBe("created");
+      expect((await shasta.admit(second)).kind).toBe("created");
+      await nile.rememberExpiration("tx", 1000);
+      await shasta.rememberExpiration("tx", 2000);
+    });
+    expect(await nile.get(second.key)).toBeUndefined();
+    expect(await shasta.get(first.key)).toBeUndefined();
+    expect(await nile.expiration("tx")).toBe(1000);
+    expect(await shasta.expiration("tx")).toBe(2000);
+    expect((await nile.listRecoverable(100)).map(op => op.key)).toEqual([first.key]);
+    expect((await shasta.listRecoverable(100)).map(op => op.key)).toEqual([second.key]);
+  });
+
+  async function seedOldSchema() {
+    await pool.query(`
+      CREATE TABLE sponsoring_version (id integer PRIMARY KEY CHECK(id=1), version integer NOT NULL);
+      INSERT INTO sponsoring_version VALUES(1,1);
+      CREATE TABLE sponsoring_pools (id text PRIMARY KEY, network text NOT NULL, owner text NOT NULL,
+        permission integer NOT NULL, limits bytea NOT NULL, UNIQUE(network,owner));
+      CREATE TABLE sponsoring_operations (
+        key text PRIMARY KEY, pool text NOT NULL REFERENCES sponsoring_pools(id),
+        network text NOT NULL, approval text NOT NULL, payer text NOT NULL, status text NOT NULL,
+        revision integer NOT NULL, payload bytea NOT NULL, checksum text NOT NULL,
+        created bigint NOT NULL, first_delegate bigint, checked bigint NOT NULL DEFAULT 0,
+        approval_bytes text, approval_hash text, UNIQUE(network,approval));
+      CREATE TABLE sponsoring_actions (pool text NOT NULL REFERENCES sponsoring_pools(id), txid text NOT NULL,
+        operation_key text NOT NULL REFERENCES sponsoring_operations(key), kind text NOT NULL,
+        resource text, signed_transaction text NOT NULL, PRIMARY KEY(pool,txid));
+      CREATE TABLE sponsoring_expirations (pool text NOT NULL REFERENCES sponsoring_pools(id), txid text NOT NULL,
+        expires bigint NOT NULL, PRIMARY KEY(pool,txid));
+    `);
+    const op = operation();
+    op.status = "failed_recovering";
+    op.actions = [{ kind: "undelegate", resource: "ENERGY", txID: "old-action", signedTransaction: "exact-bytes", status: "unknown" }];
+    const bytes = serialize(op);
+    await pool.query("INSERT INTO sponsoring_pools VALUES($1,$2,$3,$4,$5)",
+      ["old-pool", "tron:3448148188", binding.owner, 2, serialize(limits)]);
+    await pool.query(`INSERT INTO sponsoring_operations
+      (key,pool,network,approval,payer,status,revision,payload,checksum,created,first_delegate,checked,approval_bytes,approval_hash)
+      VALUES($1,'old-pool','tron:3448148188',$2,$3,$4,0,$5,$6,1000,4000,9000,$7,$8)`,
+      [op.key, op.approvalTxID, op.payer, op.status, bytes, createHash("sha256").update(bytes).digest("hex"),
+        op.request.signedTransaction, createHash("sha256").update(op.request.signedTransaction).digest("hex")]);
+    await pool.query("INSERT INTO sponsoring_actions VALUES('old-pool','old-action',$1,'undelegate','ENERGY','exact-bytes')", [op.key]);
+    await pool.query("INSERT INTO sponsoring_expirations VALUES('old-pool','old-action',8000)");
+    return op;
+  }
+
+  it("migrates the old five-table ledger atomically and preserves recovery records on repeat startup", async () => {
+    const op = await seedOldSchema();
+    const [a, b] = await Promise.all([create(), create()]);
+    expect(a.instanceId).toBe(b.instanceId);
+    expect(await a.get(op.key)).toEqual(op);
+    expect((await b.findAction("old-action"))?.actions[0].signedTransaction).toBe("exact-bytes");
+    expect(await b.findApproval(op.request.signedTransaction)).toEqual(op);
+    expect(await a.expiration("old-action")).toBe(8000);
+    expect(await a.deadlines(op.key)).toEqual({ businessDeadline: 481000, forceReclaimAt: 604000 });
+    expect((await pool.query("SELECT checked FROM sponsoring_operations")).rows[0].checked).toBe("9000");
+    expect((await pool.query("SELECT tablename FROM pg_tables WHERE schemaname=current_schema() ORDER BY tablename")).rows.map(row => row.tablename))
+      .toEqual(["sponsoring_actions", "sponsoring_expirations", "sponsoring_operations"]);
+    await a.save({ ...op, status: "recovered" });
+    expect(await b.listRecoverable(100)).toEqual([]);
+  });
+
+  it("refuses migration while an old owner worker holds its execution lock", async () => {
+    await seedOldSchema();
+    const held = await pool.connect();
+    const hash = createHash("sha256").update(JSON.stringify(["tron:3448148188", binding.owner])).digest("hex");
+    const lock = BigInt.asIntN(64, BigInt("0x" + hash.slice(0, 16))).toString();
+    try {
+      await held.query("SELECT pg_advisory_lock($1::bigint)", [lock]);
+      await expect(create()).rejects.toThrow("sponsor_migration_owner_busy");
+      expect((await pool.query("SELECT pool FROM sponsoring_operations")).rows[0].pool).toBe("old-pool");
+      expect((await pool.query("SELECT count(*) FROM sponsoring_pools")).rows[0].count).toBe("1");
+    } finally { await held.query("SELECT pg_advisory_unlock($1::bigint)", [lock]); held.release(); }
+    expect((await (await create()).listRecoverable(100))).toHaveLength(1);
+  });
+
+  it("migrates all stored networks, even if only one is configured at first startup", async () => {
+    await seedOldSchema();
+    await pool.query("INSERT INTO sponsoring_pools VALUES($1,$2,$3,$4,$5)",
+      ["old-shasta", "tron:2494104990", binding.owner, 2, serialize(limits)]);
+    await pool.query("INSERT INTO sponsoring_expirations VALUES('old-shasta','old-action',12000)");
+    const nile = await create();
+    const shasta = await PostgresSponsoringCoordinator.create(pool, { ...binding, network: "tron:2494104990" }, limits);
+    expect(await nile.expiration("old-action")).toBe(8000);
+    expect(await shasta.expiration("old-action")).toBe(12000);
+    expect(await shasta.listRecoverable(100)).toEqual([]);
+  });
+
+  it("rolls back pool remapping when unexpected dependencies prevent dropping the old pool table", async () => {
+    const op = await seedOldSchema();
+    await pool.query("CREATE TABLE external_reference (pool text REFERENCES sponsoring_pools(id))");
+    await expect(create()).rejects.toThrow(/depend/);
+    expect((await pool.query("SELECT pool FROM sponsoring_operations WHERE key=$1", [op.key])).rows[0].pool).toBe("old-pool");
+    expect((await pool.query("SELECT pool FROM sponsoring_actions")).rows[0].pool).toBe("old-pool");
+    expect((await pool.query("SELECT version FROM sponsoring_version")).rows[0].version).toBe(1);
+    await pool.query("DROP TABLE external_reference");
+    expect(await (await create()).get(op.key)).toEqual(op);
+  });
+
+  it("refuses an unknown old schema version before changing recovery records", async () => {
+    await seedOldSchema();
+    await pool.query("UPDATE sponsoring_version SET version=999");
+    await expect(create()).rejects.toThrow("sponsor_database_version_unsupported");
+    expect((await pool.query("SELECT pool FROM sponsoring_operations")).rows[0].pool).toBe("old-pool");
+  });
+
+  it("refuses duplicate canonical owners instead of merging their recovery ledgers", async () => {
+    await seedOldSchema();
+    await pool.query("INSERT INTO sponsoring_pools VALUES($1,$2,$3,$4,$5)",
+      ["duplicate", "tron:0xcd8690dc", binding.owner, 2, serialize(limits)]);
+    await expect(create()).rejects.toThrow("sponsor_migration_duplicate_owner");
+    expect((await pool.query("SELECT pool FROM sponsoring_operations")).rows[0].pool).toBe("old-pool");
+    expect((await pool.query("SELECT count(*) FROM sponsoring_pools")).rows[0].count).toBe("2");
+  });
+
   it("boots concurrently on a fresh schema and canonicalizes equivalent owner bindings", async () => {
     const canonical = { ...binding, owner: "410000000000000000000000000000000000000000" };
     const equivalent = { ...binding, network: "tron:0xCD8690DC", owner: "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb" };
@@ -68,13 +205,11 @@ describe.skipIf(!url)("PostgreSQL sponsoring coordination", () => {
     expect((await a.findApproval(op.request.signedTransaction))?.key).toBe(op.key);
   });
 
-  it("detects corrupt payloads and rejects unknown schema versions", async () => {
+  it("detects corrupt payloads", async () => {
     const a = await create();
     await a.admit(operation());
     await pool.query("UPDATE sponsoring_operations SET payload=$1 WHERE pool=$2", [Buffer.from("corrupt"), a.instanceId]);
     await expect(a.get(operation().key)).rejects.toThrow("sponsor_database_corrupt");
-    await pool.query("UPDATE sponsoring_version SET version=999 WHERE id=1");
-    await expect(create()).rejects.toThrow("sponsor_database_version_unsupported");
   });
 
   it("serializes competing revisions and rolls back actions appended before an immutable conflict", async () => {
@@ -127,14 +262,12 @@ describe.skipIf(!url)("PostgreSQL sponsoring coordination", () => {
     expect(await a.listRecoverable(0)).toEqual([]);
   });
 
-  it("reuses records but refuses conflicting identity, permission, limits and cross-owner adoption", async () => {
+  it("reuses records but refuses conflicting identity and cross-owner adoption", async () => {
     const a = await create(), b = await create();
     expect(a.instanceId).toBe(b.instanceId);
     await a.admit(operation());
     expect((await b.admit(operation())).kind).toBe("existing");
     expect((await b.admit({ ...operation(), requestDigest: "changed" })).kind).toBe("conflict");
-    await expect(PostgresSponsoringCoordinator.create(pool, { ...binding, permissionId: 3 }, limits)).rejects.toThrow(/binding/);
-    await expect(PostgresSponsoringCoordinator.create(pool, binding, { ...limits, energy: 1n })).rejects.toThrow(/binding/);
     const other = await PostgresSponsoringCoordinator.create(pool, { ...binding, owner: "other" }, limits);
     expect(await other.get(operation().key)).toBeUndefined();
     expect((await other.admit(operation())).kind).toBe("conflict");

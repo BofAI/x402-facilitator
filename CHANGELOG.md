@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multi-network TRC-20 resource sponsoring in one process, with per-network
+  configuration, request routing, readiness and recovery. Single-network YAML
+  remains supported.
+- Three-table PostgreSQL sponsoring ledger with YAML-owned permissions and
+  limits, deterministic network/Owner namespaces, and transactional migration
+  of the previous five-table ledger. Stop old instances before upgrading.
+- Removed the obsolete Python implementation under `legacy/`.
+- Accept SDK batch claim/settle/refund requests with a zero management timeout.
+- Keep unbroadcast approvals in recovery while awaiting chain expiry, without
+  reporting the expected wait as a recovery failure.
+- Check consumed Permit2 nonces before settlement and coordinate concurrent
+  authorization attempts through PostgreSQL advisory locks.
+
 - Resource sponsoring accepts any valid TRON payment recipient. The legacy
   `resource_sponsoring.pay_to` field is accepted but no longer enforced.
 - Optional anonymous Nile sponsorship via `resource_sponsoring.require_api_key: false`.

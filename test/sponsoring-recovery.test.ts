@@ -3,8 +3,47 @@ import type { Trc20SponsoringOperation, Trc20ResourceSponsoringChain } from "@ba
 import { guardSponsoringChain } from "../src/sponsoring/chain.js";
 import { recoverExpiredOperation } from "../src/sponsoring/recovery.js";
 import { RecoverableChainError, storageBoundary } from "../src/sponsoring/recovery-errors.js";
+import { createReclaimAnchor } from "../src/sponsoring/reclaim-anchor.js";
+import type { TronWeb } from "tronweb";
 
 describe("local expired delegation recovery", () => {
+  it("retains delegation until chain time passes the absent Approval's expiry", async () => {
+    const approvalTxID = "a".repeat(64);
+    const expiry = Date.now() + 120000;
+    let chainTime = expiry;
+    const anchor = createReclaimAnchor({ fullNode: { request: async (path: string) => {
+      if (path === "wallet/getnowblock") return { blockID: `${"0".repeat(14)}64${"11".repeat(8)}${"0".repeat(32)}`,
+        block_header: { raw_data: { number: 100, timestamp: chainTime } } };
+      if (path === "wallet/gettransactioninfobyid") return {};
+      throw new Error(`Unexpected RPC: ${path}`);
+    } } } as unknown as TronWeb);
+    let operation = { key: "op", revision: 1, status: "failed_recovering",
+      request: { approvalTxID, approvalExpiration: String(expiry) },
+      plan: { legs: [{ resource: "ENERGY", stakeSun: 1000000n }] },
+      actions: [{ kind: "approval", txID: approvalTxID, signedTransaction: "aa", status: "prepared" },
+        { kind: "delegate", resource: "ENERGY", txID: "delegate", signedTransaction: "bb", status: "confirmed" }],
+    } as unknown as Trc20SponsoringOperation;
+    const broadcasts: string[] = [];
+    const store = { get: async () => operation, save: async (next: Trc20SponsoringOperation) => {
+      operation = { ...next, revision: next.revision + 1 }; return operation;
+    } };
+    const chain = { prepareUndelegate: async request => {
+      await anchor.blockHeader(request);
+      return { txID: "reclaim", signedTransaction: "cc" };
+    }, broadcast: async action => { broadcasts.push(action.txID); return action.txID; },
+    confirm: async () => "confirmed" } as Trc20ResourceSponsoringChain;
+
+    await expect(recoverExpiredOperation(operation, store, chain, async () => 1000000n)).resolves.toMatchObject({
+      revision: 1, actions: expect.not.arrayContaining([expect.objectContaining({ kind: "undelegate" })]),
+    });
+    expect(broadcasts).toEqual([]);
+    expect(operation.actions[0].status).toBe("prepared");
+    chainTime = expiry + 1;
+    await recoverExpiredOperation(operation, store, chain, async () => 1000000n);
+    expect(broadcasts).toEqual(["reclaim"]);
+    expect(operation.actions.find(action => action.kind === "undelegate")?.status).toBe("confirmed");
+  });
+
   it.each([true, false])("resolves a never-submitted prepared Approval only after expiry (%s)", async expired => {
     let operation = { key: "op", revision: 1, status: "failed_recovering", plan: { legs: [] },
       request: { approvalExpiration: String(Date.now() + (expired ? -1000 : 60000)) },

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { utils, type TronWeb } from "tronweb";
 import type { PreparedTronAction, Trc20ApprovalResourceSponsoringRequest } from "@bankofai/x402-tron";
-import { RecoverableChainError } from "./recovery-errors.js";
+import { ApprovalPendingError, RecoverableChainError } from "./recovery-errors.js";
 
 interface Block {
   blockID: string;
@@ -39,6 +39,7 @@ export function createReclaimAnchor(tron: TronWeb, now = Date.now) {
   }
   async function receipt(request: Trc20ApprovalResourceSponsoringRequest): Promise<Receipt> {
     const result = await rpc<Receipt>("wallet/gettransactioninfobyid", { value: request.approvalTxID });
+    if (!Array.isArray(result) && Object.keys(result).length === 0) throw new ApprovalPendingError();
     if (result.id?.toLowerCase() !== request.approvalTxID.toLowerCase() ||
         !Number.isSafeInteger(result.blockNumber) || result.blockNumber! < 0 || result.receipt?.result !== "SUCCESS")
       throw new Error("sponsor_approval_not_in_block");

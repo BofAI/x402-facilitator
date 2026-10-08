@@ -3,6 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
+import type { Pool } from "pg";
+import { withPermit2SettlementLock } from "../src/permit2-replay.js";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { recoverTransactionAddress, recoverTypedDataAddress, type Hex } from "viem";
 import { TronWeb, utils } from "tronweb";
@@ -47,6 +50,51 @@ describe("agent-wallet signing compatibility", () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     await rm(dir, { recursive: true, force: true });
+  });
+
+  it.each(["evm", "tron"] as const)("stops %s signing after the Permit2 lock is lost", async family => {
+    const network = family === "evm" ? "eip155:97" : "tron:3448148188";
+    const wallet = await agentWallet.resolveWallet({ network });
+    const sign = vi.spyOn(wallet, "signTransaction");
+    vi.mocked(agentWallet.resolveWallet).mockResolvedValueOnce(wallet);
+    if (family === "evm") await buildEvmFacilitatorSigner(network);
+    else await buildTronFacilitatorSigner(network);
+    const client = Object.assign(new EventEmitter(), {
+      query: async () => ({ rows: [{ acquired: true, released: true }] }), release: () => {},
+    });
+    const pool = { connect: async () => client } as unknown as Pool;
+    await expect(withPermit2SettlementLock(pool, { network, owner: "0x1111111111111111111111111111111111111111", nonce: 1n }, async () => {
+      client.emit("error", new Error("connection lost"));
+      return captured.wallets[family].signTransaction({});
+    })).rejects.toThrow("permit2_storage_unavailable");
+    expect(sign).not.toHaveBeenCalled();
+  });
+
+  it.each(["evm", "tron"] as const)("does not return a %s signature if the lock was lost during signing", async family => {
+    const network = family === "evm" ? "eip155:97" : "tron:3448148188";
+    const wallet = await agentWallet.resolveWallet({ network });
+    vi.mocked(agentWallet.resolveWallet).mockResolvedValueOnce(wallet);
+    if (family === "evm") await buildEvmFacilitatorSigner(network);
+    else await buildTronFacilitatorSigner(network);
+    let signed!: () => void, entered!: () => void;
+    const pending = new Promise<void>(resolve => { signed = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    vi.spyOn(wallet, "signTransaction").mockImplementation(async () => {
+      entered(); await pending;
+      return (family === "evm" ? { family: "evm", rawTransaction: "0x01" }
+        : { family: "tron", transaction: { txID: "01", raw_data_hex: "01", signature: ["01"] } }) as never;
+    });
+    const client = Object.assign(new EventEmitter(), {
+      query: async () => ({ rows: [{ acquired: true, released: true }] }), release: () => {},
+    });
+    const pool = { connect: async () => client } as unknown as Pool;
+    const signing = withPermit2SettlementLock(pool, { network, owner: "0x1111111111111111111111111111111111111111", nonce: 1n },
+      () => captured.wallets[family].signTransaction({}));
+    const failure = expect(signing).rejects.toThrow("permit2_storage_unavailable");
+    await started;
+    client.emit("error", new Error("connection lost"));
+    signed();
+    await failure;
   });
 
   it("passes a serialized, recoverable EVM transaction to the SDK boundary", async () => {
@@ -101,6 +149,40 @@ describe("agent-wallet signing compatibility", () => {
     expect(result.txID).toBe(txID);
     expect(preparedId).toBe(txID);
     expect(utils.crypto.ecRecover(txID, (result.signature as string[])[0]).toLowerCase()).toBe(TronWeb.address.toHex(keyAddress));
+  });
+
+  it("stops Resource Owner signing when the Permit2 lock is lost during its permission RPC", async () => {
+    const wallet = await agentWallet.resolveWallet({ network: "tron:3448148188" });
+    const walletSign = vi.spyOn(wallet, "signTransaction");
+    vi.mocked(agentWallet.resolveWallet).mockResolvedValueOnce(wallet);
+    const keyAddress = await wallet.getAddress();
+    const owner = TronWeb.address.fromPrivateKey(generatePrivateKey().slice(2)) as string;
+    const settlement = TronWeb.address.fromPrivateKey(generatePrivateKey().slice(2)) as string;
+    const tron = new TronWeb({ fullHost: "http://127.0.0.1:1" });
+    const mask = Buffer.alloc(32); mask[7] = 6;
+    const client = Object.assign(new EventEmitter(), {
+      query: async () => ({ rows: [{ acquired: true, released: true }] }), release: () => {},
+    });
+    let reads = 0;
+    vi.spyOn(tron.trx, "getAccount").mockImplementation(async () => {
+      if (++reads === 2) client.emit("error", new Error("connection lost during permission RPC"));
+      return { active_permission: [{ id: 2, type: 2, threshold: 1,
+        operations: mask.toString("hex"), keys: [{ address: keyAddress, weight: 1 }] }] } as never;
+    });
+    const prepared = vi.fn();
+    const config = { network: "tron:3448148188", owner, permission_id: 2 } as SponsoringConfig;
+    const signer = await buildResourceOwnerSigner(config, tron, settlement, prepared);
+    const raw_data_hex = "0a020001";
+    const txID = createHash("sha256").update(Buffer.from(raw_data_hex, "hex")).digest("hex");
+    const pool = { connect: async () => client } as unknown as Pool;
+    await expect(withPermit2SettlementLock(pool, { network: config.network as "tron:3448148188",
+      owner: "0x1111111111111111111111111111111111111111", nonce: 1n }, () => signer.signResourceTransaction({
+      transaction: { txID, raw_data_hex, raw_data: { timestamp: Date.now(), expiration: Date.now() + 60000 } },
+      intent: { network: config.network, owner, permissionId: 2, lock: false, action: "delegate", resource: "ENERGY",
+        receiver: settlement, stakeSun: "1" },
+    }))).rejects.toThrow("permit2_storage_unavailable");
+    expect(walletSign).not.toHaveBeenCalled();
+    expect(prepared).not.toHaveBeenCalled();
   });
 
   it.each(["evm", "tron"] as const)("rejects the wrong transaction artifact family for %s", async family => {

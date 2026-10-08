@@ -53,6 +53,8 @@ facilitator:
       schemes: ["exact", "upto", "batch-settlement"]
 
 # Nile Approval sponsoring, sharing the application's PostgreSQL connection.
+# For multiple networks, use a list of complete entries here (see README).
+# Replicas sharing an Owner must use identical permissions and limits.
 # Never attach an Owner with outstanding debt in another DB/schema to this DB.
 resource_sponsoring:
   network: "tron:3448148188"

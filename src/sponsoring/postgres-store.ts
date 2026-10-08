@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { serialize, deserialize } from "node:v8";
-import { isDeepStrictEqual } from "node:util";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { normalizeTronNetwork, type Trc20SponsoringOperation } from "@bankofai/x402-tron";
 import { TronWeb } from "tronweb";
@@ -16,6 +15,47 @@ function normalize(binding: OwnerBinding): OwnerBinding {
   return { network: normalizeTronNetwork(binding.network),
     owner: TronWeb.isAddress(binding.owner) ? TronWeb.address.toHex(binding.owner).toLowerCase() : binding.owner,
     permissionId: binding.permissionId };
+}
+
+const ownerIdentity = (binding: OwnerBinding) => JSON.stringify([binding.network, binding.owner]);
+const poolIdentity = (binding: OwnerBinding) => digest(ownerIdentity(binding));
+
+/** Upgrade the five-table ledger without changing operation payloads or signed
+ * bytes. Deploy with old instances stopped; mixed-version rolling upgrades are
+ * not supported. All changes and owner locks belong to the boot transaction. */
+async function migratePoolRecords(client: PoolClient): Promise<void> {
+  const existing = await client.query("SELECT to_regclass('sponsoring_pools') AS pools, to_regclass('sponsoring_version') AS version");
+  if (existing.rows[0].version) {
+    const version = await client.query("SELECT version FROM sponsoring_version WHERE id=1");
+    if (version.rows.length !== 1 || version.rows[0].version !== 1) throw new Error("sponsor_database_version_unsupported");
+  }
+  if (existing.rows[0].pools) {
+    const pools = await client.query("SELECT id,network,owner,permission FROM sponsoring_pools ORDER BY id");
+    const identities = new Set<string>();
+    for (const row of pools.rows) {
+      const binding = normalize({ network: row.network, owner: row.owner, permissionId: row.permission });
+      const identity = poolIdentity(binding);
+      if (identities.has(identity)) throw new Error("sponsor_migration_duplicate_owner");
+      identities.add(identity);
+      const lock = await client.query("SELECT pg_try_advisory_xact_lock($1::bigint) AS locked", [lockKey(ownerIdentity(binding))]);
+      if (!lock.rows[0].locked) throw new Error("sponsor_migration_owner_busy");
+    }
+    await client.query(`
+      ALTER TABLE sponsoring_operations DROP CONSTRAINT IF EXISTS sponsoring_operations_pool_fkey;
+      ALTER TABLE sponsoring_actions DROP CONSTRAINT IF EXISTS sponsoring_actions_pool_fkey;
+      ALTER TABLE sponsoring_expirations DROP CONSTRAINT IF EXISTS sponsoring_expirations_pool_fkey;
+    `);
+    for (const row of pools.rows) {
+      const binding = normalize({ network: row.network, owner: row.owner, permissionId: row.permission });
+      const id = poolIdentity(binding);
+      await client.query("UPDATE sponsoring_operations SET pool=$1 WHERE pool=$2", [id, row.id]);
+      await client.query("UPDATE sponsoring_actions SET pool=$1 WHERE pool=$2", [id, row.id]);
+      await client.query("UPDATE sponsoring_expirations SET pool=$1 WHERE pool=$2", [id, row.id]);
+    }
+    // No CASCADE: unexpected dependencies must roll back the entire migration.
+    await client.query("DROP TABLE sponsoring_pools");
+  }
+  if (existing.rows[0].version) await client.query("DROP TABLE sponsoring_version");
 }
 
 /** Caller owns the pool. Each execution holds a dedicated session advisory lock;
@@ -36,18 +76,10 @@ export class PostgresSponsoringCoordinator implements SponsoringCoordinator {
       await client.query("BEGIN");
       // Serialize boot DDL across processes, including the first schema creation.
       await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [lockKey("x402:sponsoring:schema:v1")]);
+      await migratePoolRecords(client);
       await client.query(`
-        CREATE TABLE IF NOT EXISTS sponsoring_version (id integer PRIMARY KEY CHECK(id=1), version integer NOT NULL);
-        INSERT INTO sponsoring_version VALUES(1,1) ON CONFLICT DO NOTHING;
-      `);
-      const version = await client.query("SELECT version FROM sponsoring_version WHERE id=1");
-      if (version.rows[0].version !== 1) throw new Error("sponsor_database_version_unsupported");
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS sponsoring_pools (
-          id text PRIMARY KEY, network text NOT NULL, owner text NOT NULL, permission integer NOT NULL,
-          limits bytea NOT NULL, UNIQUE(network,owner));
         CREATE TABLE IF NOT EXISTS sponsoring_operations (
-          key text PRIMARY KEY, pool text NOT NULL REFERENCES sponsoring_pools(id),
+          key text PRIMARY KEY, pool text NOT NULL,
           network text NOT NULL, approval text NOT NULL, payer text NOT NULL, status text NOT NULL,
           revision integer NOT NULL, payload bytea NOT NULL, checksum text NOT NULL,
           created bigint NOT NULL, first_delegate bigint, checked bigint NOT NULL DEFAULT 0,
@@ -55,22 +87,16 @@ export class PostgresSponsoringCoordinator implements SponsoringCoordinator {
         CREATE INDEX IF NOT EXISTS sponsoring_recovery ON sponsoring_operations(pool,status,checked,created);
         CREATE INDEX IF NOT EXISTS sponsoring_approval_bytes ON sponsoring_operations(pool,approval_hash);
         CREATE TABLE IF NOT EXISTS sponsoring_actions (
-          pool text NOT NULL REFERENCES sponsoring_pools(id), txid text NOT NULL,
+          pool text NOT NULL, txid text NOT NULL,
           operation_key text NOT NULL REFERENCES sponsoring_operations(key), kind text NOT NULL,
           resource text, signed_transaction text NOT NULL, PRIMARY KEY(pool,txid));
         CREATE TABLE IF NOT EXISTS sponsoring_expirations (
-          pool text NOT NULL REFERENCES sponsoring_pools(id), txid text NOT NULL, expires bigint NOT NULL,
+          pool text NOT NULL, txid text NOT NULL, expires bigint NOT NULL,
           PRIMARY KEY(pool,txid));
       `);
-      await client.query("INSERT INTO sponsoring_pools VALUES($1,$2,$3,$4,$5) ON CONFLICT(network,owner) DO NOTHING",
-        [randomUUID(), binding.network, binding.owner, binding.permissionId, serialize(limits)]);
-      const result = await client.query("SELECT * FROM sponsoring_pools WHERE network=$1 AND owner=$2", [binding.network, binding.owner]);
-      const row = result.rows[0];
-      if (row.permission !== binding.permissionId || !isDeepStrictEqual(deserialize(row.limits), limits))
-        throw new Error("sponsor_instance_binding_invalid");
       await client.query("COMMIT");
-      return new PostgresSponsoringCoordinator(pool, Object.freeze({ ...binding }), Object.freeze({ ...limits }), row.id,
-        lockKey(JSON.stringify([binding.network, binding.owner])));
+      return new PostgresSponsoringCoordinator(pool, Object.freeze({ ...binding }), Object.freeze({ ...limits }), poolIdentity(binding),
+        lockKey(ownerIdentity(binding)));
     } catch (error) { await client.query("ROLLBACK").catch(() => {}); throw error; }
     finally { client.release(); }
   }

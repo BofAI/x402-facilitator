@@ -24,6 +24,7 @@ import {
   type CanonicalNetwork,
 } from "./network.js";
 import { createReceiptWaiter, withReceiptFallback } from "./evm-receipt.js";
+import { assertPermit2SettlementLease } from "./permit2-replay.js";
 import {
   createFacilitatorEvmSigner,
   createAuthorizerEvmSigner,
@@ -57,7 +58,9 @@ export async function buildTronFacilitatorSigner(canonical: CanonicalNetwork): P
   return createFacilitatorTronSigner({
     getAddress: () => wallet.getAddress(),
     async signTransaction(payload) {
+      assertPermit2SettlementLease();
       const signed = await wallet.signTransaction(payload);
+      assertPermit2SettlementLease();
       if (signed.family !== "tron") throw new Error("Expected TRON signed transaction artifact");
       return signed.transaction;
     },
@@ -93,7 +96,9 @@ export async function buildEvmFacilitatorSigner(
   const signer = await createFacilitatorEvmSigner({
     getAddress: () => wallet.getAddress(),
     async signTransaction(payload) {
+      assertPermit2SettlementLease();
       const signed = await wallet.signTransaction(payload);
+      assertPermit2SettlementLease();
       if (signed.family !== "evm") throw new Error("Expected EVM signed transaction artifact");
       return signed.rawTransaction;
     },

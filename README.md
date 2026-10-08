@@ -4,8 +4,7 @@ Multi-chain **HTTP 402 Payment Required** facilitator. It verifies payment paylo
 off-chain and settles them on-chain, on the upstream **x402 TypeScript** ecosystem
 (`@bankofai/x402-core` + `@bankofai/x402-tron` + `@bankofai/x402-evm`).
 
-A TypeScript/Node service. The earlier Python/FastAPI implementation is kept under
-[`legacy/`](legacy/) as a behavioral reference.
+A TypeScript/Node service.
 
 ## Features
 
@@ -75,6 +74,79 @@ an operator-provisioned Owner and a restricted `resource-active` wallet before
 startup. Other configured payment networks remain enabled.
 SQLite still requires business PostgreSQL. Shared Owners must use the same PG
 ledger and configuration; do not switch ledgers while recovery debt remains.
+
+One process can sponsor both Nile and Shasta: set `resource_sponsoring` to a list
+of complete per-network configurations. The existing single-object format remains
+supported. Each entry has its own Owner, wallet, permission, assets, limits and
+API-key policy; each network must also be enabled under `facilitator.networks`.
+Duplicate networks (including decimal/hex aliases) are rejected. SQLite entries
+must use distinct absolute file paths. PostgreSQL entries share the application
+connection pool and are isolated by network and Owner.
+
+For example, after provisioning the addresses, wallets, assets and stake:
+
+```yaml
+resource_sponsoring:
+  - network: "tron:3448148188"
+    storage: { type: postgres }
+    owner: "REPLACE_WITH_NILE_OWNER"
+    wallet_id: "nile-resource-active"
+    permission_id: 3
+    require_api_key: false
+    assets: ["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]
+    energy_stake_sun: "10000000000"
+    bandwidth_stake_sun: "20000000000"
+    budget_sun: "500000000"
+    management_bandwidth: "5000"
+  - network: "tron:2494104990"
+    storage: { type: postgres }
+    owner: "REPLACE_WITH_SHASTA_OWNER"
+    wallet_id: "shasta-resource-active"
+    permission_id: 3
+    require_api_key: true
+    assets: ["REPLACE_WITH_SHASTA_TOKEN"]
+    energy_stake_sun: "10000000000"
+    bandwidth_stake_sun: "20000000000"
+    budget_sun: "500000000"
+    management_bandwidth: "5000"
+```
+
+Each network runs its own recovery loop. A degraded network does not block
+sponsorship on healthy networks. `GET /sponsoring/ready?network=tron:3448148188`
+checks one network. Without the query, a single entry keeps the existing response;
+multiple entries return `ready`, `mode` and a `networks` array, with HTTP 200 only
+when all entries are ready. Use network-specific probes if traffic should continue
+to healthy networks while another is recovering.
+
+PostgreSQL sponsorship owns only `sponsoring_operations`, `sponsoring_actions`
+and `sponsoring_expirations`. Their `pool` field is a deterministic SHA-256
+identifier of the canonical network/Owner pair, not a foreign key to a pool table.
+Permissions and limits come from YAML on each start. All replicas using the same
+Owner must deploy identical settings; the database no longer checks configuration
+equality. Lowering limits preserves existing obligations and can deny new work
+until usage is below the new limit. Do not remove a network or change its Owner
+while it still has recovery obligations.
+
+**Upgrade from the five-table ledger:** stop all old instances, back up the
+database, then start the new version. Startup transactionally remaps every stored
+pool's records (including networks not currently enabled), preserves signed bytes
+and recovery progress, and drops `sponsoring_pools` and `sponsoring_version`.
+It refuses migration while an old Owner execution lock is held. Do not use a
+mixed-version rolling upgrade: an idle old process could resume using old pool
+IDs or recreate the retired tables. Rollback requires stopping the new instances
+and a deliberate database restore/reconciliation, not just rolling back the image;
+never restore an old snapshot blindly after new chain actions have occurred.
+
+Permit2 settlement checks the on-chain nonce before broadcasting and uses a
+PostgreSQL advisory lock for each network/owner/nonce, across tokens and schemes.
+Concurrent requests for the same authorization receive HTTP 503 with
+`Retry-After`; already consumed nonces return a failed settlement without a new
+transaction. The lock uses a separate, lazily connected pool so it cannot starve
+the sponsoring ledger's connections. `database.max_open_conns` bounds each pool:
+allow up to twice that many PostgreSQL connections per instance. Nonce RPC or
+lock acquisition failures stop settlement before execution. This is not an
+exactly-once guarantee for transactions whose broadcast outcome is unknown or
+for chain reorganizations; reconcile ambiguous transactions before retrying.
 
 `resource_sponsoring.require_api_key` defaults to `true`. Set it to `false` only
 for Nile to allow sponsorship without `X-API-KEY`; other networks reject this

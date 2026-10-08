@@ -4,6 +4,7 @@ export interface OwnerBinding { network: string; owner: string; permissionId: nu
 export interface CapacityLimits { energy: bigint; bandwidth: bigint; budget: bigint; management: bigint }
 type Awaitable<T> = T | Promise<T>;
 export interface SponsoringCoordinator extends Trc20SponsoringCoordinator {
+  /** PG: deterministic network/Owner namespace; SQLite: persisted local instance. */
   readonly instanceId: string;
   readonly binding: OwnerBinding;
   assertOwnership(): Promise<void>;

@@ -1,4 +1,4 @@
-import { isAbsolute } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { TronWeb } from "tronweb";
 import { TRON_NILE, TRON_SHASTA, normalizeTronNetwork } from "@bankofai/x402-tron";
@@ -32,3 +32,23 @@ export const sponsoringConfigSchema = z.object({
     { message: "may be false only for Nile", path: ["require_api_key"] });
 
 export type SponsoringConfig = z.infer<typeof sponsoringConfigSchema>;
+
+/** Accept the existing single-network YAML shape, normalize once at the boundary. */
+export const sponsoringConfigsSchema = z.preprocess(
+  value => Array.isArray(value) ? value : [value],
+  z.array(sponsoringConfigSchema).min(1).superRefine((configs, ctx) => {
+    const networks = new Set<string>(), paths = new Set<string>();
+    configs.forEach((config, index) => {
+      if (networks.has(config.network)) ctx.addIssue({ code: z.ZodIssueCode.custom,
+        path: [index, "network"], message: "duplicate sponsoring network" });
+      networks.add(config.network);
+      const path = config.storage?.type === "sqlite" ? config.storage.path : config.database;
+      if (path) {
+        const normalized = resolve(path);
+        if (paths.has(normalized)) ctx.addIssue({ code: z.ZodIssueCode.custom,
+          path: [index, "storage"], message: "each network requires a distinct SQLite path" });
+        paths.add(normalized);
+      }
+    });
+  }),
+);

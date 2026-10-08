@@ -18,6 +18,7 @@ import { metricsHandler } from "./metrics.js";
 import { buildRuntimeConfig } from "./runtime.js";
 import { logger } from "./logger.js";
 import { createSponsoringService } from "./sponsoring/service.js";
+import { createSponsoringServices, closeSponsoringServices } from "./sponsoring/services.js";
 import { buildTronFacilitatorSigner } from "./signer.js";
 import { requireCanonicalNetwork } from "./network.js";
 
@@ -25,9 +26,9 @@ async function main(): Promise<void> {
   const cfg = loadConfig();
   const rt = await buildRuntimeConfig(cfg);
 
-  const sponsoring = cfg.resource_sponsoring ? await createSponsoringService(cfg.resource_sponsoring,
-    await buildTronFacilitatorSigner(requireCanonicalNetwork(cfg.resource_sponsoring.network)),
-    { pool: getDatabasePool() }) : undefined;
+  const sponsoring = await createSponsoringServices(cfg.resource_sponsoring ?? [], async config =>
+    createSponsoringService(config, await buildTronFacilitatorSigner(requireCanonicalNetwork(config.network)),
+      { pool: getDatabasePool() }));
 
   const facilitator = await buildFacilitator(cfg, {
     gasfreeBaseUrlFor: rt.gasfreeBaseUrlFor,
@@ -43,7 +44,7 @@ async function main(): Promise<void> {
     maxRequestBodyBytes: rt.maxRequestBodyBytes,
     sponsoring,
   });
-  sponsoring?.start();
+  for (const service of sponsoring) service.start();
 
   const servers: ServerType[] = [];
   servers.push(
@@ -67,7 +68,7 @@ async function main(): Promise<void> {
     logger.info("Shutting down", { signal });
     stopApiKeyRefresher();
     for (const s of servers) s.close();
-    await sponsoring?.close();
+    await closeSponsoringServices(sponsoring);
     await disposeDatabase();
     process.exit(0);
   };

@@ -6,6 +6,7 @@ import { createTrc20ApprovalResourceSponsoringRuntime, type FacilitatorTronSigne
   type Trc20ApprovalResourceSponsoringRequest, type Trc20ResourceSponsoringChain } from "@bankofai/x402-tron";
 import { sponsoringConfigSchema } from "../src/sponsoring/config.js";
 import { createSponsoringService, type SponsoringService } from "../src/sponsoring/service.js";
+import { createSponsoringServices, routingSponsoringRuntime } from "../src/sponsoring/services.js";
 import { PostgresSponsoringCoordinator } from "../src/sponsoring/postgres-store.js";
 import { createApp } from "../src/server.js";
 import { setApiKeyCacheForTest } from "../src/auth.js";
@@ -96,6 +97,29 @@ describe.skipIf(!url)("service with shared PostgreSQL coordinator", () => {
   it("requires an existing shared pool for PostgreSQL", async () => {
     await expect(createSponsoringService(config, settlement)).rejects.toThrow("sponsor_postgres_pool_required");
   });
+  it("keeps Shasta usable while Nile has recovery debt in the same PostgreSQL database", async () => {
+    const nileRequest = await seed();
+    const created = await createSponsoringServices([config, { ...config, network: "tron:2494104990" }],
+      entry => createSponsoringService(entry, settlement, { pool }));
+    services.push(...created);
+    for (const service of created) service.start();
+    await vi.waitFor(() => {
+      expect(created[0].readiness()).toMatchObject({ mode: "RECOVERING", ready: false });
+      expect(created[1].readiness()).toMatchObject({ mode: "READY", ready: true });
+    });
+    const runtime = routingSponsoringRuntime(created);
+    const shastaRequest = { ...request("b"), network: "tron:2494104990" };
+    shastaRequest.paymentRequirements = { ...shastaRequest.paymentRequirements, network: shastaRequest.network };
+    shastaRequest.paymentPayload = { ...shastaRequest.paymentPayload, accepted: shastaRequest.paymentRequirements };
+    expect(await runtime.verify(shastaRequest)).toMatchObject({ isValid: true });
+    expect(await runtime.verify(request("c"))).toMatchObject({ isValid: false, invalidReason: "sponsor_recovery_in_progress" });
+    expect(await runtime.verify(nileRequest)).toMatchObject({ isValid: true });
+    const shastaStore = await PostgresSponsoringCoordinator.create(pool, { ...binding, network: "tron:2494104990" }, limits);
+    try {
+      expect(await shastaStore.listRecoverable(100)).toEqual([]);
+      expect(await remote.listRecoverable(100)).toHaveLength(1);
+    } finally { await shastaStore.close(); }
+  });
   it("awaits async close on initialization failure and leaves the shared Pool open", async () => {
     const original = PostgresSponsoringCoordinator.prototype.close;
     const entered = deferred(), release = deferred();
@@ -169,7 +193,7 @@ describe.skipIf(!url)("service with shared PostgreSQL coordinator", () => {
       verify: async (payload: { payload: { request: Trc20ApprovalResourceSponsoringRequest } }) => value.runtime.verify(payload.payload.request),
       settle: async (payload: { payload: { request: Trc20ApprovalResourceSponsoringRequest } }) => value.runtime.sponsor(payload.payload.request) };
     const app = createApp(facilitator as unknown as x402Facilitator, { rateLimit: { authenticated: "1000/minute", anonymous: "1000/minute" },
-      gasfreeSettings: () => null, metricsOnMainPort: false, metricsEndpoint: "/metrics", maxRequestBodyBytes: 100000, sponsoring: value });
+      gasfreeSettings: () => null, metricsOnMainPort: false, metricsEndpoint: "/metrics", maxRequestBodyBytes: 100000, sponsoring: [value] });
     for (const route of ["/verify", "/settle"]) {
       for (const [candidate, authenticated, status] of [[req, true, 200], [request("b"), true, 503], [req, false, 403]] as const) {
         const response = await app.request(route, { method: "POST", headers: { "content-type": "application/json",

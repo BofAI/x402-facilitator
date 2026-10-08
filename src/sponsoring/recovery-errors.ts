@@ -14,6 +14,15 @@ export class RecoverableChainError extends Error {
   }
 }
 
+/** FullNode has no Approval receipt. Before chain expiry, reclaim preparation
+ * waits while the operation retains its reservation. */
+export class ApprovalPendingError extends Error {
+  constructor() {
+    super("sponsor_approval_pending");
+    this.name = "ApprovalPendingError";
+  }
+}
+
 /** A reclaim guard rejected durable bytes before this attempt broadcast them.
  * A prior process may still have broadcast the same bytes, so recovery must
  * preserve the txID as unknown while treating the validation failure as fatal. */
