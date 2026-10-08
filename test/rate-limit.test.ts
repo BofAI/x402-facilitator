@@ -62,6 +62,45 @@ describe("parseLimit", () => {
   });
 });
 
+describe("Redis route isolation", () => {
+  beforeEach(() => {
+    vi.stubEnv("RATE_LIMIT_STORE", "redis");
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", "redis://localhost:6379");
+    setApiKeyCacheForTest(["good-key"]);
+    // Keep the real RedisStore and middleware; replace only network I/O.
+    vi.spyOn(Redis.prototype, "connect").mockResolvedValue(undefined);
+    vi.spyOn(Redis.prototype, "script").mockResolvedValue("script-sha");
+    const counts = new Map<string, number>();
+    vi.spyOn(Redis.prototype, "evalsha").mockImplementation(async (...args) => {
+      const key = String(args[2]);
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      return [count, 60000];
+    });
+  });
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+
+  it.each([false, true])("separates verify/settle but shares each route across replicas (authenticated=%s)", async (authenticated) => {
+    const replica = () => {
+      const app = new Hono<{ Variables: AuthVars }>();
+      app.use("*", authMiddleware);
+      for (const route of ["verify", "settle"] as const) {
+        app.post(`/${route}`, rateLimit({ authenticated: "1/minute", anonymous: "1/minute" }, route),
+          (c) => c.json({ ok: true }));
+      }
+      return app;
+    };
+    const first = replica();
+    const second = replica();
+    const headers = authenticated ? { "X-API-KEY": "good-key" } : {};
+    const send = (app: ReturnType<typeof replica>, route: string) => app.request(`/${route}`, { method: "POST", headers });
+    expect((await send(first, "verify")).status).toBe(200);
+    expect((await send(second, "settle")).status).toBe(200);
+    expect((await send(second, "verify")).status).toBe(429);
+    expect((await send(first, "settle")).status).toBe(429);
+  });
+});
+
 describe("rateLimit middleware", () => {
   beforeEach(() => {
     resetRateLimitState();
@@ -71,7 +110,7 @@ describe("rateLimit middleware", () => {
   function appWith(authenticated: string, anonymous: string) {
     const app = new Hono<{ Variables: AuthVars }>();
     app.use("*", authMiddleware);
-    app.post("/settle", rateLimit({ authenticated, anonymous }), (c) => c.json({ ok: true }));
+    app.post("/settle", rateLimit({ authenticated, anonymous }, "settle"), (c) => c.json({ ok: true }));
     return app;
   }
 

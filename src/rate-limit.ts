@@ -159,6 +159,7 @@ function makeStore(prefix: string): Store<RLEnv> | undefined {
 function buildTier(
   limitStr: string,
   tier: "auth" | "anon",
+  scope: "verify" | "settle",
   keyGenerator: (c: Ctx) => string,
 ): MiddlewareHandler<{ Variables: AuthVars }> {
   const { count, windowSeconds } = parseLimit(limitStr);
@@ -167,14 +168,14 @@ function buildTier(
     limit: count,
     standardHeaders: false,
     keyGenerator,
-    store: makeStore(`rl:${tier}:`),
+    store: makeStore(`rl:${scope}:${tier}:`),
     handler: (c) => {
       // requestPropertyName is left at its default ("rateLimit").
       const info = (c.get as (k: string) => RateLimitInfo | undefined)("rateLimit");
       const retryAfter = info?.resetTime
         ? Math.max(1, Math.ceil((info.resetTime.getTime() - Date.now()) / 1000))
         : windowSeconds;
-      logger.warn("rate limit exceeded", { tier });
+      logger.warn("rate limit exceeded", { tier, scope });
       c.header("Retry-After", String(retryAfter));
       return c.json({ error: "rate_limit_exceeded" }, 429);
     },
@@ -187,13 +188,14 @@ export interface RateLimitOptions {
 }
 
 /**
- * Build a rate-limit middleware. Apply selectively (v1 limits only /settle).
+ * Separate route budgets while sharing each route's Redis counters across replicas.
  *
  * @param opts - Authenticated and anonymous limit strings.
+ * @param scope - Stable route namespace, never a client-supplied value.
  * @returns A hono middleware enforcing the dynamic, per-tier limit.
  */
-export function rateLimit(opts: RateLimitOptions): MiddlewareHandler<{ Variables: AuthVars }> {
-  const authLimiter = buildTier(opts.authenticated, "auth", (c) => `auth:${currentApiKey(c) ?? "unknown"}`);
-  const anonLimiter = buildTier(opts.anonymous, "anon", (c) => `anon:${clientIp(c)}`);
+export function rateLimit(opts: RateLimitOptions, scope: "verify" | "settle"): MiddlewareHandler<{ Variables: AuthVars }> {
+  const authLimiter = buildTier(opts.authenticated, "auth", scope, (c) => `auth:${currentApiKey(c) ?? "unknown"}`);
+  const anonLimiter = buildTier(opts.anonymous, "anon", scope, (c) => `anon:${clientIp(c)}`);
   return (c, next) => (isAuthenticated(c) ? authLimiter : anonLimiter)(c, next);
 }

@@ -176,7 +176,7 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
     return c.json(state, state.ready ? 200 : 503);
   });
 
-  app.post("/verify", rateLimit(deps.rateLimit), async (c) => {
+  app.post("/verify", rateLimit(deps.rateLimit, "verify"), async (c) => {
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -211,7 +211,7 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
 
   // /settle: rate limited; settles first, then persists one settlement row keyed on
   // the authorization identity. Save failure never affects the response (v1 ordering).
-  app.post("/settle", rateLimit(deps.rateLimit), async (c) => {
+  app.post("/settle", rateLimit(deps.rateLimit, "settle"), async (c) => {
     let raw: unknown;
     try {
       raw = await c.req.json();
