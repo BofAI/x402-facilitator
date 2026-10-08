@@ -1,6 +1,5 @@
 /**
- * Dynamic per-key rate limiting. Ports the slowapi setup in legacy/src/auth.py
- * onto `hono-rate-limiter`:
+ * Dynamic per-key rate limiting using `hono-rate-limiter`:
  *   - Authenticated requests keyed by `auth:<api_key>` at the authenticated limit.
  *   - Anonymous requests keyed by `anon:<ip>` at the anonymous limit.
  *
@@ -87,20 +86,34 @@ function clientIp(c: Ctx): string {
   return ip;
 }
 
-/**
- * Build a RedisStore from `ioredis`, adapting it to the 4-method client the library
- * expects. `ioredis` is an optional dependency, loaded only when Redis is selected.
- *
- * NOTE: the adapter below is coupled to hono-rate-limiter's internal RedisClient
- * contract (scriptLoad/evalsha/decr/del). hono-rate-limiter is pinned to an exact
- * version in package.json so this contract can't shift on install; re-verify this
- * mapping when bumping it.
- */
-function makeRedisStore(prefix: string): Store<RLEnv> {
-  const url = process.env.RATE_LIMIT_REDIS_URL ?? process.env.REDIS_URL;
-  if (!url) {
+/** Resolve credentials without changing the requested transport or logging secrets. */
+export function rateLimitRedisUrl(): string {
+  const rawUrl = process.env.RATE_LIMIT_REDIS_URL ?? process.env.REDIS_URL;
+  if (!rawUrl) {
     throw new Error('RATE_LIMIT_STORE="redis" requires RATE_LIMIT_REDIS_URL (or REDIS_URL)');
   }
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+    if (!["redis:", "rediss:"].includes(url.protocol) || !url.hostname) throw new Error();
+  } catch {
+    throw new Error("Invalid Redis/Valkey URL: expected redis:// or rediss:// with a hostname");
+  }
+  const password = process.env.RATE_LIMIT_REDIS_PASSWORD;
+  if (password !== undefined) {
+    if (!password) throw new Error("RATE_LIMIT_REDIS_PASSWORD must not be empty");
+    // Encode the raw secret once; ioredis otherwise prioritizes URL credentials.
+    url.password = encodeURIComponent(password);
+  }
+  return url.toString();
+}
+
+/**
+ * Adapt ioredis to hono-rate-limiter's scriptLoad/evalsha/decr/del contract.
+ * Re-verify this mapping when updating the pinned hono-rate-limiter version.
+ */
+function makeRedisStore(prefix: string): Store<RLEnv> {
+  const url = rateLimitRedisUrl();
   const require = createRequire(import.meta.url);
   let IORedis: { default?: unknown } & Record<string, unknown>;
   try {
@@ -116,7 +129,8 @@ function makeRedisStore(prefix: string): Store<RLEnv> {
     del(key: string): Promise<number>;
   };
   const client = new RedisCtor(url);
-  client.on?.("error", (err) => logger.error("rate-limit redis error", { err: String(err) }));
+  // Provider errors may contain credentials or the connection URL.
+  client.on?.("error", () => logger.error("rate-limit redis connection/command error"));
   return new RedisStore<RLEnv>({
     prefix,
     client: {
@@ -145,6 +159,7 @@ function makeStore(prefix: string): Store<RLEnv> | undefined {
 function buildTier(
   limitStr: string,
   tier: "auth" | "anon",
+  scope: "verify" | "settle",
   keyGenerator: (c: Ctx) => string,
 ): MiddlewareHandler<{ Variables: AuthVars }> {
   const { count, windowSeconds } = parseLimit(limitStr);
@@ -153,14 +168,14 @@ function buildTier(
     limit: count,
     standardHeaders: false,
     keyGenerator,
-    store: makeStore(`rl:${tier}:`),
+    store: makeStore(`rl:${scope}:${tier}:`),
     handler: (c) => {
       // requestPropertyName is left at its default ("rateLimit").
       const info = (c.get as (k: string) => RateLimitInfo | undefined)("rateLimit");
       const retryAfter = info?.resetTime
         ? Math.max(1, Math.ceil((info.resetTime.getTime() - Date.now()) / 1000))
         : windowSeconds;
-      logger.warn("rate limit exceeded", { tier });
+      logger.warn("rate limit exceeded", { tier, scope });
       c.header("Retry-After", String(retryAfter));
       return c.json({ error: "rate_limit_exceeded" }, 429);
     },
@@ -173,13 +188,14 @@ export interface RateLimitOptions {
 }
 
 /**
- * Build a rate-limit middleware. Apply selectively (v1 limits only /settle).
+ * Separate route budgets while sharing each route's Redis counters across replicas.
  *
  * @param opts - Authenticated and anonymous limit strings.
+ * @param scope - Stable route namespace, never a client-supplied value.
  * @returns A hono middleware enforcing the dynamic, per-tier limit.
  */
-export function rateLimit(opts: RateLimitOptions): MiddlewareHandler<{ Variables: AuthVars }> {
-  const authLimiter = buildTier(opts.authenticated, "auth", (c) => `auth:${currentApiKey(c) ?? "unknown"}`);
-  const anonLimiter = buildTier(opts.anonymous, "anon", (c) => `anon:${clientIp(c)}`);
+export function rateLimit(opts: RateLimitOptions, scope: "verify" | "settle"): MiddlewareHandler<{ Variables: AuthVars }> {
+  const authLimiter = buildTier(opts.authenticated, "auth", scope, (c) => `auth:${currentApiKey(c) ?? "unknown"}`);
+  const anonLimiter = buildTier(opts.anonymous, "anon", scope, (c) => `anon:${clientIp(c)}`);
   return (c, next) => (isAuthenticated(c) ? authLimiter : anonLimiter)(c, next);
 }

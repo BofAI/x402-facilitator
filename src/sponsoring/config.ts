@@ -1,0 +1,54 @@
+import { isAbsolute, resolve } from "node:path";
+import { z } from "zod";
+import { TronWeb } from "tronweb";
+import { TRON_NILE, TRON_SHASTA, normalizeTronNetwork } from "@bankofai/x402-tron";
+
+const address = z.string().refine(value => TronWeb.isAddress(value), "invalid TRON address")
+  .transform(value => TronWeb.address.fromHex(TronWeb.address.toHex(value)));
+const positiveAmount = z.string().regex(/^[1-9][0-9]*$/).max(78);
+
+export const sponsoringConfigSchema = z.object({
+  network: z.enum(["tron:0xcd8690dc", TRON_NILE, "tron:0x94a9059e", TRON_SHASTA]).transform(normalizeTronNetwork),
+  require_api_key: z.boolean().optional(),
+  database: z.string().refine(isAbsolute, "must be an absolute persistent path").optional(),
+  storage: z.discriminatedUnion("type", [
+    z.object({ type: z.literal("sqlite"), path: z.string().refine(isAbsolute, "must be an absolute persistent path") }).strict(),
+    z.object({ type: z.literal("postgres") }).strict(),
+  ]).optional(),
+  owner: address,
+  wallet_id: z.string().min(1),
+  wallet_dir: z.string().refine(isAbsolute).optional(),
+  permission_id: z.number().int().min(2).max(9),
+  assets: z.array(address).min(1),
+  // Legacy configuration compatibility only; no receiver allowlist is enforced.
+  pay_to: z.array(z.string()).optional(),
+  energy_stake_sun: positiveAmount,
+  bandwidth_stake_sun: positiveAmount,
+  budget_sun: positiveAmount,
+  management_bandwidth: positiveAmount,
+}).strict().refine(value => (value.database !== undefined) !== (value.storage !== undefined),
+  "specify exactly one of database or storage")
+  .refine(value => value.require_api_key !== false || value.network === TRON_NILE,
+    { message: "may be false only for Nile", path: ["require_api_key"] });
+
+export type SponsoringConfig = z.infer<typeof sponsoringConfigSchema>;
+
+/** Accept the existing single-network YAML shape, normalize once at the boundary. */
+export const sponsoringConfigsSchema = z.preprocess(
+  value => Array.isArray(value) ? value : [value],
+  z.array(sponsoringConfigSchema).min(1).superRefine((configs, ctx) => {
+    const networks = new Set<string>(), paths = new Set<string>();
+    configs.forEach((config, index) => {
+      if (networks.has(config.network)) ctx.addIssue({ code: z.ZodIssueCode.custom,
+        path: [index, "network"], message: "duplicate sponsoring network" });
+      networks.add(config.network);
+      const path = config.storage?.type === "sqlite" ? config.storage.path : config.database;
+      if (path) {
+        const normalized = resolve(path);
+        if (paths.has(normalized)) ctx.addIssue({ code: z.ZodIssueCode.custom,
+          path: [index, "storage"], message: "each network requires a distinct SQLite path" });
+        paths.add(normalized);
+      }
+    });
+  }),
+);

@@ -10,20 +10,29 @@
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
 import { loadConfig } from "./config.js";
-import { disposeDatabase } from "./db/index.js";
+import { disposeDatabase, getDatabasePool } from "./db/index.js";
 import { stopApiKeyRefresher } from "./auth.js";
 import { buildFacilitator } from "./facilitator.js";
 import { createApp } from "./server.js";
 import { metricsHandler } from "./metrics.js";
 import { buildRuntimeConfig } from "./runtime.js";
 import { logger } from "./logger.js";
+import { createSponsoringService } from "./sponsoring/service.js";
+import { createSponsoringServices, closeSponsoringServices } from "./sponsoring/services.js";
+import { buildTronFacilitatorSigner } from "./signer.js";
+import { requireCanonicalNetwork } from "./network.js";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
   const rt = await buildRuntimeConfig(cfg);
 
+  const sponsoring = await createSponsoringServices(cfg.resource_sponsoring ?? [], async config =>
+    createSponsoringService(config, await buildTronFacilitatorSigner(requireCanonicalNetwork(config.network)),
+      { pool: getDatabasePool() }));
+
   const facilitator = await buildFacilitator(cfg, {
     gasfreeBaseUrlFor: rt.gasfreeBaseUrlFor,
+    sponsoring,
   });
   logger.info("Facilitator initialized", { networks: Object.keys(cfg.facilitator.networks ?? {}) });
 
@@ -33,7 +42,9 @@ async function main(): Promise<void> {
     metricsOnMainPort: rt.metricsOnMainPort,
     metricsEndpoint: rt.metricsEndpoint,
     maxRequestBodyBytes: rt.maxRequestBodyBytes,
+    sponsoring,
   });
+  for (const service of sponsoring) service.start();
 
   const servers: ServerType[] = [];
   servers.push(
@@ -57,6 +68,7 @@ async function main(): Promise<void> {
     logger.info("Shutting down", { signal });
     stopApiKeyRefresher();
     for (const s of servers) s.close();
+    await closeSponsoringServices(sponsoring);
     await disposeDatabase();
     process.exit(0);
   };

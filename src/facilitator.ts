@@ -23,6 +23,7 @@ import { UptoEvmScheme } from "@bankofai/x402-evm/upto/facilitator";
 import { BatchSettlementEvmScheme } from "@bankofai/x402-evm/batch-settlement/facilitator";
 import {
   createErc20ApprovalGasSponsoringExtension,
+  createTrc20ApprovalResourceSponsoringExtension,
   type Erc20ApprovalGasSponsoringSigner,
 } from "@bankofai/x402-extensions";
 import type { GasSponsoringFacilitatorEvmSigner } from "@bankofai/x402-evm/adapters/agent-wallet";
@@ -40,8 +41,12 @@ import {
   enabledNetworks,
 } from "./config.js";
 import { logger } from "./logger.js";
+import type { SponsoringService } from "./sponsoring/service.js";
+import { routingSponsoringRuntime, sponsoringForNetwork } from "./sponsoring/services.js";
+import { registerPermit2ReplayGuard } from "./permit2-replay.js";
 
 export interface BuildFacilitatorOptions {
+  sponsoring?: readonly SponsoringService[];
   /** Returns the co-located GasFree proxy base URL for a TRON network, or null to skip gasfree. */
   gasfreeBaseUrlFor: (network: string) => string | null;
 }
@@ -65,6 +70,7 @@ interface NetworkSetup {
 async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOptions): Promise<void> {
   const { facilitator, network, caip, has } = setup;
   const signer = await buildTronFacilitatorSigner(caip);
+  registerPermit2ReplayGuard(facilitator, caip, signer);
 
   if (has("exact")) {
     registerExactTronScheme(facilitator, { signer, networks: caip });
@@ -93,7 +99,7 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
   if (has("batch-settlement")) {
     // Same agent-wallet doubles as the receiver-authorizer (signs ClaimBatch /
     // Refund TIP-712 digests; its address is published as receiverAuthorizer).
-    const authorizerSigner = await buildTronAuthorizerSigner();
+    const authorizerSigner = await buildTronAuthorizerSigner(caip);
     facilitator.register(caip, new BatchSettlementTronScheme(signer, authorizerSigner));
     logger.info("Registered batch-settlement (TRON)", {
       network,
@@ -109,6 +115,9 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
 async function registerEvmNetwork(setup: NetworkSetup): Promise<GasSponsoringFacilitatorEvmSigner> {
   const { facilitator, network, caip, has } = setup;
   const signer = await buildEvmFacilitatorSigner(caip);
+  registerPermit2ReplayGuard(facilitator, caip, {
+    readContract: args => signer.readContract({ ...args, address: args.address as `0x${string}` }),
+  });
 
   if (has("exact")) {
     registerExactEvmScheme(facilitator, { signer, networks: caip });
@@ -122,7 +131,7 @@ async function registerEvmNetwork(setup: NetworkSetup): Promise<GasSponsoringFac
   }
 
   if (has("batch-settlement")) {
-    const authorizerSigner = await buildEvmAuthorizerSigner();
+    const authorizerSigner = await buildEvmAuthorizerSigner(caip);
     facilitator.register(caip, new BatchSettlementEvmScheme(signer, authorizerSigner));
     logger.info("Registered batch-settlement (EVM)", {
       network,
@@ -207,6 +216,12 @@ export async function buildFacilitator(
   }
 
   registerEvmGasSponsoringExtension(facilitator, evmGasSponsoringSigners);
+
+  if (opts.sponsoring?.length) {
+    const services = opts.sponsoring;
+    facilitator.registerExtension(createTrc20ApprovalResourceSponsoringExtension(routingSponsoringRuntime(services),
+      network => sponsoringForNetwork(services, network)?.runtime));
+  }
 
   return facilitator;
 }

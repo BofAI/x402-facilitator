@@ -1,37 +1,45 @@
 # Local runtime config for the production environment.
 # Start with:
 #   FACILITATOR_SERVICE_ENV=prod npm start
+# Deployment template: fill every blank value before starting the service.
+# Provision Agent Wallet on the host and mount it read-only via AGENT_WALLET_DIR.
+# Incomplete database/Owner/resource settings intentionally fail startup validation.
 
 database:
   # node-postgres accepts this legacy SQLAlchemy/asyncpg URL form; credentials
   # are injected from onepassword below before connecting.
-  url: "postgresql+asyncpg://sunpump-sunagent-postsql-v2.c9w4kaa66fyg.us-east-1.rds.amazonaws.com:5432/x402_facilitator_prod"
+  # Production PG URL, without credentials. Do not use the TN database.
+  url: ""
   ssl_mode: "require"
   max_open_conns: 100
 
 onepassword:
-  database_user: "x402-facilitator/psql/user"
-  database_password: "x402-facilitator/psql/password"
-  trongrid_api_key: "x402-facilitator/trongrid/trongrid_api_key"
-  gasfree_api_key_nile: "x402-facilitator/gasfree/gasfree_api_key_nile"
-  gasfree_api_secret_nile: "x402-facilitator/gasfree/gasfree_api_secret_nile"
-  gasfree_api_key_mainnet: "x402-facilitator/gasfree/gasfree_api_key_mainnet"
-  gasfree_api_secret_mainnet: "x402-facilitator/gasfree/gasfree_api_secret_mainnet"
-  agent_wallet_password: "x402-facilitator/wallet/agent_wallet_password"
+  # Retains production Service Account mode; inject OP_SERVICE_ACCOUNT_TOKEN.
+  # Fill references as vault/item/field, not secret values.
+  mode: service_account
+  database_user: ""
+  database_password: ""
+  trongrid_api_key: ""
+  gasfree_api_key_nile: ""
+  gasfree_api_secret_nile: ""
+  gasfree_api_key_mainnet: ""
+  gasfree_api_secret_mainnet: ""
 
 server:
   host: "0.0.0.0"
   port: 8001
 
 logging:
-  dir: "logs"
+  dir: "/data/logs/facilitator"
   filename: "app.log"
   level: "INFO"
 
 rate_limit:
-  api_key_refresh_interval: 5
+  # Per-instance counters; remove any RATE_LIMIT_STORE=redis env override.
+  store: memory
+  api_key_refresh_interval: 60
   authenticated: "1000/minute"
-  anonymous: "1/minute"
+  anonymous: "10/minute"
 
 monitoring:
   port: 9001
@@ -57,3 +65,33 @@ facilitator:
     # Base Mainnet
     eip155:8453:
       schemes: ["exact", "upto", "batch-settlement"]
+
+# Only Nile receives Approval resource sponsorship; all payment networks above
+# and their GasFree configuration remain enabled independently.
+# For multiple networks, use a list of complete entries here (see README).
+# Replicas sharing an Owner must use identical permissions and limits.
+resource_sponsoring:
+  network: "tron:3448148188"
+  require_api_key: true
+  storage:
+    type: postgres
+
+  # Use a Nile Owner dedicated to this PG ledger; never reuse an Owner with
+  # outstanding obligations in another database. Keep its master key off-server.
+  owner: ""
+  wallet_id: "resource-active"
+  # Uses AGENT_WALLET_DIR; keep settlement as the active/default wallet.
+  # Owner, resource-active signer and settlement must be distinct addresses.
+  # Match the actual on-chain Active permission (delegate/undelegate only).
+  permission_id:
+
+  # Nile USDT. Sponsoring does not restrict payment recipients.
+  assets: ["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]
+
+  # Review limits against actual stake and concurrency before deployment.
+  # These do not automatically stake funds. 1 TRX = 1,000,000 SUN.
+  energy_stake_sun: ""
+  bandwidth_stake_sun: ""
+  budget_sun: ""
+  # Bandwidth units reserved for resource management transactions.
+  management_bandwidth: ""

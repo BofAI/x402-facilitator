@@ -1,7 +1,47 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import Redis from "ioredis";
 import { Hono } from "hono";
-import { parseLimit, rateLimit, resetRateLimitState } from "../src/rate-limit.js";
+import { parseLimit, rateLimit, resetRateLimitState, rateLimitRedisUrl } from "../src/rate-limit.js";
 import { authMiddleware, setApiKeyCacheForTest, type AuthVars } from "../src/auth.js";
+
+describe("Valkey connection credentials", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("overrides URL password with the separate password while preserving TLS and ACL username", () => {
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", "rediss://limiter:old-password@valkey.example:6380/2");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", " @:/#%密码 ");
+    const client = new Redis(rateLimitRedisUrl(), { lazyConnect: true });
+    try {
+      expect(client.options.password).toBe(" @:/#%密码 ");
+      expect(client.options.username).toBe("limiter");
+      expect(client.options.host).toBe("valkey.example");
+      expect(client.options.db).toBe(2);
+      expect(client.options.tls).toBeDefined();
+      expect(client.options.tls?.rejectUnauthorized).not.toBe(false);
+    } finally { client.disconnect(); }
+  });
+
+  it("preserves URL authentication when no separate password is configured", () => {
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", undefined);
+    vi.stubEnv("REDIS_URL", "rediss://:legacy%40password@valkey.example:6379");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", undefined);
+    const client = new Redis(rateLimitRedisUrl(), { lazyConnect: true });
+    try { expect(client.options.password).toBe("legacy@password"); }
+    finally { client.disconnect(); }
+  });
+
+  it("rejects an explicitly empty password rather than using URL credentials", () => {
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", "rediss://:old@valkey.example:6379");
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", "");
+    expect(() => rateLimitRedisUrl()).toThrow(/RATE_LIMIT_REDIS_PASSWORD/);
+  });
+
+  it.each(["https://user:secret@host", "invalid-secret-url"])("rejects invalid connection URL without exposing it", (url) => {
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", url);
+    vi.stubEnv("RATE_LIMIT_REDIS_PASSWORD", undefined);
+    expect(() => rateLimitRedisUrl()).toThrow(/^Invalid Redis\/Valkey URL/);
+  });
+});
 
 describe("parseLimit", () => {
   it("parses N/period forms", () => {
@@ -22,6 +62,45 @@ describe("parseLimit", () => {
   });
 });
 
+describe("Redis route isolation", () => {
+  beforeEach(() => {
+    vi.stubEnv("RATE_LIMIT_STORE", "redis");
+    vi.stubEnv("RATE_LIMIT_REDIS_URL", "redis://localhost:6379");
+    setApiKeyCacheForTest(["good-key"]);
+    // Keep the real RedisStore and middleware; replace only network I/O.
+    vi.spyOn(Redis.prototype, "connect").mockResolvedValue(undefined);
+    vi.spyOn(Redis.prototype, "script").mockResolvedValue("script-sha");
+    const counts = new Map<string, number>();
+    vi.spyOn(Redis.prototype, "evalsha").mockImplementation(async (...args) => {
+      const key = String(args[2]);
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      return [count, 60000];
+    });
+  });
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+
+  it.each([false, true])("separates verify/settle but shares each route across replicas (authenticated=%s)", async (authenticated) => {
+    const replica = () => {
+      const app = new Hono<{ Variables: AuthVars }>();
+      app.use("*", authMiddleware);
+      for (const route of ["verify", "settle"] as const) {
+        app.post(`/${route}`, rateLimit({ authenticated: "1/minute", anonymous: "1/minute" }, route),
+          (c) => c.json({ ok: true }));
+      }
+      return app;
+    };
+    const first = replica();
+    const second = replica();
+    const headers = authenticated ? { "X-API-KEY": "good-key" } : {};
+    const send = (app: ReturnType<typeof replica>, route: string) => app.request(`/${route}`, { method: "POST", headers });
+    expect((await send(first, "verify")).status).toBe(200);
+    expect((await send(second, "settle")).status).toBe(200);
+    expect((await send(second, "verify")).status).toBe(429);
+    expect((await send(first, "settle")).status).toBe(429);
+  });
+});
+
 describe("rateLimit middleware", () => {
   beforeEach(() => {
     resetRateLimitState();
@@ -31,7 +110,7 @@ describe("rateLimit middleware", () => {
   function appWith(authenticated: string, anonymous: string) {
     const app = new Hono<{ Variables: AuthVars }>();
     app.use("*", authMiddleware);
-    app.post("/settle", rateLimit({ authenticated, anonymous }), (c) => c.json({ ok: true }));
+    app.post("/settle", rateLimit({ authenticated, anonymous }, "settle"), (c) => c.json({ ok: true }));
     return app;
   }
 

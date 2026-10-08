@@ -1,7 +1,8 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
+import { parse, stringify } from "yaml";
 import {
   configPath,
   loadConfig,
@@ -31,22 +32,129 @@ facilitator:
 `;
 
 describe("loadConfig", () => {
+  it("loads independent Nile and Shasta sponsorship entries", () => {
+    const cfg = parse(readFileSync(resolve("config/facilitator.config.dev.yaml"), "utf8"));
+    cfg.facilitator.networks["tron:2494104990"] = { schemes: ["exact"] };
+    cfg.resource_sponsoring = [cfg.resource_sponsoring,
+      { ...cfg.resource_sponsoring, network: "tron:0x94a9059e", require_api_key: true, wallet_id: "shasta-active" }];
+    expect(loadConfig(writeConfig(stringify(cfg))).resource_sponsoring).toMatchObject([
+      { network: "tron:3448148188", require_api_key: false },
+      { network: "tron:2494104990", require_api_key: true, wallet_id: "shasta-active" },
+    ]);
+  });
+
+  it("rejects duplicate canonical sponsor networks and networks not enabled for payment", () => {
+    const cfg = parse(readFileSync(resolve("config/facilitator.config.dev.yaml"), "utf8"));
+    const nile = cfg.resource_sponsoring;
+    cfg.resource_sponsoring = [nile, { ...nile, network: "tron:3448148188" }];
+    expect(() => loadConfig(writeConfig(stringify(cfg)))).toThrow(/duplicate sponsoring network/i);
+    cfg.resource_sponsoring = [nile, { ...nile, network: "tron:2494104990", require_api_key: true }];
+    expect(() => loadConfig(writeConfig(stringify(cfg)))).toThrow(/must be enabled/);
+  });
+
+  it("rejects shared SQLite paths across networks, including normalized paths", () => {
+    const cfg = parse(readFileSync(resolve("config/facilitator.config.dev.yaml"), "utf8"));
+    cfg.facilitator.networks["tron:2494104990"] = {};
+    const nile = { ...cfg.resource_sponsoring, storage: { type: "sqlite", path: "/data/a/../sponsor.sqlite" } };
+    cfg.resource_sponsoring = [nile, { ...nile, network: "tron:2494104990", require_api_key: true,
+      storage: { type: "sqlite", path: "/data/sponsor.sqlite" } }];
+    expect(() => loadConfig(writeConfig(stringify(cfg)))).toThrow(/SQLite path/);
+  });
+  it("accepts a TLS Redis rate-limit backend in YAML", () => {
+    const cfg = loadConfig(writeConfig(VALID + '\nrate_limit:\n  store: redis\n  redis_url: "rediss://valkey.example:6379"\n'));
+    expect(cfg.rate_limit?.store).toBe("redis");
+    expect(cfg.rate_limit?.redis_url).toBe("rediss://valkey.example:6379");
+  });
+
   it("loads and lists enabled networks", () => {
     const cfg = loadConfig(writeConfig(VALID));
     expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97"]);
   });
 
-  it("loads built-in configs with uppercase logging levels", () => {
-    for (const environment of ["dev", "prod"]) {
-      const cfg = loadConfig(resolve(process.cwd(), `config/facilitator.config.${environment}.yaml`));
-      expect(cfg.logging?.level).toBe("info");
+  it("requires production settings and limits prod PG sponsoring to Nile without removing payment networks", () => {
+    const path = resolve(process.cwd(), "config/facilitator.config.prod.yaml");
+    expect(() => loadConfig(path)).toThrow(/resource_sponsoring\.0\.owner: invalid TRON address/);
+    const provisioned = parse(readFileSync(path, "utf8"));
+    expect(provisioned.database.url).toBe("");
+    expect(provisioned.resource_sponsoring.owner).toBe("");
+    expect(provisioned.resource_sponsoring.permission_id).toBeNull();
+    provisioned.database.url = "postgresql://localhost:5432/prod_config_test";
+    provisioned.resource_sponsoring.owner = "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9";
+    provisioned.resource_sponsoring.permission_id = 3;
+    for (const key of ["energy_stake_sun", "bandwidth_stake_sun", "budget_sun", "management_bandwidth"]) {
+      expect(provisioned.resource_sponsoring[key]).toBe("");
+      provisioned.resource_sponsoring[key] = "1000";
     }
+    for (const key of Object.keys(provisioned.onepassword).filter(key => key !== "mode")) {
+      expect(provisioned.onepassword[key]).toBe("");
+      provisioned.onepassword[key] = `test-vault/test-item/${key}`;
+    }
+    const cfg = loadConfig(writeConfig(stringify(provisioned)));
+    expect(cfg.logging?.level).toBe("info");
+    expect(cfg.logging?.dir).toBe("/data/logs/facilitator");
+    expect(cfg.rate_limit?.store).toBe("memory");
+    expect(cfg.rate_limit?.anonymous).toBe("10/minute");
+    expect(cfg.onepassword?.agent_wallet_password).toBeUndefined();
+    expect(cfg.onepassword?.redis_password).toBeUndefined();
+    expect(cfg.resource_sponsoring?.[0]?.require_api_key).toBe(true);
+    expect(cfg.onepassword?.mode).toBe("service_account");
+    expect(cfg.resource_sponsoring?.[0]?.storage).toEqual({ type: "postgres" });
+    expect(cfg.resource_sponsoring?.[0]?.network).toBe("tron:3448148188");
+    expect(cfg.resource_sponsoring?.[0]?.wallet_id).toBe("resource-active");
+    expect(cfg.resource_sponsoring?.[0]?.wallet_dir).toBeUndefined();
+    expect(cfg.resource_sponsoring?.[0]?.assets).toEqual(["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]);
+    expect(enabledNetworks(cfg)).toEqual([
+      "tron:0xcd8690dc", "tron:0x2b6653dc", "eip155:97", "eip155:56", "eip155:84532", "eip155:8453",
+    ]);
+    for (const network of Object.values(cfg.facilitator.networks)) {
+      expect(network.schemes).toEqual(["exact", "upto", "batch-settlement"]);
+    }
+    for (const key of ["gasfree_api_key_nile", "gasfree_api_secret_nile", "gasfree_api_key_mainnet", "gasfree_api_secret_mainnet"]) {
+      expect(cfg.onepassword?.[key]).toBe(`test-vault/test-item/${key}`);
+    }
+  });
+
+  it("loads the configured dev Owner and rejects an invalid replacement", () => {
+    const path = resolve(process.cwd(), "config/facilitator.config.dev.yaml");
+    const cfg = loadConfig(path);
+    expect(cfg.resource_sponsoring?.[0]?.owner).toBe("TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y");
+    expect(cfg.onepassword).toEqual({
+      mode: "connect",
+      database_user: "x402-facilitator-nile_dev/psql/user",
+      database_password: "x402-facilitator-nile_dev/psql/password",
+      trongrid_api_key: "x402-facilitator-nile_dev/trongrid/trongrid_api_key",
+      gasfree_api_key_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_key_nile",
+      gasfree_api_secret_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_secret_nile",
+    });
+    expect(cfg.logging?.dir).toBe("/data/logs/facilitator");
+    expect(cfg.resource_sponsoring?.[0]?.permission_id).toBe(3);
+    expect(cfg.resource_sponsoring?.[0]?.management_bandwidth).toBe("5000");
+    expect(cfg.resource_sponsoring?.[0]?.require_api_key).toBe(false);
+    expect(cfg.resource_sponsoring?.[0]?.pay_to).toBeUndefined();
+    expect(cfg.rate_limit?.store).toBe("memory");
+    expect(cfg.rate_limit?.redis_url).toBeUndefined();
+    expect(cfg.rate_limit?.anonymous).toBe("10/minute");
+    const invalid = readFileSync(path, "utf8")
+      .replace("TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y", "REPLACE_WITH_DEV_RESOURCE_OWNER");
+    expect(() => loadConfig(writeConfig(invalid))).toThrow(/resource_sponsoring\.0\.owner: invalid TRON address/);
+    expect(cfg.onepassword?.mode).toBe("connect");
+    expect(cfg.logging?.level).toBe("info");
+    expect(cfg.resource_sponsoring?.[0]?.storage).toEqual({ type: "postgres" });
+    expect(cfg.resource_sponsoring?.[0]?.network).toBe("tron:3448148188");
+    expect(cfg.resource_sponsoring?.[0]?.wallet_id).toBe("resource-active");
+    expect(cfg.resource_sponsoring?.[0]?.wallet_dir).toBeUndefined();
+    expect(cfg.database.url).toContain("/x402_facilitator");
+    expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97", "eip155:84532"]);
   });
 
   it("throws when database.url is missing", () => {
     expect(() => loadConfig(writeConfig(`facilitator:\n  networks:\n    tron:0xcd8690dc: {}\n`))).toThrow(
       /database: Required/,
     );
+  });
+
+  it("rejects an unknown 1Password mode instead of falling back to Service Accounts", () => {
+    expect(() => loadConfig(writeConfig(VALID + "\nonepassword:\n  mode: conenct\n"))).toThrow(/mode must be/);
   });
 
   it("throws when facilitator.networks is empty", () => {
