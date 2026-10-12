@@ -89,6 +89,16 @@ logs
 
 # Config (contains environment-specific endpoints and secret references)
 facilitator.config.yaml
+# Machine-specific container acceptance configurations stay on the host.
+/config/container-local-*/
+# Local deployment notes, validation evidence and Superpowers plans.
+/docs/
+# Local live-chain acceptance tooling (not application runtime).
+/scripts/nile-validation.mjs
+/scripts/fixtures/NileEnergyToken.sol
+/test/nile-transaction.test.ts
+/vendor/
+/test/container-packaging.test.ts
 
 # Private
 _private/

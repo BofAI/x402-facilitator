@@ -1,5 +1,5 @@
 /**
- * API-key authentication. Faithful port of legacy/src/auth.py:
+ * API-key authentication:
  *   - In-memory cache of active API keys, refreshed periodically from the DB.
  *   - Per-request middleware that sets auth state for rate limiting and seller lookup.
  *   - Constant-time key comparison to mitigate timing attacks.

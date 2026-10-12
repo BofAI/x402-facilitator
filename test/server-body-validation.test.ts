@@ -57,6 +57,38 @@ const VALID_BODY = {
   paymentRequirements: V2_REQUIREMENTS,
 };
 
+// Channel manager operations use amount/timeout zero rather than a payment TTL.
+// These fixtures mirror BatchSettlementChannelManager's published wire shape.
+const MANAGEMENT_PAYLOADS = {
+  claim: { type: "claim", claims: [] },
+  settle: { type: "settle", receiver: "Treceiver", token: "Ttoken" },
+  refund: {
+    type: "refund",
+    channelConfig: { receiver: "Treceiver", token: "Ttoken" },
+    voucher: { channelId: "0xchannel", maxClaimableAmount: "1", signature: "0xsig" },
+    amount: "1",
+    refundNonce: "0",
+    claims: [],
+  },
+};
+
+function managementBody(type: keyof typeof MANAGEMENT_PAYLOADS) {
+  const requirements = {
+    scheme: "batch-settlement",
+    network: "tron:3448148188",
+    asset: "Ttoken",
+    amount: "0",
+    payTo: "Treceiver",
+    maxTimeoutSeconds: 0,
+    extra: {},
+  };
+  return {
+    x402Version: 2,
+    paymentPayload: { x402Version: 2, accepted: { ...requirements }, payload: MANAGEMENT_PAYLOADS[type] },
+    paymentRequirements: { ...requirements },
+  };
+}
+
 function post(app: Hono, route: string, raw: string) {
   return app.request(route, {
     method: "POST",
@@ -183,6 +215,68 @@ describe("createApp JSON body validation (P1-07)", () => {
       const res = await post(makeApp(), "/settle", JSON.stringify(VALID_BODY));
       expect(res.status).toBe(200);
       expect(await res.json()).toMatchObject({ success: true });
+    });
+  });
+
+  describe.each(["/verify", "/settle"])("POST %s batch management timeout validation", (route) => {
+    it.each(["claim", "settle", "refund"] as const)("accepts %s with zero timeouts and preserves them for the SDK", async (type) => {
+      const facilitator = fakeFacilitator();
+      const app = createApp(facilitator as unknown as Hono, buildDeps());
+      const res = await post(app, route, JSON.stringify(managementBody(type)));
+      expect(res.status).toBe(200);
+      const handler = route === "/verify" ? facilitator.verify : facilitator.settle;
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: MANAGEMENT_PAYLOADS[type],
+          accepted: expect.objectContaining({ scheme: "batch-settlement", maxTimeoutSeconds: 0 }),
+        }),
+        expect.objectContaining({ scheme: "batch-settlement", maxTimeoutSeconds: 0 }),
+      );
+    });
+
+    it.each(["exact", "upto"])("rejects zero timeouts for %s even with a management discriminator", async (scheme) => {
+      const body = managementBody("claim");
+      body.paymentPayload.accepted.scheme = scheme;
+      body.paymentRequirements.scheme = scheme;
+      const res = await post(makeApp(), route, JSON.stringify(body));
+      expect(res.status).toBe(400);
+    });
+
+    it.each(["deposit", "voucher", "unknown", undefined])("rejects zero timeouts for batch payload type %s", async (type) => {
+      const body = managementBody("claim");
+      const res = await post(makeApp(), route, JSON.stringify({
+        ...body,
+        paymentPayload: { ...body.paymentPayload, payload: { type } },
+      }));
+      expect(res.status).toBe(400);
+    });
+
+    it.each(["accepted", "requirements"] as const)("rejects zero timeouts when the %s scheme does not match batch-settlement", async (side) => {
+      const body = managementBody("claim");
+      const requirements = side === "accepted" ? body.paymentPayload.accepted : body.paymentRequirements;
+      requirements.scheme = "exact";
+      const res = await post(makeApp(), route, JSON.stringify(body));
+      expect(res.status).toBe(400);
+    });
+
+    it.each([
+      ["accepted", -1], ["requirements", -1],
+      ["accepted", "0"], ["requirements", "0"],
+      ["accepted", null], ["requirements", null],
+    ] as const)("rejects %s timeout %s for management payloads", async (side, timeout) => {
+      const body = managementBody("claim");
+      const invalidBody = side === "accepted"
+        ? { ...body, paymentPayload: { ...body.paymentPayload, accepted: { ...body.paymentPayload.accepted, maxTimeoutSeconds: timeout } } }
+        : { ...body, paymentRequirements: { ...body.paymentRequirements, maxTimeoutSeconds: timeout } };
+      const res = await post(makeApp(), route, JSON.stringify(invalidBody));
+      expect(res.status).toBe(400);
+    });
+
+    it("still validates the rest of the management envelope", async () => {
+      const body = managementBody("claim");
+      body.paymentRequirements.network = "invalid-network";
+      const res = await post(makeApp(), route, JSON.stringify(body));
+      expect(res.status).toBe(400);
     });
   });
 });
