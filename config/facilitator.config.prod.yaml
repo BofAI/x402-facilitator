@@ -18,6 +18,9 @@ onepassword:
   # Retains production Service Account mode; inject OP_SERVICE_ACCOUNT_TOKEN.
   # Fill references as vault/item/field, not secret values.
   mode: service_account
+  # Proposed field reference; confirm it exists in the production vault.
+  # Not consumed by current code; database.url above remains the runtime source.
+  database_url: "x402-facilitator/psql/url"
   # Production database credential references restored from Git history.
   database_user: "x402-facilitator/psql/user"
   database_password: "x402-facilitator/psql/password"
