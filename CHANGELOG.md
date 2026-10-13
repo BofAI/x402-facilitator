@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Restore production PostgreSQL endpoint and 1Password credential references,
+  configure the operator-provided Nile sponsoring Owner and permission, fill
+  resource limits from dev, normalize TRON network IDs, and align production
+  logging with the existing `/app/logs` Docker mount.
+
 ### Added
 
 - Multi-network TRC-20 resource sponsoring in one process, with per-network
