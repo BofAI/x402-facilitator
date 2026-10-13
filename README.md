@@ -317,3 +317,17 @@ successful packed receipt for the original Approval transaction and sufficient
 allowance. Observing allowance alone does not establish transaction ordering.
 Pending or failed Approval receipts do not release settlement; no solidification
 wait is introduced.
+
+### Environment-specific mounts and Key refresh
+
+Bundled dev logs use `/data/logs/facilitator`; bundled prod logs use `/app/logs`
+to match the existing production bind mount
+`/data/logs/facilitator-v2-logs:/app/logs`. Mount the directory selected by the
+runtime YAML and make it writable by UID/GID 1000. Image tags do not select a
+log directory or a secret provider.
+
+Production preserves the 5-second API Key cache refresh interval; dev uses
+60 seconds. New or disabled Keys are observed on a subsequent successful cache
+refresh. This setting controls database polling, not request rate limits.
+The env example lists Connect credentials for dev and Service Account credentials
+for prod; the two providers are intentionally independent.

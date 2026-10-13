@@ -80,3 +80,17 @@ Configure GitHub after the branches and workflows are pushed:
   to a value other than `true`. Authorized users can still request an audit
   with `/audit-pr`.
 
+
+## CI image tags and runtime environments
+
+| Git tag | Published image tag | Purpose |
+| --- | --- | --- |
+| `dev-vX.Y.Z` | `bankofai/x402-tron-facilitator:dev` | TN/development candidate |
+| `test-vX.Y.Z` | `bankofai/x402-tron-facilitator:test` | Existing test/release-candidate channel |
+| `vX.Y.Z` | `bankofai/x402-tron-facilitator:vX.Y.Z` | Stable release |
+
+All three run the same checks and build both amd64 and arm64. The tag version
+must match package.json. `dev` and `test` are separate mutable image channels,
+not different application builds. Neither selects a runtime environment:
+`FACILITATOR_SERVICE_ENV=dev|prod` or `FACILITATOR_CONFIG_PATH` selects the YAML
+when the container starts. Use the published digest for a reproducible deployment.

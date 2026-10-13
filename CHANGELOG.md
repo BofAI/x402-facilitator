@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Preserve the production 5-second API Key refresh cadence and clarify image
+  tag channels, environment-specific log mounts and 1Password runtime tokens.
+
 - Require successful packed Approval confirmation before accepting observed
   allowance and continuing settlement, preventing payment from racing Approval.
   No solidification wait is added.

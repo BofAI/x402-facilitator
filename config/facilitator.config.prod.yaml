@@ -40,7 +40,8 @@ logging:
 rate_limit:
   # Per-instance counters; remove any RATE_LIMIT_STORE=redis env override.
   store: memory
-  api_key_refresh_interval: 60
+  # Preserve the production refresh cadence for Key creation/revocation.
+  api_key_refresh_interval: 5
   authenticated: "1000/minute"
   anonymous: "10/minute"
 
