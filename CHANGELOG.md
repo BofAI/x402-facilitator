@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.1.13] - 2026-10-13
+## [2.1.14] - 2026-10-13
 
 ### Changed
 
 - Confirm TRON resource execution from successful packed FullNode receipts
   without waiting for solidity before Approval. Keep resource visibility checks,
   solidified inventory/expiry recovery and reclaim ordering protections.
+
+## [2.1.13] - 2026-10-13
 
 ### Changed
 
