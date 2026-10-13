@@ -40,7 +40,7 @@ describe("SDK with durable coordinator and allowance confirmation", () => {
         expect((await store.findApproval(bytes))?.actions.some(item => item.kind === "approval")).toBe(true);
         events.push("approval"); allowance = true; return request.approvalTxID;
       },
-      confirm: async txID => { expect(txID).not.toBe(request.approvalTxID); return "confirmed"; },
+      confirm: async txID => { if (txID === request.approvalTxID) events.push("approval-packed"); return "confirmed"; },
       resourcesVisible: async () => { visible = true; return true; },
       allowanceSufficient: async () => allowance,
       capacityRecovered: async () => true,
@@ -50,7 +50,7 @@ describe("SDK with durable coordinator and allowance confirmation", () => {
     const result = await runtime.sponsor(request);
     expect(result.success).toBe(true);
     const expected = mode === "none" ? [] : mode === "both" ? ["ENERGY", "BANDWIDTH"] : [mode.toUpperCase()];
-    expect(events).toEqual([...expected.map(resource => `delegate-${resource.toLowerCase()}`), "approval", ...expected.map(resource => `reclaim-${resource.toLowerCase()}`)]);
+    expect(events).toEqual([...expected.map(resource => `delegate-${resource.toLowerCase()}`), "approval", "approval-packed", ...expected.map(resource => `reclaim-${resource.toLowerCase()}`)]);
     await runtime.reconcile();
     expect(await store.listRecoverable(100)).toEqual([]);
     store.close();

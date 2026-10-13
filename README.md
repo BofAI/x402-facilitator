@@ -311,3 +311,9 @@ transaction recovery retain solidified reads, and reclaim anchor checks remain
 in place. Packed confirmation does not provide solidified finality. This reduces
 the confirmation wait in the synchronous payment path; actual latency and proxy
 timeout behavior require live deployment validation.
+
+Before continuing a sponsored payment, Approval confirmation requires both a
+successful packed receipt for the original Approval transaction and sufficient
+allowance. Observing allowance alone does not establish transaction ordering.
+Pending or failed Approval receipts do not release settlement; no solidification
+wait is introduced.

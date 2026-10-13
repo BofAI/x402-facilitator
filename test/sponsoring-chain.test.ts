@@ -12,7 +12,7 @@ function fixture() {
     deadlines: vi.fn(async () => ({ businessDeadline: 480000 })), noteDelegate: vi.fn(async () => {}), assertOwnership: vi.fn(async () => {}) };
   const base = { prepareDelegate: vi.fn(async () => ({ txID: "delegate", signedTransaction: "bb" })),
     prepareUndelegate: vi.fn(async () => ({ txID: "reclaim", signedTransaction: "cc" })),
-    confirm: vi.fn(async () => "unknown"), allowanceSufficient: vi.fn(async () => true),
+    confirm: vi.fn(async (txID: string) => txID === "approve" ? "confirmed" : "unknown"), allowanceSufficient: vi.fn(async () => true),
     broadcastApproval: vi.fn(async () => "approve"), broadcast: vi.fn(async () => "delegate") } as unknown as Trc20ResourceSponsoringChain;
   let now = 1000;
   const chain = guardSponsoringChain(base, store, { now: () => now, sleep: async ms => { now += ms; },
@@ -96,10 +96,23 @@ describe("sponsoring chain boundary", () => {
     expect(base.broadcast).not.toHaveBeenCalled();
     expect(base.broadcastApproval).not.toHaveBeenCalled();
   });
-  it("accepts observed allowance without waiting for the Approval receipt", async () => {
+  it("requires the Approval receipt before accepting observed allowance", async () => {
     const { chain, base } = fixture();
     expect(await chain.confirm("approve")).toBe("confirmed");
-    expect(base.confirm).not.toHaveBeenCalled();
+    expect(base.confirm).toHaveBeenCalledWith("approve");
+    expect(vi.mocked(base.confirm).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(base.allowanceSufficient).mock.invocationCallOrder[0]);
+  });
+  it.each(["unknown", "failed"] as const)("does not accept sufficient allowance when the Approval receipt is %s", async status => {
+    const { chain, base } = fixture();
+    vi.mocked(base.confirm).mockResolvedValue(status);
+    expect(await chain.confirm("approve")).toBe(status);
+    expect(base.allowanceSufficient).not.toHaveBeenCalled();
+  });
+  it("does not continue when receipt confirmation crosses the execution deadline", async () => {
+    const { chain, base, setNow } = fixture();
+    vi.mocked(base.confirm).mockImplementation(async () => { setNow(480001); return "confirmed"; });
+    expect(await chain.confirm("approve")).toBe("unknown");
+    expect(base.allowanceSufficient).not.toHaveBeenCalled();
   });
   it("keeps unknown when allowance never appears and still uses receipt confirmation for Delegate", async () => {
     const { chain, base } = fixture();

@@ -13,8 +13,8 @@ interface Timing {
   assertReclaim?: (request: Trc20ApprovalResourceSponsoringRequest, action: PreparedTronAction) => Promise<void>;
 }
 
-/** SDK confirm() is action-aware here: Approval completion means allowance
- * observed on FullNode, whereas resource actions use the base receipt policy. */
+/** Approval completion requires a successful packed receipt followed by sufficient
+ * FullNode allowance. Resource actions use the same base receipt policy. */
 export function guardSponsoringChain(base: Trc20ResourceSponsoringChain, store: Store, timing: Timing = {}): Trc20ResourceSponsoringChain {
   const now = timing.now ?? Date.now;
   const delay = timing.sleep ?? sleep;
@@ -70,7 +70,12 @@ export function guardSponsoringChain(base: Trc20ResourceSponsoringChain, store: 
       if (!operation || txID !== operation.approvalTxID) return base.confirm(txID);
       const deadline = Math.min(now() + (timing.confirmationTimeoutMs ?? 90_000),
         (await storageBoundary(() => store.deadlines(operation.key))).businessDeadline, Number(operation.request.approvalExpiration));
+      if (now() >= deadline) return "unknown";
+      const receiptStatus = await base.confirm(txID);
+      if (receiptStatus !== "confirmed") return receiptStatus;
       do {
+        // Receipt polling may have consumed the remaining execution window.
+        if (now() >= deadline) return "unknown";
         if (await base.allowanceSufficient(operation.request)) return "confirmed";
         if (now() >= Number(operation.request.approvalExpiration)) return "failed";
         if (now() >= deadline) return "unknown";

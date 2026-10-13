@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.2.0] - Unreleased
 
+### Fixed
+
+- Require successful packed Approval confirmation before accepting observed
+  allowance and continuing settlement, preventing payment from racing Approval.
+  No solidification wait is added.
+
 ### Changed
 
 - Confirm TRON resource execution from successful packed FullNode receipts

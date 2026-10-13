@@ -48,7 +48,7 @@ export interface SponsoringService {
 }
 
 /** Resource execution uses packed FullNode receipts; inventory and expiry recovery
- * retain solidified reads. Approval still requires allowance to be observed. */
+ * retain solidified reads. Approval requires a packed receipt and allowance. */
 export async function createSponsoringService(config: SponsoringConfig, settlement: FacilitatorTronSigner,
   options: { pool?: Pool } = {}): Promise<SponsoringService> {
   const endpoint = rpcFor(requireCanonicalNetwork(config.network));
