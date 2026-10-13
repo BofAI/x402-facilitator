@@ -301,3 +301,13 @@ Keep it free of credentials when using the separate `database_user` and
 without falling back to the YAML URL. URL source values are not included in
 validation errors. The repository does not provision 1Password items: ensure both
 environments have the configured `url` field before deploying this version.
+
+### TRON resource confirmation latency
+
+Sponsoring resource transactions use successful packed FullNode receipts instead
+of waiting for solidification before Approval. Resource availability is still
+checked before broadcasting Approval. Inventory reconciliation and expired
+transaction recovery retain solidified reads, and reclaim anchor checks remain
+in place. Packed confirmation does not provide solidified finality. This reduces
+the confirmation wait in the synchronous payment path; actual latency and proxy
+timeout behavior require live deployment validation.

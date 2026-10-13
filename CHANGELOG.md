@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Confirm TRON resource execution from successful packed FullNode receipts
+  without waiting for solidity before Approval. Keep resource visibility checks,
+  solidified inventory/expiry recovery and reclaim ordering protections.
+
+### Changed
+
 - Resolve database URLs from `onepassword.database_url` through Connect or
   Service Accounts, retain legacy YAML URLs, and fail startup on secret errors.
   Dev and prod now require the respective 1Password `psql/url` field.

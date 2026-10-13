@@ -14,7 +14,7 @@ interface Timing {
 }
 
 /** SDK confirm() is action-aware here: Approval completion means allowance
- * observed on FullNode, whereas resource actions retain solidified receipts. */
+ * observed on FullNode, whereas resource actions use the base receipt policy. */
 export function guardSponsoringChain(base: Trc20ResourceSponsoringChain, store: Store, timing: Timing = {}): Trc20ResourceSponsoringChain {
   const now = timing.now ?? Date.now;
   const delay = timing.sleep ?? sleep;

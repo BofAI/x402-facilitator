@@ -10,6 +10,7 @@ import type { FacilitatorTronSigner, Trc20ApprovalResourceSponsoringRequest,
   Trc20SponsoringOperation } from "@bankofai/x402-tron";
 import { serializeSignedTronTransaction } from "@bankofai/x402-tron";
 import { sponsoringConfigSchema } from "../src/sponsoring/config.js";
+import * as sdkChain from "../src/sponsoring/sdk-chain.js";
 import { createSponsoringService } from "../src/sponsoring/service.js";
 import { createSponsoringServices, closeSponsoringServices } from "../src/sponsoring/services.js";
 import { SqliteSponsoringCoordinator } from "../src/sponsoring/store.js";
@@ -140,6 +141,23 @@ describe("sponsoring service lifecycle", () => {
       } finally { await service.close(); rpc.mockRestore(); vi.useRealTimers(); }
     },
   );
+
+  it("confirms resource transactions from FullNode packed receipts without waiting for solidity", async () => {
+    const txID = "ab".repeat(32);
+    const rpc = vi.spyOn(providers.HttpProvider.prototype, "request").mockImplementation(async path => {
+      if (path === "wallet/gettransactioninfobyid" || path === "walletsolidity/gettransactioninfobyid")
+        return { id: txID, blockNumber: 100, receipt: { result: "SUCCESS" } };
+      throw new Error(`Unexpected RPC: ${path}`);
+    });
+    const factory = vi.spyOn(sdkChain, "createAnchoredSponsoringChain");
+    const service = await createSponsoringService(testConfig(), settlement);
+    try {
+      const chain = await factory.mock.results[0].value;
+      expect(await chain.confirm(txID)).toBe("confirmed");
+      expect(rpc.mock.calls.some(([path]) => path === "wallet/gettransactioninfobyid")).toBe(true);
+      expect(rpc.mock.calls.some(([path]) => path === "walletsolidity/gettransactioninfobyid")).toBe(false);
+    } finally { await service.close(); factory.mockRestore(); rpc.mockRestore(); }
+  });
 
   it("runs recovery independently for Nile and Shasta in the same process", async () => {
     const calls: string[] = [];
@@ -425,7 +443,7 @@ describe("sponsoring service lifecycle", () => {
         if (rejection) return { ...(omitResult ? {} : { result: false }), code: rejection };
         return { result: true, txid: reclaim.txID, transaction: JSON.stringify({}) };
       }
-      if (path === "walletsolidity/gettransactioninfobyid") {
+      if (path === "wallet/gettransactioninfobyid" || path === "walletsolidity/gettransactioninfobyid") {
         confirmations.push((params as { value: string }).value);
         return receiptExists ? { id: reclaim.txID, blockNumber: 100, receipt: { result: "SUCCESS" } } : {};
       }
