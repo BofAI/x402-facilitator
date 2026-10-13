@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.12] - 2026-10-13
+
 ### Added
 
 - Multi-network TRC-20 resource sponsoring in one process, with per-network
