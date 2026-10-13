@@ -8,9 +8,7 @@
 # Incomplete database/Owner/resource settings intentionally fail startup validation.
 
 database:
-  # Credentials are injected from onepassword below before connecting.
-  # Production PG URL, without credentials. Do not use the TN database.
-  url: "postgresql://sunpump-sunagent-postsql-v2.c9w4kaa66fyg.us-east-1.rds.amazonaws.com:5432/x402_facilitator_prod"
+  # Production URL and credentials are resolved from onepassword below.
   ssl_mode: "require"
   max_open_conns: 100
 
@@ -18,8 +16,6 @@ onepassword:
   # Retains production Service Account mode; inject OP_SERVICE_ACCOUNT_TOKEN.
   # Fill references as vault/item/field, not secret values.
   mode: service_account
-  # Proposed field reference; confirm it exists in the production vault.
-  # Not consumed by current code; database.url above remains the runtime source.
   database_url: "x402-facilitator/psql/url"
   # Production database credential references restored from Git history.
   database_user: "x402-facilitator/psql/user"

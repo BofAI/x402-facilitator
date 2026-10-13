@@ -7,7 +7,7 @@ import { getDatabaseUrl, getGasFreeCredentials, getTrongridApiKey, type Facilita
 
 const sdk = vi.hoisted(() => ({ resolve: vi.fn() }));
 vi.mock("@1password/sdk", () => ({ createClient: async () => ({ secrets: sdk }) }));
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { sdk.resolve.mockReset(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 const ref = { vault: "test-vault", item: "credentials", field: "password" };
 const connect = { mode: "connect" as const, host: "http://connect.local:8080" };
@@ -24,6 +24,39 @@ function connectResponse(fields = [{ id: "password", label: "password", value: "
 }
 
 describe("1Password providers", () => {
+  it("resolves a Service Account URL before injecting separate credentials", async () => {
+    vi.stubEnv("OP_SERVICE_ACCOUNT_TOKEN", "service-test-token");
+    sdk.resolve.mockResolvedValueOnce("postgresql://db.example:5432/prod").mockResolvedValueOnce("alice").mockResolvedValueOnce("p@ss");
+    const cfg: FacilitatorConfig = { database: {}, facilitator: { networks: { "tron:3448148188": {} } },
+      onepassword: { database_url: "vault/item/url", database_user: "vault/item/user", database_password: "vault/item/password" } };
+    expect(await getDatabaseUrl(cfg)).toBe("postgresql://alice:p%40ss@db.example:5432/prod");
+  });
+
+  it("resolves a database URL through Connect", async () => {
+    vi.stubEnv("OP_CONNECT_HOST", connect.host);
+    vi.stubEnv("OP_CONNECT_TOKEN", "connect-test-token");
+    connectResponse([{ id: "url", label: "url", value: "postgresql://alice:secret@db.example/prod" }]);
+    const cfg: FacilitatorConfig = { database: {}, facilitator: { networks: { "tron:3448148188": {} } },
+      onepassword: { mode: "connect", database_url: "test-vault/credentials/url" } };
+    expect(await getDatabaseUrl(cfg)).toBe("postgresql://alice:secret@db.example/prod");
+  });
+
+  it("fails closed when a configured URL secret cannot be read", async () => {
+    vi.stubEnv("OP_SERVICE_ACCOUNT_TOKEN", "");
+    const cfg: FacilitatorConfig = { database: { url: "postgresql://fallback/db" }, facilitator: { networks: { "tron:3448148188": {} } },
+      onepassword: { database_url: "vault/item/url" } };
+    await expect(getDatabaseUrl(cfg)).rejects.toThrow(/OP_SERVICE_ACCOUNT_TOKEN/);
+  });
+
+  it.each(["", "not-a-url-sensitive-value", "https://db.example/prod"])("rejects an invalid URL secret without exposing it", async value => {
+    vi.stubEnv("OP_SERVICE_ACCOUNT_TOKEN", "service-test-token");
+    sdk.resolve.mockResolvedValueOnce(value);
+    const cfg: FacilitatorConfig = { database: {}, facilitator: { networks: { "tron:3448148188": {} } },
+      onepassword: { database_url: "vault/item/url" } };
+    await expect(getDatabaseUrl(cfg)).rejects.toThrow(/database_url/);
+    sdk.resolve.mockReset();
+  });
+
   const redisConfig: FacilitatorConfig = { database: { url: "postgresql://localhost/db" },
     facilitator: { networks: { "tron:3448148188": {} } },
     onepassword: { mode: "connect", redis_password: "test-vault/credentials/password" } };

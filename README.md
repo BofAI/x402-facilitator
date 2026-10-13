@@ -287,3 +287,17 @@ PostgreSQL integration tests require a disposable test database and are not run
 by the default CI job unless that connection is supplied. Shasta sponsorship,
 production credentials/wallets, and full cross-network/GasFree acceptance are not
 claimed as validated by these Nile results.
+
+### Database URL in 1Password
+
+Dev and prod resolve the database URL from `onepassword.database_url` (a
+`vault/item/field` reference). Set the `url` field in the respective `psql` item
+to a full PostgreSQL connection URL, including scheme, host, port and database.
+Keep it free of credentials when using the separate `database_user` and
+`database_password` references. Dev uses Connect; prod uses Service Accounts.
+
+`database.url` remains supported for existing/custom configurations. An explicit
+`onepassword.database_url` takes precedence, and resolution failures stop startup
+without falling back to the YAML URL. URL source values are not included in
+validation errors. The repository does not provision 1Password items: ensure both
+environments have the configured `url` field before deploying this version.

@@ -53,7 +53,7 @@ const facilitatorConfigSchema = z
       .optional(),
     database: z
       .object({
-        url: z.string().min(1),
+        url: z.string().min(1).optional(),
         ssl_mode: z.enum(["disable", "require", "verify-ca", "verify-full"]).optional(),
         max_open_conns: positiveInt.optional(),
         max_idle_conns: nonNegativeInt.optional(),
@@ -86,6 +86,10 @@ const facilitatorConfigSchema = z
   })
   .strict()
   .superRefine((cfg, ctx) => {
+    if (!cfg.database.url && !cfg.onepassword?.database_url) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["database", "url"],
+        message: "database.url or onepassword.database_url is required" });
+    }
     const { max_open_conns: open, max_idle_conns: idle } = cfg.database;
     if (open !== undefined && idle !== undefined && idle > open) {
       ctx.addIssue({
@@ -221,15 +225,23 @@ export function databaseUrlWithCredentials(
 
 /** Database URL with resolved 1Password credentials injected into the userinfo. */
 export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
-  const rawUrl = cfg.database?.url;
-  if (!rawUrl) throw new Error("database.url is required");
+  // An explicitly configured secret is authoritative; never fall back if it fails.
+  const urlRef = cfg.onepassword?.database_url;
+  const rawUrl = urlRef !== undefined
+    ? await resolveRequiredSecret(cfg, "database_url", urlRef)
+    : cfg.database?.url;
+  const source = urlRef !== undefined ? "onepassword.database_url" : "database.url";
+  if (!rawUrl) throw new Error("database.url or onepassword.database_url is required");
   let url: URL;
   try {
     url = new URL(rawUrl);
   } catch {
-    throw new Error("database.url must be a valid connection URL before resolving credentials");
+    throw new Error(`${source} must be a valid connection URL before resolving credentials`);
   }
 
+  if (!["postgresql:", "postgres:", "postgresql+asyncpg:"].includes(url.protocol) || !url.hostname) {
+    throw new Error(`${source} must be a PostgreSQL connection URL`);
+  }
   const urlHasUser = Boolean(url.username);
   const urlHasPassword = Boolean(url.password);
   const userRef = cfg.onepassword?.database_user;
@@ -258,7 +270,7 @@ export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
 /** Resolve a required credential reference before creating service clients. */
 async function resolveRequiredSecret(
   cfg: FacilitatorConfig,
-  key: "database_user" | "database_password" | "redis_password",
+  key: "database_url" | "database_user" | "database_password" | "redis_password",
   value: string,
 ): Promise<string> {
   const ref = parseOpRef(value);
@@ -273,6 +285,7 @@ async function resolveRequiredSecret(
     if (!secret) throw new Error("resolved to an empty value");
     return secret;
   } catch (err) {
+    if (key === "database_url") throw new Error("Unable to resolve onepassword.database_url");
     throw new Error(`Unable to resolve onepassword.${key}: ${err instanceof Error ? err.message : "provider error"}`);
   }
 }

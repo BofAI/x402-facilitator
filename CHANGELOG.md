@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Resolve database URLs from `onepassword.database_url` through Connect or
+  Service Accounts, retain legacy YAML URLs, and fail startup on secret errors.
+  Dev and prod now require the respective 1Password `psql/url` field.
+
 - Restore production PostgreSQL endpoint and 1Password credential references,
   configure the operator-provided Nile sponsoring Owner and permission, fill
   resource limits from dev, normalize TRON network IDs, and align production

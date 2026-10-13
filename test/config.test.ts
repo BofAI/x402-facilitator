@@ -71,47 +71,24 @@ describe("loadConfig", () => {
     expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97"]);
   });
 
-  it("requires production settings and limits prod PG sponsoring to Nile without removing payment networks", () => {
-    const path = resolve(process.cwd(), "config/facilitator.config.prod.yaml");
-    expect(() => loadConfig(path)).toThrow(/resource_sponsoring\.0\.owner: invalid TRON address/);
-    const provisioned = parse(readFileSync(path, "utf8"));
-    expect(provisioned.database.url).toBe("");
-    expect(provisioned.resource_sponsoring.owner).toBe("");
-    expect(provisioned.resource_sponsoring.permission_id).toBeNull();
-    provisioned.database.url = "postgresql://localhost:5432/prod_config_test";
-    provisioned.resource_sponsoring.owner = "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9";
-    provisioned.resource_sponsoring.permission_id = 3;
-    for (const key of ["energy_stake_sun", "bandwidth_stake_sun", "budget_sun", "management_bandwidth"]) {
-      expect(provisioned.resource_sponsoring[key]).toBe("");
-      provisioned.resource_sponsoring[key] = "1000";
-    }
-    for (const key of Object.keys(provisioned.onepassword).filter(key => key !== "mode")) {
-      expect(provisioned.onepassword[key]).toBe("");
-      provisioned.onepassword[key] = `test-vault/test-item/${key}`;
-    }
-    const cfg = loadConfig(writeConfig(stringify(provisioned)));
-    expect(cfg.logging?.level).toBe("info");
-    expect(cfg.logging?.dir).toBe("/data/logs/facilitator");
-    expect(cfg.rate_limit?.store).toBe("memory");
-    expect(cfg.rate_limit?.anonymous).toBe("10/minute");
-    expect(cfg.onepassword?.agent_wallet_password).toBeUndefined();
-    expect(cfg.onepassword?.redis_password).toBeUndefined();
-    expect(cfg.resource_sponsoring?.[0]?.require_api_key).toBe(true);
-    expect(cfg.onepassword?.mode).toBe("service_account");
-    expect(cfg.resource_sponsoring?.[0]?.storage).toEqual({ type: "postgres" });
-    expect(cfg.resource_sponsoring?.[0]?.network).toBe("tron:3448148188");
-    expect(cfg.resource_sponsoring?.[0]?.wallet_id).toBe("resource-active");
-    expect(cfg.resource_sponsoring?.[0]?.wallet_dir).toBeUndefined();
-    expect(cfg.resource_sponsoring?.[0]?.assets).toEqual(["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"]);
-    expect(enabledNetworks(cfg)).toEqual([
-      "tron:0xcd8690dc", "tron:0x2b6653dc", "eip155:97", "eip155:56", "eip155:84532", "eip155:8453",
-    ]);
-    for (const network of Object.values(cfg.facilitator.networks)) {
-      expect(network.schemes).toEqual(["exact", "upto", "batch-settlement"]);
-    }
-    for (const key of ["gasfree_api_key_nile", "gasfree_api_secret_nile", "gasfree_api_key_mainnet", "gasfree_api_secret_mainnet"]) {
-      expect(cfg.onepassword?.[key]).toBe(`test-vault/test-item/${key}`);
-    }
+  it("loads production secret references and operator-confirmed Nile sponsorship", () => {
+    const cfg = loadConfig(resolve("config/facilitator.config.prod.yaml"));
+    expect(cfg.database.url).toBeUndefined();
+    expect(cfg.onepassword).toMatchObject({ mode: "service_account",
+      database_url: "x402-facilitator/psql/url", database_user: "x402-facilitator/psql/user",
+      database_password: "x402-facilitator/psql/password" });
+    expect(cfg.logging?.dir).toBe("/app/logs");
+    expect(cfg.resource_sponsoring?.[0]).toMatchObject({ network: "tron:3448148188",
+      owner: "THuJK6PNaXibaQhxUdqUXczU57Y8EKhpex", permission_id: 3,
+      require_api_key: true, energy_stake_sun: "10000000000", bandwidth_stake_sun: "20000000000",
+      budget_sun: "500000000", management_bandwidth: "5000" });
+    expect(enabledNetworks(cfg)).toEqual(["tron:3448148188", "tron:728126428", "eip155:97", "eip155:56", "eip155:84532", "eip155:8453"]);
+  });
+
+  it("accepts a secret-only database URL and rejects missing URL sources", () => {
+    const yaml = VALID.replace('  url: "postgresql://user@localhost:5432/db"', '  ssl_mode: require');
+    expect(() => loadConfig(writeConfig(yaml))).toThrow(/database.url or onepassword.database_url/);
+    expect(loadConfig(writeConfig(yaml + '\nonepassword:\n  database_url: "vault/item/url"\n')).database.url).toBeUndefined();
   });
 
   it("loads the configured dev Owner and rejects an invalid replacement", () => {
@@ -120,6 +97,7 @@ describe("loadConfig", () => {
     expect(cfg.resource_sponsoring?.[0]?.owner).toBe("TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y");
     expect(cfg.onepassword).toEqual({
       mode: "connect",
+      database_url: "x402-facilitator-nile_dev/psql/url",
       database_user: "x402-facilitator-nile_dev/psql/user",
       database_password: "x402-facilitator-nile_dev/psql/password",
       trongrid_api_key: "x402-facilitator-nile_dev/trongrid/trongrid_api_key",
@@ -143,7 +121,7 @@ describe("loadConfig", () => {
     expect(cfg.resource_sponsoring?.[0]?.network).toBe("tron:3448148188");
     expect(cfg.resource_sponsoring?.[0]?.wallet_id).toBe("resource-active");
     expect(cfg.resource_sponsoring?.[0]?.wallet_dir).toBeUndefined();
-    expect(cfg.database.url).toContain("/x402_facilitator");
+    expect(cfg.database.url).toBeUndefined();
     expect(enabledNetworks(cfg)).toEqual(["tron:0xcd8690dc", "eip155:97", "eip155:84532"]);
   });
 
