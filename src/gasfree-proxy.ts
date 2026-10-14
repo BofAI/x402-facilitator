@@ -1,6 +1,5 @@
 /**
- * Transparent proxy to the GasFree Open API. Byte-faithful port of
- * legacy/src/gasfree_open_proxy/ (mapping.py, signing.py, router.py):
+ * Transparent proxy to the GasFree Open API:
  *
  *   /mainnet/...  ->  <upstream_mainnet>/tron/...   (HMAC signed)
  *   /nile/...     ->  <upstream_nile>/nile/...      (HMAC signed)

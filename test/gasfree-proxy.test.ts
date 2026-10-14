@@ -1,6 +1,5 @@
 /**
- * Ported from legacy/tests/test_gasfree_open_proxy.py — keeps the HMAC signing,
- * path mapping and header policy byte-faithful to v1.
+ * Verifies HMAC signing, path mapping and header policy compatibility with v1.
  */
 import { createHmac } from "node:crypto";
 import { gzipSync } from "node:zlib";

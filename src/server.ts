@@ -1,5 +1,5 @@
 /**
- * Hono HTTP surface for the facilitator. Mirrors v1 (legacy/src/main.py) minus
+ * Hono HTTP surface for the facilitator. Mirrors v1 minus
  * the removed /fee/quote, and with the payment-record query API redesigned around
  * the on-chain authorization identity (no client-supplied payment id):
  *   GET  /health                                  — liveness, no auth/rate-limit
@@ -31,12 +31,18 @@ import {
   getSettlementsByAuthorization,
   getSettlementsBySeller,
   getSettlementsByTxHash,
+  getPermit2LockPool,
   saveSettlement,
   type Settlement,
 } from "./db/index.js";
 import { logger } from "./logger.js";
+import { sponsoringAccessError } from "./sponsoring/access.js";
+import type { SponsoringService } from "./sponsoring/service.js";
+import { sponsoringForNetwork } from "./sponsoring/services.js";
+import { permit2Identity, Permit2ReplayError, permit2ReplayReason, withPermit2SettlementLock } from "./permit2-replay.js";
 
 export interface AppDeps {
+  sponsoring?: readonly SponsoringService[];
   /** Dynamic rate-limit tiers for /settle. */
   rateLimit: { authenticated: string; anonymous: string };
   /** Current GasFree proxy settings (resolved at startup), or null if disabled. */
@@ -67,14 +73,32 @@ const SettleBodySchema = z
   })
   .strict();
 
+// The SDK channel manager emits a zero timeout for these management actions.
+// Keep ordinary payment validation positive-only and constrain this exception
+// to matching batch-settlement envelopes; the SDK validates action contents.
+const BatchManagementRequirementsSchema = PaymentRequirementsV2Schema.extend({
+  scheme: z.literal("batch-settlement"),
+  maxTimeoutSeconds: z.number().nonnegative(),
+});
+const BatchManagementPayloadSchema = PaymentPayloadV2Schema.extend({
+  accepted: BatchManagementRequirementsSchema,
+  payload: PaymentPayloadV2Schema.shape.payload.refine(
+    (payload) => payload.type === "claim" || payload.type === "settle" || payload.type === "refund",
+  ),
+});
+
 /** Validate and narrow a request body into typed PaymentPayload/Requirements. */
 function parseSettleBody(raw: unknown):
   | { success: true; paymentPayload: PaymentPayload; paymentRequirements: PaymentRequirements }
   | { success: false } {
   if (!SettleBodySchema.safeParse(raw).success) return { success: false };
   const obj = raw as { paymentPayload: unknown; paymentRequirements: unknown };
-  const pp = PaymentPayloadV2Schema.safeParse(obj.paymentPayload);
-  const pr = PaymentRequirementsV2Schema.safeParse(obj.paymentRequirements);
+  let pp = PaymentPayloadV2Schema.safeParse(obj.paymentPayload);
+  let pr = PaymentRequirementsV2Schema.safeParse(obj.paymentRequirements);
+  if (!pp.success || !pr.success) {
+    pp = BatchManagementPayloadSchema.safeParse(obj.paymentPayload);
+    pr = BatchManagementRequirementsSchema.safeParse(obj.paymentRequirements);
+  }
   if (!pp.success || !pr.success) return { success: false };
   return {
     success: true,
@@ -139,8 +163,20 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
   }
 
   app.get("/supported", (c) => c.json(facilitator.getSupported()));
+  app.get("/sponsoring/ready", (c) => {
+    const services = deps.sponsoring ?? [];
+    const network = c.req.query("network");
+    const states = services.map(service => service.readiness());
+    const state = network !== undefined
+      ? sponsoringForNetwork(services, network)?.readiness() ?? { ready: false, mode: "DISABLED", network }
+      : states.length === 1 ? states[0]
+      : { ready: states.length > 0 && states.every(state => state.ready),
+        mode: states.length === 0 ? "DISABLED" : states.every(state => state.ready) ? "READY" : "RECOVERING",
+        networks: states };
+    return c.json(state, state.ready ? 200 : 503);
+  });
 
-  app.post("/verify", async (c) => {
+  app.post("/verify", rateLimit(deps.rateLimit, "verify"), async (c) => {
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -153,8 +189,19 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       return c.json({ isValid: false, invalidReason: "missing_parameters" }, 400);
     }
     try {
+      const reason = sponsoringAccessError(parsed.paymentPayload.extensions, parsed.paymentRequirements,
+        c.get("isAuthenticated") === true,
+        sponsoringForNetwork(deps.sponsoring ?? [], parsed.paymentRequirements.network)?.access());
+      if (reason) {
+        if (reason === "sponsor_recovery_in_progress") c.header("Retry-After", "15");
+        return c.json({ isValid: false, invalidReason: reason }, reason === "sponsor_recovery_in_progress" ? 503 : 403);
+      }
       const result = await facilitator.verify(parsed.paymentPayload, parsed.paymentRequirements);
       if (!result.isValid) logger.warn("verify invalid", { reason: result.invalidReason });
+      if (["sponsor_owner_busy", "sponsor_recovery_in_progress", "sponsor_storage_unavailable"].includes(result.invalidReason ?? "")) {
+        c.header("Retry-After", "15");
+        return c.json(result, 503);
+      }
       return c.json(result);
     } catch (err) {
       logger.error("verify error", { err: String(err) });
@@ -164,7 +211,7 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
 
   // /settle: rate limited; settles first, then persists one settlement row keyed on
   // the authorization identity. Save failure never affects the response (v1 ordering).
-  app.post("/settle", rateLimit(deps.rateLimit), async (c) => {
+  app.post("/settle", rateLimit(deps.rateLimit, "settle"), async (c) => {
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -177,6 +224,13 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       return c.json({ success: false, errorReason: "missing_parameters" }, 400);
     }
     const { paymentPayload, paymentRequirements } = parsed;
+    const sponsorError = sponsoringAccessError(paymentPayload.extensions, paymentRequirements,
+      c.get("isAuthenticated") === true,
+      sponsoringForNetwork(deps.sponsoring ?? [], paymentRequirements.network)?.access());
+    if (sponsorError) {
+      c.header("Retry-After", "15");
+      return c.json({ success: false, errorReason: sponsorError }, sponsorError === "sponsor_recovery_in_progress" ? 503 : 403);
+    }
     const requirements = paymentRequirements;
     const accepted = paymentPayload.accepted;
     const network = requirements.network ?? accepted?.network ?? "";
@@ -186,8 +240,24 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
 
     let result;
     try {
-      result = await facilitator.settle(paymentPayload, paymentRequirements);
+      const identity = permit2Identity(paymentPayload, paymentRequirements);
+      if (identity) {
+        let pool;
+        try { pool = getPermit2LockPool(); }
+        catch { throw new Permit2ReplayError("permit2_storage_unavailable"); }
+        result = await withPermit2SettlementLock(pool, identity,
+          () => facilitator.settle(paymentPayload, paymentRequirements));
+      } else {
+        result = await facilitator.settle(paymentPayload, paymentRequirements);
+      }
     } catch (err) {
+      const reason = permit2ReplayReason(err);
+      if (reason) {
+        const unavailable = ["permit2_authorization_busy", "permit2_storage_unavailable", "permit2_nonce_check_unavailable"].includes(reason);
+        if (unavailable) c.header("Retry-After", "15");
+        return c.json({ success: false, errorReason: reason, network, transaction: "" },
+          unavailable ? 503 : reason === "permit2_invalid_authorization" ? 400 : 200);
+      }
       logger.error("settle error", { err: String(err), network, nonce: payerNonce?.nonce });
       return c.json({ success: false, errorReason: "internal_error" }, 500);
     }
@@ -221,6 +291,10 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       });
     }
 
+    if (["sponsor_owner_busy", "sponsor_recovery_in_progress", "sponsor_storage_unavailable"].includes(result.errorReason ?? "")) {
+      c.header("Retry-After", "15");
+      return c.json(result, 503);
+    }
     return c.json(result);
   });
 

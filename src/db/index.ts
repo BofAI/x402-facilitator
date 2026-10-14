@@ -29,6 +29,7 @@ export interface DbInitOptions {
 }
 
 let pool: Pool | null = null;
+let permit2LockPool: Pool | null = null;
 let db: NodePgDatabase | null = null;
 
 /**
@@ -80,7 +81,7 @@ function sslFor(sslMode: string): false | { rejectUnauthorized: boolean } {
 
 /** Initialize the connection pool and ensure tables. */
 export async function initDatabase(opts: DbInitOptions): Promise<void> {
-  pool = new Pool({
+  const poolOptions = {
     connectionString: opts.url,
     max: opts.poolSize + opts.maxOverflow,
     // v1's max_life_time is the connection *lifetime* (SQLAlchemy pool_recycle), not
@@ -91,24 +92,48 @@ export async function initDatabase(opts: DbInitOptions): Promise<void> {
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
     ssl: sslFor(opts.sslMode),
-  });
-  db = drizzle(pool);
-  await pool.query(CREATE_TABLES_SQL);
+  };
+  pool = new Pool(poolOptions);
+  // SDK settlement may borrow the business pool for sponsoring. Advisory locks
+  // use a separate lazy pool so a pool size of one cannot deadlock itself.
+  permit2LockPool = new Pool(poolOptions);
+  try {
+    await pool.query(CREATE_TABLES_SQL);
+    db = drizzle(pool);
+  } catch (error) {
+    try { await disposeDatabase(); }
+    catch (cleanupError) { logger.error("Database initialization cleanup failed", { err: String(cleanupError) }); }
+    throw error;
+  }
   logger.info("Database initialized");
 }
 
 /** Close the pool and release all connections. */
 export async function disposeDatabase(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
-    db = null;
-  }
+  const pools = [pool, permit2LockPool];
+  pool = null;
+  permit2LockPool = null;
+  db = null;
+  const results = await Promise.allSettled(pools.filter((pool): pool is Pool => pool !== null).map(pool => pool.end()));
+  const failure = results.find(result => result.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
 }
 
 function getDb(): NodePgDatabase {
   if (!db) throw new Error("Database not initialized. Call initDatabase first.");
   return db;
+}
+
+/** Borrow the initialized pool. Its lifecycle remains owned by this module. */
+export function getDatabasePool(): Pool {
+  if (!pool || !db) throw new Error("Database not initialized. Call initDatabase first.");
+  return pool;
+}
+
+/** Session locks must not occupy connections required by SDK sponsorship work. */
+export function getPermit2LockPool(): Pool {
+  if (!permit2LockPool || !db) throw new Error("Database not initialized. Call initDatabase first.");
+  return permit2LockPool;
 }
 
 /** Active API keys with their seller id (for the in-memory auth + seller cache). */

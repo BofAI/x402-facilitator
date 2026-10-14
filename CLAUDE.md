@@ -4,9 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Multi-chain **HTTP 402 Payment Required** facilitator: it verifies payment payloads off-chain and settles them on-chain. This is **v2**, a full TypeScript rewrite of the Python/FastAPI v1 that still lives under [`legacy/`](legacy/). v2 changed runtime (Python → Node 22 / TS), SDK (→ `@bankofai/x402-*`), and the payment scheme wire format (hard cutover, not back-compatible).
-
-`legacy/` is kept only as a behavioral reference — many v2 modules are deliberate ports of a `legacy/src/*.py` file and say so in their header comment. When comparing v2 against legacy, judge correctness on the merits: legacy may have its own bugs and is not ground truth.
+Multi-chain **HTTP 402 Payment Required** facilitator: it verifies payment payloads off-chain and settles them on-chain. This is **v2**, the TypeScript/Node 22 implementation using `@bankofai/x402-*`. The earlier Python/FastAPI implementation is available in Git history; it is no longer part of the source tree. The v2 payment wire format is not backward compatible with v1.
 
 ## Commands
 

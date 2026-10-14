@@ -1,18 +1,19 @@
 /**
- * Configuration loading + secret resolution. Faithful port of legacy/src/config.py.
+ * Configuration loading and secret resolution.
  *
  * The YAML shape is unchanged from v1 (minus /fee/quote). Secrets are resolved on
- * demand: each value under `onepassword.*` is a `vault/item/field` reference resolved
- * via @1password/sdk when OP_SERVICE_ACCOUNT_TOKEN (or onepassword.token) is set.
+ * demand: secret fields under `onepassword.*` are `vault/item/field` references
+ * resolved through the configured Connect or Service Account provider.
  * Environment variables always take precedence over 1Password.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { getSecretFromOnePassword, isUsableToken, parseOpRef } from "./onepassword.js";
+import { getSecretFromOnePassword, isUsableToken, parseOpRef, type OnePasswordOptions } from "./onepassword.js";
 import { logger, type Level } from "./logger.js";
 import { requireCanonicalNetwork } from "./network.js";
+import { sponsoringConfigsSchema } from "./sponsoring/config.js";
 
 /** Payment schemes a network can enable. `exact_gasfree` (TRON) rides with `exact`. */
 export type Scheme = "exact" | "upto" | "batch-settlement";
@@ -36,6 +37,7 @@ const networkConfigSchema = z
 
 const facilitatorConfigSchema = z
   .object({
+    resource_sponsoring: sponsoringConfigsSchema.optional(),
     server: z.object({ host: z.string().min(1).optional(), port: port.optional() }).strict().optional(),
     logging: z
       .object({
@@ -51,16 +53,21 @@ const facilitatorConfigSchema = z
       .optional(),
     database: z
       .object({
-        url: z.string().min(1),
+        url: z.string().min(1).optional(),
         ssl_mode: z.enum(["disable", "require", "verify-ca", "verify-full"]).optional(),
         max_open_conns: positiveInt.optional(),
         max_idle_conns: nonNegativeInt.optional(),
         max_life_time: positiveInt.optional(),
       })
       .strict(),
-    onepassword: z.record(z.string(), z.string().optional()).optional(),
+    onepassword: z.record(z.string(), z.string().optional()).refine(
+      (cfg) => cfg.mode === undefined || cfg.mode === "connect" || cfg.mode === "service_account",
+      { message: "mode must be connect or service_account", path: ["mode"] },
+    ).optional(),
     rate_limit: z
       .object({
+        store: z.enum(["memory", "redis"]).optional(),
+        redis_url: z.string().min(1).optional(),
         api_key_refresh_interval: positiveInt.optional(),
         authenticated: z.string().min(1).optional(),
         anonymous: z.string().min(1).optional(),
@@ -79,6 +86,10 @@ const facilitatorConfigSchema = z
   })
   .strict()
   .superRefine((cfg, ctx) => {
+    if (!cfg.database.url && !cfg.onepassword?.database_url) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["database", "url"],
+        message: "database.url or onepassword.database_url is required" });
+    }
     const { max_open_conns: open, max_idle_conns: idle } = cfg.database;
     if (open !== undefined && idle !== undefined && idle > open) {
       ctx.addIssue({
@@ -137,6 +148,12 @@ export function loadConfig(path: string = configPath()): FacilitatorConfig {
       throw new Error(`Configuration validation failed. facilitator.networks.${network}: ${String(err)}`);
     }
   }
+  const canonicalNetworks = Object.keys(cfg.facilitator.networks).map(requireCanonicalNetwork);
+  if (new Set(canonicalNetworks).size !== canonicalNetworks.length) throw new Error("Duplicate canonical network configuration");
+  for (const sponsoring of cfg.resource_sponsoring ?? []) {
+    if (!canonicalNetworks.includes(requireCanonicalNetwork(sponsoring.network)))
+      throw new Error("resource_sponsoring.network must be enabled in facilitator.networks");
+  }
   return cfg;
 }
 
@@ -149,8 +166,13 @@ export function enabledNetworks(cfg: FacilitatorConfig): string[] {
 // Secret resolution
 // ---------------------------------------------------------------------------
 
-/** The 1Password service-account token: env OP_SERVICE_ACCOUNT_TOKEN, else config. */
+/** Explicit mode selection avoids accidentally using a token for the wrong provider. */
+function opOptions(cfg: FacilitatorConfig): OnePasswordOptions {
+  return { mode: cfg.onepassword?.mode === "connect" ? "connect" : "service_account", host: process.env.OP_CONNECT_HOST };
+}
+
 function opToken(cfg: FacilitatorConfig): string | undefined {
+  if (opOptions(cfg).mode === "connect") return process.env.OP_CONNECT_TOKEN;
   return process.env.OP_SERVICE_ACCOUNT_TOKEN || cfg.onepassword?.token;
 }
 
@@ -160,7 +182,7 @@ async function resolveOpField(cfg: FacilitatorConfig, key: string): Promise<stri
   const token = opToken(cfg);
   if (!ref || !isUsableToken(token)) return undefined;
   try {
-    return await getSecretFromOnePassword(ref, token);
+    return await getSecretFromOnePassword(ref, token, opOptions(cfg));
   } catch {
     return undefined;
   }
@@ -203,15 +225,23 @@ export function databaseUrlWithCredentials(
 
 /** Database URL with resolved 1Password credentials injected into the userinfo. */
 export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
-  const rawUrl = cfg.database?.url;
-  if (!rawUrl) throw new Error("database.url is required");
+  // An explicitly configured secret is authoritative; never fall back if it fails.
+  const urlRef = cfg.onepassword?.database_url;
+  const rawUrl = urlRef !== undefined
+    ? await resolveRequiredSecret(cfg, "database_url", urlRef)
+    : cfg.database?.url;
+  const source = urlRef !== undefined ? "onepassword.database_url" : "database.url";
+  if (!rawUrl) throw new Error("database.url or onepassword.database_url is required");
   let url: URL;
   try {
     url = new URL(rawUrl);
   } catch {
-    throw new Error("database.url must be a valid connection URL before resolving credentials");
+    throw new Error(`${source} must be a valid connection URL before resolving credentials`);
   }
 
+  if (!["postgresql:", "postgres:", "postgresql+asyncpg:"].includes(url.protocol) || !url.hostname) {
+    throw new Error(`${source} must be a PostgreSQL connection URL`);
+  }
   const urlHasUser = Boolean(url.username);
   const urlHasPassword = Boolean(url.password);
   const userRef = cfg.onepassword?.database_user;
@@ -232,30 +262,43 @@ export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
     );
   }
 
-  const user = await resolveRequiredDatabaseSecret(cfg, "database_user", userRef);
-  const password = await resolveRequiredDatabaseSecret(cfg, "database_password", passwordRef);
+  const user = await resolveRequiredSecret(cfg, "database_user", userRef);
+  const password = await resolveRequiredSecret(cfg, "database_password", passwordRef);
   return databaseUrlWithCredentials(rawUrl, user, password);
 }
 
-/** Resolve a database credential reference, failing before a pool is created. */
-async function resolveRequiredDatabaseSecret(
+/** Resolve a required credential reference before creating service clients. */
+async function resolveRequiredSecret(
   cfg: FacilitatorConfig,
-  key: "database_user" | "database_password",
+  key: "database_url" | "database_user" | "database_password" | "redis_password",
   value: string,
 ): Promise<string> {
   const ref = parseOpRef(value);
   if (!ref) throw new Error(`onepassword.${key} must be a vault/item/field reference`);
   const token = opToken(cfg);
   if (!isUsableToken(token)) {
+    if (opOptions(cfg).mode === "connect") throw new Error(`onepassword.${key} requires a valid OP_CONNECT_TOKEN`);
     throw new Error(`onepassword.${key} requires a valid OP_SERVICE_ACCOUNT_TOKEN or onepassword.token`);
   }
   try {
-    const secret = await getSecretFromOnePassword(ref, token);
+    const secret = await getSecretFromOnePassword(ref, token, opOptions(cfg));
     if (!secret) throw new Error("resolved to an empty value");
     return secret;
   } catch (err) {
+    if (key === "database_url") throw new Error("Unable to resolve onepassword.database_url");
     throw new Error(`Unable to resolve onepassword.${key}: ${err instanceof Error ? err.message : "provider error"}`);
   }
+}
+
+/** Explicit env first, then 1Password; undefined preserves URL credentials. */
+export async function getRateLimitRedisPassword(cfg: FacilitatorConfig): Promise<string | undefined> {
+  const password = process.env.RATE_LIMIT_REDIS_PASSWORD;
+  if (password !== undefined) {
+    if (!password) throw new Error("RATE_LIMIT_REDIS_PASSWORD must not be empty");
+    return password;
+  }
+  const ref = cfg.onepassword?.redis_password;
+  return ref === undefined ? undefined : resolveRequiredSecret(cfg, "redis_password", ref);
 }
 
 /** GasFree Open API credentials for a network. Env per-suffix/global first, then 1Password. */
