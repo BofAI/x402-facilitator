@@ -301,3 +301,33 @@ Keep it free of credentials when using the separate `database_user` and
 without falling back to the YAML URL. URL source values are not included in
 validation errors. The repository does not provision 1Password items: ensure both
 environments have the configured `url` field before deploying this version.
+
+### TRON resource confirmation latency
+
+Sponsoring resource transactions use successful packed FullNode receipts instead
+of waiting for solidification before Approval. Resource availability is still
+checked before broadcasting Approval. Inventory reconciliation and expired
+transaction recovery retain solidified reads, and reclaim anchor checks remain
+in place. Packed confirmation does not provide solidified finality. This reduces
+the confirmation wait in the synchronous payment path; actual latency and proxy
+timeout behavior require live deployment validation.
+
+Before continuing a sponsored payment, Approval confirmation requires both a
+successful packed receipt for the original Approval transaction and sufficient
+allowance. Observing allowance alone does not establish transaction ordering.
+Pending or failed Approval receipts do not release settlement; no solidification
+wait is introduced.
+
+### Environment-specific mounts and Key refresh
+
+Bundled dev logs use `/data/logs/facilitator`; bundled prod logs use `/app/logs`
+to match the existing production bind mount
+`/data/logs/facilitator-v2-logs:/app/logs`. Mount the directory selected by the
+runtime YAML and make it writable by UID/GID 1000. Image tags do not select a
+log directory or a secret provider.
+
+Production preserves the 5-second API Key cache refresh interval; dev uses
+60 seconds. New or disabled Keys are observed on a subsequent successful cache
+refresh. This setting controls database polling, not request rate limits.
+The env example lists Connect credentials for dev and Service Account credentials
+for prod; the two providers are intentionally independent.

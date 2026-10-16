@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-13
+
+### Fixed
+
+- Preserve the production 5-second API Key refresh cadence and clarify image
+  tag channels, environment-specific log mounts and 1Password runtime tokens.
+
+- Require successful packed Approval confirmation before accepting observed
+  allowance and continuing settlement, preventing payment from racing Approval.
+  No solidification wait is added.
+
+### Changed
+
+- Remove the unused test image channel; retain dev candidate and versioned
+  production image tags.
+
+- Confirm TRON resource execution from successful packed FullNode receipts
+  without waiting for solidity before Approval. Keep resource visibility checks,
+  solidified inventory/expiry recovery and reclaim ordering protections.
+
+## [2.1.13] - 2026-10-13
+
 ### Changed
 
 - Resolve database URLs from `onepassword.database_url` through Connect or

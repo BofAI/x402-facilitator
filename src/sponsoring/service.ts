@@ -47,7 +47,8 @@ export interface SponsoringService {
   close(): Promise<void>;
 }
 
-/** FullNode allowance is provisional; resource receipts and inventory are solidified. */
+/** Resource execution uses packed FullNode receipts; inventory and expiry recovery
+ * retain solidified reads. Approval requires a packed receipt and allowance. */
 export async function createSponsoringService(config: SponsoringConfig, settlement: FacilitatorTronSigner,
   options: { pool?: Pool } = {}): Promise<SponsoringService> {
   const endpoint = rpcFor(requireCanonicalNetwork(config.network));
@@ -64,7 +65,7 @@ export async function createSponsoringService(config: SponsoringConfig, settleme
       recoverableChainBoundary(() => settlement.readContract(args));
     const base = await createAnchoredSponsoringChain({ tronWeb: tron, network: config.network,
       resourceOwnerSigner: signer, readContract, allowedAssets: config.assets,
-      permissionId: config.permission_id, confirmationMode: "solidified", confirmationTimeoutMs: 90000,
+      permissionId: config.permission_id, confirmationMode: "packed", confirmationTimeoutMs: 90000,
       minimumApprovalBroadcastWindowMs: 285000, confirmationPollIntervalMs: 3000 }, reclaimAnchor.blockHeader);
     const chain = guardSponsoringChain({ ...base, async confirm(txID) {
       const result = await base.confirm(txID);

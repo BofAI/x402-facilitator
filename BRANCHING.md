@@ -48,8 +48,8 @@ Normal feature pull requests must not change the service version.
    ```
 
 4. If a deployed release candidate is needed, tag the release commit as
-   `test-vX.Y.Z` and push the tag. CI publishes it as
-   `bankofai/x402-tron-facilitator:test`. Treat this tag as mutable
+   `dev-vX.Y.Z` and push the tag. CI publishes it as
+   `bankofai/x402-tron-facilitator:dev`. Treat this tag as mutable
    pre-release infrastructure, not a stable release.
 5. Open a pull request from `release_vX.Y.Z` to `main`.
 6. After merge, create and push the immutable `vX.Y.Z` tag. CI builds and
@@ -80,3 +80,16 @@ Configure GitHub after the branches and workflows are pushed:
   to a value other than `true`. Authorized users can still request an audit
   with `/audit-pr`.
 
+
+## CI image tags and runtime environments
+
+| Git tag | Published image tag | Purpose |
+| --- | --- | --- |
+| `dev-vX.Y.Z` | `bankofai/x402-tron-facilitator:dev` | TN/development candidate |
+| `vX.Y.Z` | `bankofai/x402-tron-facilitator:vX.Y.Z` | Stable release |
+
+Both run the same checks and build amd64 and arm64. The tag version must match
+package.json. `dev` is the mutable TN candidate channel; versioned images are
+stable releases. Neither tag selects a runtime environment:
+`FACILITATOR_SERVICE_ENV=dev|prod` or `FACILITATOR_CONFIG_PATH` selects the YAML
+when the container starts. Use the published digest for a reproducible deployment.
