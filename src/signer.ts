@@ -30,7 +30,7 @@ import {
   createAuthorizerEvmSigner,
   type EvmAuthorizerSigner,
   type GasSponsoringFacilitatorEvmSigner,
-} from "@bankofai/x402-evm/adapters/agent-wallet";
+} from "./evm-wallet.js";
 
 /**
  * The base Wallet contract does not promise typed-data capability. Check it

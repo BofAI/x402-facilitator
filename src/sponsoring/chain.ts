@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import type { PreparedTronAction, Trc20ApprovalResourceSponsoringRequest, Trc20ResourceSponsoringChain, Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { PreparedTronAction, Trc20ApprovalResourceSponsoringRequest, Trc20ResourceSponsoringChain, Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 import type { SponsoringCoordinator } from "./coordinator.js";
 import { RecoverableChainError, ReclaimValidationError, SponsoringStorageError,
   storageBoundary } from "./recovery-errors.js";

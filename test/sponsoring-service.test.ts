@@ -6,8 +6,8 @@ import { DatabaseSync } from "node:sqlite";
 import { deserialize } from "node:v8";
 import { describe, expect, it, vi } from "vitest";
 import { providers, TronWeb, utils } from "tronweb";
-import type { FacilitatorTronSigner, Trc20ApprovalResourceSponsoringRequest,
-  Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { FacilitatorTronSigner } from "@bankofai/x402-tron";
+import type { Trc20ApprovalResourceSponsoringRequest, Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 import { serializeSignedTronTransaction } from "@bankofai/x402-tron";
 import { sponsoringConfigSchema } from "../src/sponsoring/config.js";
 import * as sdkChain from "../src/sponsoring/sdk-chain.js";

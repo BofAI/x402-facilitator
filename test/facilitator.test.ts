@@ -10,6 +10,11 @@ const mocks = vi.hoisted(() => {
     extensions: Array<Record<string, unknown>> = [];
     beforeSettleHooks: Array<(context: unknown) => Promise<unknown>> = [];
 
+    onAfterVerify(): FakeFacilitator { return this; }
+    onVerifyFailure(): FakeFacilitator { return this; }
+    onAfterSettle(): FakeFacilitator { return this; }
+    onSettleFailure(): FakeFacilitator { return this; }
+
     onBeforeSettle(hook: (context: unknown) => Promise<unknown>): FakeFacilitator {
       this.beforeSettleHooks.push(hook);
       return this;
@@ -57,12 +62,8 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@bankofai/x402-core/facilitator", () => ({
+vi.mock("@x402/core/facilitator", () => ({
   x402Facilitator: mocks.FakeFacilitator,
-}));
-
-vi.mock("@bankofai/x402-core", () => ({
-  createFacilitator: () => new mocks.FakeFacilitator(),
 }));
 
 vi.mock("@bankofai/x402-tron/exact/facilitator", () => ({
@@ -81,25 +82,26 @@ vi.mock("@bankofai/x402-tron/batch-settlement/facilitator", () => ({
   BatchSettlementTronScheme: class {},
 }));
 
-vi.mock("@bankofai/x402-evm/exact/facilitator", () => ({
-  registerExactEvmScheme: vi.fn((facilitator, { signer, networks }) => {
-    facilitator.register(networks, { scheme: "exact", signer });
-  }),
+vi.mock("@x402/evm/exact/facilitator", () => ({
+  ExactEvmScheme: class {
+    readonly scheme = "exact";
+    constructor(readonly signer: unknown) {}
+  },
 }));
 
-vi.mock("@bankofai/x402-evm/upto/facilitator", () => ({
+vi.mock("@x402/evm/upto/facilitator", () => ({
   UptoEvmScheme: class {
     readonly scheme = "upto";
   },
 }));
 
-vi.mock("@bankofai/x402-evm/batch-settlement/facilitator", () => ({
+vi.mock("@x402/evm/batch-settlement/facilitator", () => ({
   BatchSettlementEvmScheme: class {
     readonly scheme = "batch-settlement";
   },
 }));
 
-vi.mock("@bankofai/x402-extensions", async original => ({
+vi.mock("@x402/extensions", async original => ({
   ...await original<object>(),
   createErc20ApprovalGasSponsoringExtension: vi.fn((signer, signerForNetwork) => ({
     key: "erc20ApprovalGasSponsoring",

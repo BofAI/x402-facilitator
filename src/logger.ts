@@ -1,3 +1,4 @@
+import type { x402Facilitator } from "@x402/core/facilitator";
 /**
  * Minimal structured logger. Swap for pino/winston in phase 2 if needed.
  */
@@ -89,4 +90,21 @@ export function toSdkLogger(): {
     warn: forward("warn"),
     error: forward("error"),
   };
+}
+
+/** Preserve service lifecycle logging through official Core public hooks. */
+export function attachFacilitatorLogging(facilitator: x402Facilitator): x402Facilitator {
+  facilitator.onAfterVerify(async ({ requirements, result }) => {
+    logger.info("x402 verify", { scheme: requirements.scheme, network: requirements.network, isValid: result.isValid });
+  });
+  facilitator.onVerifyFailure(async ({ requirements, error }) => {
+    logger.warn("x402 verify failed", { scheme: requirements.scheme, network: requirements.network, error: error.message });
+  });
+  facilitator.onAfterSettle(async ({ requirements, result }) => {
+    logger.info("x402 settle", { scheme: requirements.scheme, network: requirements.network, success: result.success, transaction: result.transaction });
+  });
+  facilitator.onSettleFailure(async ({ requirements, error }) => {
+    logger.warn("x402 settle failed", { scheme: requirements.scheme, network: requirements.network, error: error.message });
+  });
+  return facilitator;
 }

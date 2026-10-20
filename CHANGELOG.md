@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Use official x402 Core, EVM, and generic extensions with the aligned TRON 2.1
+  beta mechanism and independent resource extension.
+- Preserve wallet-backed signing, receipt fallback, replay protection, and
+  verification/settlement logging through application adapters and Core hooks.
+- Return a protocol rejection for incomplete TRON exact authorizations instead
+  of an HTTP 500 response.
+
 ## [2.2.0] - 2026-10-13
 
 ### Fixed
