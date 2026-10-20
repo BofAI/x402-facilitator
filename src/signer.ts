@@ -5,12 +5,11 @@
  * wallet_cli/Privy providers keep keys outside this process; raw_secret providers
  * hold keys inside the wallet. Only signing operations cross the SDK boundary.
  *
- * The SDK's `create*FacilitatorSigner` factories take the agent-wallet
- * directly and build the chain client (TronWeb / viem) internally from the CAIP-2
- * network id. The transaction is built by the SDK, handed to the wallet to sign,
- * then broadcast — the raw key never enters the SDK.
+ * TRON uses its SDK signer factory; EVM connects the wallet to official x402
+ * through the local bridge. Both delegate signing without exporting keys.
  */
 import { resolveWallet, type Wallet, type Eip712Capable } from "@bankofai/agent-wallet";
+import { createPublicClient, http } from "viem";
 import {
   createFacilitatorTronSigner,
   createAuthorizerTronSigner,
@@ -72,10 +71,8 @@ export async function buildTronFacilitatorSigner(canonical: CanonicalNetwork): P
 }
 
 /**
- * Build an EVM facilitator signer for a given network. The SDK builds the viem
- * public client (reads / verification / broadcast) internally from the CAIP-2
- * network id; `rpcUrl` pins our endpoint. Signing is delegated to the active
- * agent-wallet (symmetric with TRON).
+ * Build an EVM facilitator signer using the existing network RPC registry.
+ * The bridge delegates signing to the active agent-wallet.
  *
  * @param network - Canonical CAIP-2 network id (e.g. "eip155:97").
  * @returns A FacilitatorEvmSigner for that chain.
@@ -88,10 +85,6 @@ export async function buildEvmFacilitatorSigner(
 
   const wallet = await resolveWallet({ network: canonical });
 
-  // The SDK derives the chainId from the CAIP-2 reference (eip155:<chainId>) and
-  // resolves chain metadata from its KNOWN_CHAINS table (BSC 56/97 included),
-  // using the registry RPC endpoint for the transport. The wallet signs the built tx — no raw key
-  // in the SDK — and the gas-sponsoring `sendTransactions` capability rides along.
   const primaryRpcUrl = rpcFor(canonical);
   const signer = await createFacilitatorEvmSigner({
     getAddress: () => wallet.getAddress(),
@@ -103,8 +96,8 @@ export async function buildEvmFacilitatorSigner(
       return signed.rawTransaction;
     },
   }, {
-    network: `eip155:${chainId}`,
-    rpcUrl: primaryRpcUrl,
+    network: canonical,
+    client: createPublicClient({ transport: http(primaryRpcUrl) }),
   });
 
   const fallbackRpcUrl = receiptRpcFor(canonical);
