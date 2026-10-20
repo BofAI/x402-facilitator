@@ -1,4 +1,4 @@
-import type { Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 
 /** A reclaimed operation can retain its capacity reservation without blocking
  * unrelated payers. Unknown transactions or unfinished reclaim still close admission. */

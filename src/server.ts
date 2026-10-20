@@ -18,9 +18,9 @@
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
-import type { x402Facilitator } from "@bankofai/x402-core/facilitator";
-import type { PaymentPayload, PaymentRequirements } from "@bankofai/x402-core/types";
-import { PaymentPayloadV2Schema, PaymentRequirementsV2Schema } from "@bankofai/x402-core/schemas";
+import type { x402Facilitator } from "@x402/core/facilitator";
+import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
+import { PaymentPayloadV2Schema, PaymentRequirementsV2Schema } from "@x402/core/schemas";
 import { z } from "zod";
 import { authMiddleware, currentApiKey, sellerIdForApiKey, type AuthVars } from "./auth.js";
 import { rateLimit } from "./rate-limit.js";
