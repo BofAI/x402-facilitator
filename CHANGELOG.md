@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Require patched Node.js release lines for source installations.
 - Refresh follow-redirects from 1.16.0 to 1.16.1 to address cross-origin
   credential header leaks (GHSA-q3jh-wrc6-jgq8 and GHSA-8r9p-f939-6h3c).
+- Refresh Hono to its patched 4.13.x release for the serveStatic path-decoding
+  advisory (GHSA-5r4p-p66f-jhc7).
+- Run dependency auditing once as an explicit CI gate with bounded network
+  retries, avoiding redundant audit calls during installs and image builds.
 
 ## [2.2.0] - 2026-10-13
 
