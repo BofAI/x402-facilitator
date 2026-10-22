@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Pin Docker and CI to Node.js 22.23.4 for the October 2026 security fixes.
+  Require patched Node.js release lines for source installations.
+
 ## [2.2.0] - 2026-10-13
 
 ### Fixed
