@@ -1,17 +1,17 @@
 # x402 Facilitator v2 (TypeScript / Node)
-FROM node:22-slim AS build
+FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:22-slim AS runtime
+FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --no-audit --no-fund
 COPY --from=build /app/dist ./dist
 # Bake the non-secret environment configs into the image. They contain only
 # 1Password references; OP_SERVICE_ACCOUNT_TOKEN remains a runtime env variable.
@@ -23,7 +23,7 @@ COPY config/facilitator.config.prod.yaml ./config/facilitator.config.prod.yaml
 # HOME /home/ec2-user. The ops `docker run` bind-mounts the provisioned agent-wallet
 # store at ~/.agent-wallet (agent-wallet's default = homedir()/.agent-wallet), so the
 # runtime user and HOME must match v1 or `resolveWallet` finds no active wallet.
-# node:22-slim ships uid/gid 1000 as `node`; rename it rather than add a second one.
+# The Node image ships uid/gid 1000 as `node`; rename it rather than add a second one.
 RUN groupmod -n ec2-user node \
     && usermod -l ec2-user -d /home/ec2-user -m node \
     && mkdir -p /app/logs \
@@ -42,7 +42,7 @@ EXPOSE 8001 9001
 ENV SERVER_PORT=8001
 # /health returns 200 with no auth or rate-limit. Polls every 30s with a 5s
 # timeout; 3 consecutive failures mark the container unhealthy. Uses `node -e`
-# so it works on node:22-slim (which ships neither wget nor curl).
+# so it works on the slim Node image (which ships neither wget nor curl).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.SERVER_PORT||'8001')+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
