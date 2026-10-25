@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Temporarily make the production dependency audit non-blocking in CI while
+  Zod-related SDK findings remain unresolved. Audit commands and findings stay
+  visible; lint, typecheck, tests, and build still block on failure. Restore the
+  audit gate after compatible patched SDK releases are integrated.
+
 ## [2.2.2] - 2026-10-25
 
 ### Security
