@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-10-25
+
+### Security
+
+- Install Debian Bookworm's patched system Brotli in both Docker stages and
+  reject builds with libbrotli1 older than 1.0.9-2+deb12u1 (CVE-2026-111497).
+- Refresh fast-uri to 3.1.9 and require follow-redirects 1.16.1 or newer.
+  Zod-related dependency audit findings remain unresolved pending compatible
+  SDK updates; the high-severity CI audit gate remains enabled.
+
 ## [2.2.1] - 2026-10-22
 
 ### Security

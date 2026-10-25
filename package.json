@@ -1,6 +1,6 @@
 {
   "name": "x402-facilitator",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "x402 Facilitator service (TypeScript, @bankofai/x402-* ecosystem)",
   "type": "module",
   "private": true,
@@ -49,6 +49,7 @@
     "tronweb": {
       "axios": "1.20.0"
     },
+    "follow-redirects": "^1.16.1",
     "ws": "^8.21.1",
     "esbuild": "^0.28.1"
   },

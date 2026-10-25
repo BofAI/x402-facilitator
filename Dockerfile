@@ -1,5 +1,13 @@
 # x402 Facilitator v2 (TypeScript / Node)
-FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
+FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS base
+# CVE-2026-111497: use Bookworm's patched system Brotli in both stages.
+# Fail the build if the configured Debian repositories do not provide the fix.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libbrotli1 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge '1.0.9-2+deb12u1' \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund
@@ -7,7 +15,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS runtime
+FROM base AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
