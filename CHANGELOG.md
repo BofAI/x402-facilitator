@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Allow the temporary audit-exception branch to rebuild and publish v2.2.2 in
+  GitHub Actions, with both checks and Docker builds pinned to the original
+  release commit. The existing Git tag and main branch remain unchanged.
+- Temporarily make the production dependency audit non-blocking in CI while
+  Zod-related SDK findings remain unresolved. Audit commands and findings stay
+  visible; lint, typecheck, tests, and build still block on failure. Restore the
+  audit gate after compatible patched SDK releases are integrated.
+
 ## [2.2.2] - 2026-10-25
 
 ### Security
