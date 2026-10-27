@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Use official x402 Core, EVM, and generic extensions with the aligned TRON 2.1
-  beta mechanism and independent resource extension.
+  stable mechanism and independent resource extension.
 - Preserve wallet-backed signing, receipt fallback, replay protection, and
   verification/settlement logging through application adapters and Core hooks.
 - Return a protocol rejection for incomplete TRON exact authorizations instead
@@ -18,8 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Pin Docker and CI to Node.js 22.23.4 for the October 2026 security fixes.
-  Require patched Node.js release lines for source installations.
+- Pin Docker and CI to Node.js 24.22.1 for the SDK runtime floor and October 2026 security fixes.
+  Require patched Node.js 24/26 release lines for source installations.
+- Retain the patched system Brotli requirement and keep dependency auditing separate from image installs.
 
 ## [2.2.0] - 2026-10-13
 

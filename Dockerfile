@@ -1,5 +1,5 @@
 # x402 Facilitator v2 (TypeScript / Node)
-FROM node:22.23.4-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS base
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS base
 # CVE-2026-111497: use Bookworm's patched system Brotli in both stages.
 # Fail the build if the configured Debian repositories do not provide the fix.
 RUN apt-get update \
@@ -10,7 +10,7 @@ RUN apt-get update \
 FROM base AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
@@ -19,7 +19,7 @@ FROM base AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --no-audit --no-fund
 COPY --from=build /app/dist ./dist
 # Bake the non-secret environment configs into the image. They contain only
 # 1Password references; OP_SERVICE_ACCOUNT_TOKEN remains a runtime env variable.

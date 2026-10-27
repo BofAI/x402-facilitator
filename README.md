@@ -23,7 +23,7 @@ A TypeScript/Node service.
 
 ### Prerequisites
 
-- Node.js 22.23.4+ (22.x), 24.22.1+ (24.x), or 26.12.1+. Docker and CI use 22.23.4.
+- Node.js 24.22.1+ (24.x) or 26.12.1+. Docker and CI pin 24.22.1.
 - PostgreSQL
 - A configured agent-wallet v3 provider (`raw_secret`, `privy`, or `wallet_cli`)
 - Optional: 1Password service-account token (`OP_SERVICE_ACCOUNT_TOKEN`)
@@ -245,7 +245,7 @@ scoping. The legacy `payment_records` table is not used.
 Dependencies are pinned to published npm artifacts:
 
 - Official `@x402/core`, `@x402/evm`, and `@x402/extensions`: `2.28.0`.
-- TRON mechanism and resource extension: `2.1.0-beta.3`.
+- TRON mechanism and resource extension: `2.1.0`.
 - Agent Wallet: `3.0.0`.
 
 Resource execution and coordination use the independent
