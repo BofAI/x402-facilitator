@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 import { hasUnresolvedResourceActions } from "../src/sponsoring/admission.js";
 
 function operation(): Trc20SponsoringOperation {

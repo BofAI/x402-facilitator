@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import type { Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 import type { CapacityLimits } from "./coordinator.js";
 
 export function capacityDenial(active: readonly Trc20SponsoringOperation[], operation: Trc20SponsoringOperation, limits: CapacityLimits): string | undefined {

@@ -2,8 +2,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createTrc20ApprovalResourceSponsoringRuntime, TRON_NILE, type Trc20ApprovalResourceSponsoringRequest,
-  type Trc20ResourceSponsoringChain } from "@bankofai/x402-tron";
+import { TRON_NILE } from "@bankofai/x402-tron";
+import { createTrc20ApprovalResourceSponsoringRuntime, type Trc20ApprovalResourceSponsoringRequest, type Trc20ResourceSponsoringChain } from "@bankofai/x402-tron-extensions";
 import { SqliteSponsoringCoordinator } from "../src/sponsoring/store.js";
 import { guardSponsoringChain } from "../src/sponsoring/chain.js";
 

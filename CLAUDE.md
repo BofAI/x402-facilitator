@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Multi-chain **HTTP 402 Payment Required** facilitator: it verifies payment payloads off-chain and settles them on-chain. This is **v2**, the TypeScript/Node 22 implementation using `@bankofai/x402-*`. The earlier Python/FastAPI implementation is available in Git history; it is no longer part of the source tree. The v2 payment wire format is not backward compatible with v1.
+Multi-chain **HTTP 402 Payment Required** facilitator: it verifies payment payloads off-chain and settles them on-chain. This is **v2**, the TypeScript/Node 24 implementation using `@bankofai/x402-*`. The earlier Python/FastAPI implementation is available in Git history; it is no longer part of the source tree. The v2 payment wire format is not backward compatible with v1.
 
 ## Commands
 
@@ -40,7 +40,7 @@ Startup is orchestrated in `src/index.ts` and mirrors v1's lifespan:
 
 Key seams:
 
-- **`src/facilitator.ts`** is the heart. It builds the SDK's `x402Facilitator` via `createFacilitator()` and registers scheme handlers per enabled network. Each network's `schemes` list (default: all schemes) selects what to register: `exact` (TRON eip3009/permit2, +`exact_gasfree` when creds resolve; EVM eip3009/permit2), `upto` (Permit2 up-to-max), `batch-settlement` (channel deposit/voucher/claim). TRON and EVM have symmetric `register*Network` handlers; TRON `exact` has a GasFree variant, EVM `exact` does not.
+- **`src/facilitator.ts`** is the heart. It builds the SDK's `x402Facilitator` via the official `new x402Facilitator()` constructor and registers scheme handlers per enabled network. Each network's `schemes` list (default: all schemes) selects what to register: `exact` (TRON eip3009/permit2, +`exact_gasfree` when creds resolve; EVM eip3009/permit2), `upto` (Permit2 up-to-max), `batch-settlement` (channel deposit/voucher/claim). TRON and EVM have symmetric `register*Network` handlers; TRON `exact` has a GasFree variant, EVM `exact` does not.
 
 - **Non-custodial signing (`src/signer.ts`)** — this process **never holds settlement private keys**. Wallets resolve through `@bankofai/agent-wallet` (unlocked out-of-band via `AGENT_WALLET_PASSWORD`); the SDK builds the tx, hands it to the wallet to sign, then broadcasts — the raw key never enters the SDK. For `batch-settlement`, the same agent-wallet doubles as the `receiverAuthorizer` (signs TIP-712/EIP-712 digests).
 
@@ -57,7 +57,7 @@ Key seams:
 ## Conventions & gotchas
 
 - Networks use supported canonical **CAIP-2** ids only (for example `tron:0xcd8690dc`, `tron:0x2b6653dc`, `eip155:97`, `eip155:84532`). Friendly aliases are rejected; `facilitator.ts` routes by the registered network family.
-- The `@bankofai/x402-*` packages (`x402-core`, `x402-evm`, `x402-tron`, `x402-extensions`) come from the npm registry. Pin to the tested version deliberately — bumping is a separate, deliberate upgrade (API drift risk). When the SDK's interface is awkward, surface the gap rather than silently `any`-adapting around it.
+- Official `@x402/core`, `@x402/evm`, and `@x402/extensions` are pinned to `2.28.0`. TRON and its independent resource extension use `2.1.0` from npm. Pin to the tested version deliberately — bumping is a separate, deliberate upgrade (API drift risk). When the SDK's interface is awkward, surface the gap rather than silently `any`-adapting around it.
 - Fees were removed from the TRON schemes in SDK `1.0.1`; there is no `base_fee` config and no `/fee/quote` endpoint.
 - Stale Python artifacts (`src/**/__pycache__`, `tests/__pycache__`) are leftovers from v1 — ignore them; the live tests are TS files under `test/`.
 - Status: feature-complete and unit-tested, but **not yet validated against live chains** and no integration tests yet.

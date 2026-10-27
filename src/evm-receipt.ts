@@ -4,7 +4,7 @@
  * never resubmits a transaction.
  */
 import { createPublicClient, defineChain, http, type Log } from "viem";
-import type { GasSponsoringFacilitatorEvmSigner } from "@bankofai/x402-evm/adapters/agent-wallet";
+import type { GasSponsoringFacilitatorEvmSigner } from "./evm-wallet.js";
 import { logger } from "./logger.js";
 
 export interface EvmReceiptResult {

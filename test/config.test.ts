@@ -127,7 +127,7 @@ describe("loadConfig", () => {
 
   it("throws when database.url is missing", () => {
     expect(() => loadConfig(writeConfig(`facilitator:\n  networks:\n    tron:0xcd8690dc: {}\n`))).toThrow(
-      /database: Required/,
+      /database: Invalid input: expected object, received undefined/,
     );
   });
 
