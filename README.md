@@ -248,6 +248,10 @@ Dependencies are pinned to published npm artifacts:
 - TRON mechanism and resource extension: `2.1.0`.
 - Agent Wallet: `3.0.0`.
 
+The root installation pins all Zod users to `4.6.6` to reject oversized constrained
+collections before validating elements. Compatibility tests cover official Core
+schemas and existing payment payloads; keep this override when refreshing dependencies.
+
 Resource execution and coordination use the independent
 `@bankofai/x402-tron-extensions` package. The service retains its wallet signing
 bridge, receipt fallback, database-backed Permit2 replay guard, and lifecycle

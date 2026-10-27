@@ -31,7 +31,7 @@
     "tronweb": "^6.4.0",
     "viem": "^2.21.0",
     "yaml": "^2.5.0",
-    "zod": "^3.25.76",
+    "zod": "4.6.6",
     "@bankofai/x402-tron-extensions": "2.1.0",
     "@x402/core": "2.28.0",
     "@x402/evm": "2.28.0",
@@ -52,7 +52,8 @@
     },
     "follow-redirects": "^1.16.1",
     "ws": "^8.21.1",
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "zod": "$zod"
   },
   "optionalDependencies": {
     "ioredis": "^5.4.0"

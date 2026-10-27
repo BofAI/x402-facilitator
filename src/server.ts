@@ -83,7 +83,7 @@ const BatchManagementRequirementsSchema = PaymentRequirementsV2Schema.extend({
 const BatchManagementPayloadSchema = PaymentPayloadV2Schema.extend({
   accepted: BatchManagementRequirementsSchema,
   payload: PaymentPayloadV2Schema.shape.payload.refine(
-    (payload) => payload.type === "claim" || payload.type === "settle" || payload.type === "refund",
+    (payload: PaymentPayload["payload"]) => payload.type === "claim" || payload.type === "settle" || payload.type === "refund",
   ),
 });
 
