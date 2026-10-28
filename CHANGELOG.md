@@ -7,10 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-10-25
+
+### Security
+
+- Install Debian Bookworm's patched system Brotli in both Docker stages and
+  reject builds with libbrotli1 older than 1.0.9-2+deb12u1 (CVE-2026-111497).
+- Refresh fast-uri to 3.1.9 and require follow-redirects 1.16.1 or newer.
+  Zod-related dependency audit findings remain unresolved pending compatible
+  SDK updates; the high-severity CI audit gate remains enabled.
+
+## [2.2.1] - 2026-10-22
+
 ### Security
 
 - Pin Docker and CI to Node.js 22.23.4 for the October 2026 security fixes.
   Require patched Node.js release lines for source installations.
+- Refresh follow-redirects from 1.16.0 to 1.16.1 to address cross-origin
+  credential header leaks (GHSA-q3jh-wrc6-jgq8 and GHSA-8r9p-f939-6h3c).
+- Refresh Hono to its patched 4.13.x release for the serveStatic path-decoding
+  advisory (GHSA-5r4p-p66f-jhc7).
+- Run dependency auditing once as an explicit CI gate with bounded network
+  retries, avoiding redundant audit calls during installs and image builds.
 
 ## [2.2.0] - 2026-10-13
 
