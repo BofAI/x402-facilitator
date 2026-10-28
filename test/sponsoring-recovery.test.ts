@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Trc20SponsoringOperation, Trc20ResourceSponsoringChain } from "@bankofai/x402-tron";
+import type { Trc20SponsoringOperation, Trc20ResourceSponsoringChain } from "@bankofai/x402-tron-extensions";
 import { guardSponsoringChain } from "../src/sponsoring/chain.js";
 import { recoverExpiredOperation } from "../src/sponsoring/recovery.js";
 import { RecoverableChainError, storageBoundary } from "../src/sponsoring/recovery-errors.js";

@@ -2,13 +2,13 @@
 
 Multi-chain **HTTP 402 Payment Required** facilitator. It verifies payment payloads
 off-chain and settles them on-chain, on the upstream **x402 TypeScript** ecosystem
-(`@bankofai/x402-core` + `@bankofai/x402-tron` + `@bankofai/x402-evm`).
+(`@x402/core` + `@bankofai/x402-tron` + `@x402/evm`).
 
 A TypeScript/Node service.
 
 ## Features
 
-- `verify` / `settle` / `supported` endpoints backed by `@bankofai/x402-core`.
+- `verify` / `settle` / `supported` endpoints backed by official `@x402/core`.
 - TRON `exact` (EIP-3009 / Permit2) + `exact_gasfree`; EVM (BSC) `exact`.
 - `upto` (Permit2 up-to-max settlement, TRON + EVM) and `batch-settlement` (channel deposit/voucher/claim/settle/refund, TRON + EVM).
 - Wallet signing through `@bankofai/agent-wallet`: external providers keep keys
@@ -23,7 +23,7 @@ A TypeScript/Node service.
 
 ### Prerequisites
 
-- Node.js 22.23.4+ (22.x), 24.22.1+ (24.x), or 26.12.1+. Docker and CI use 22.23.4.
+- Node.js 24.22.1+ (24.x) or 26.12.1+. Docker and CI pin 24.22.1.
 - PostgreSQL
 - A configured agent-wallet v3 provider (`raw_secret`, `privy`, or `wallet_cli`)
 - Optional: 1Password service-account token (`OP_SERVICE_ACCOUNT_TOKEN`)
@@ -242,8 +242,33 @@ scoping. The legacy `payment_records` table is not used.
 
 ## SDK consumption
 
-The `@bankofai/x402-*` packages (`x402-core`, `x402-evm`, `x402-tron`) are consumed from
-npm, declared as `^1.0.1` in `package.json`.
+Dependencies are pinned to published npm artifacts:
+
+- Official `@x402/core`, `@x402/evm`, and `@x402/extensions`: `2.28.0`.
+- TRON mechanism and resource extension: `2.1.0`.
+- Agent Wallet: `3.0.0`.
+
+The root installation pins all Zod users to `4.6.6` to reject oversized constrained
+collections before validating elements. Compatibility tests cover official Core
+schemas and existing payment payloads; keep this override when refreshing dependencies.
+
+Resource execution and coordination use the independent
+`@bankofai/x402-tron-extensions` package. The service retains its wallet signing
+bridge, receipt fallback, database-backed Permit2 replay guard, and lifecycle
+logging through official Core hooks.
+
+To exercise Gateway and Facilitator together with real HTTP and a disposable
+PostgreSQL database, build the Gateway checkout, then run:
+
+```bash
+GATEWAY_COMPAT_ROOT=/absolute/path/to/x402-gateway \
+SPONSORING_TEST_DATABASE_URL=postgresql://user:password@127.0.0.1:5432/sponsoring_test \
+npm run test:gateway
+```
+
+This suite uses real payment signatures and database persistence, checks replay
+and seller isolation, and exercises resource recovery after restart. Chain I/O
+is simulated and no public-chain transaction is submitted.
 
 ## Docker
 
@@ -276,17 +301,10 @@ it is never stored in the image or either YAML file.
 
 ## Status
 
-With the currently pinned published npm SDK, Nile ordinary payments and
-PostgreSQL-sponsored payments have passed live-chain validation, including
-Approval, delegation and withdrawal. SQLite container startup and automated
-tests passed, but fresh SQLite-sponsored live payment validation remains pending
-available test resource capacity. Earlier SQLite live results used a different
-dependency artifact and do not validate the current SDK. Transaction summaries
-and remaining acceptance checks are recorded in the pull request.
-PostgreSQL integration tests require a disposable test database and are not run
-by the default CI job unless that connection is supplied. Shasta sponsorship,
-production credentials/wallets, and full cross-network/GasFree acceptance are not
-claimed as validated by these Nile results.
+Local validation covers real signatures, HTTP verification and settlement,
+resource sponsorship, and PostgreSQL recovery. Chain I/O is isolated in automated
+tests. Live-chain acceptance must be repeated for this exact dependency set before
+deployment; earlier release evidence does not validate a dependency upgrade.
 
 ### Database URL in 1Password
 

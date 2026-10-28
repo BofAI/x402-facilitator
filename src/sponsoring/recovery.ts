@@ -1,4 +1,4 @@
-import type { Trc20ResourceLeg, Trc20ResourceSponsoringChain, Trc20SponsoringOperation, Trc20SponsoringCoordinator } from "@bankofai/x402-tron";
+import type { Trc20ResourceLeg, Trc20ResourceSponsoringChain, Trc20SponsoringOperation, Trc20SponsoringCoordinator } from "@bankofai/x402-tron-extensions";
 import { ApprovalPendingError, RecoverableChainError, ReclaimValidationError } from "./recovery-errors.js";
 
 /** Timed-out business actions cannot hold resources hostage. Only query pairs
