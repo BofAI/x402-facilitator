@@ -2,18 +2,18 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { providers } from "tronweb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTrc20ApprovalResourceSponsoringRuntime, type FacilitatorTronSigner,
-  type Trc20ApprovalResourceSponsoringRequest, type Trc20ResourceSponsoringChain } from "@bankofai/x402-tron";
+import { type FacilitatorTronSigner } from "@bankofai/x402-tron";
+import { createTrc20ApprovalResourceSponsoringRuntime, type Trc20ApprovalResourceSponsoringRequest, type Trc20ResourceSponsoringChain } from "@bankofai/x402-tron-extensions";
 import { sponsoringConfigSchema } from "../src/sponsoring/config.js";
 import { createSponsoringService, type SponsoringService } from "../src/sponsoring/service.js";
 import { createSponsoringServices, routingSponsoringRuntime } from "../src/sponsoring/services.js";
 import { PostgresSponsoringCoordinator } from "../src/sponsoring/postgres-store.js";
 import { createApp } from "../src/server.js";
 import { setApiKeyCacheForTest } from "../src/auth.js";
-import type { x402Facilitator } from "@bankofai/x402-core/facilitator";
+import type { x402Facilitator } from "@x402/core/facilitator";
 
 const fake = vi.hoisted(() => ({ chain: undefined as unknown as Trc20ResourceSponsoringChain, failInitialization: false }));
-vi.mock("@bankofai/x402-tron", async original => ({ ...await original<object>(),
+vi.mock("@bankofai/x402-tron-extensions", async original => ({ ...await original<object>(),
   createTronWebResourceSponsoringChain: async () => fake.chain }));
 vi.mock("../src/sponsoring/signer.js", () => ({ buildResourceOwnerSigner: async () => {
   if (fake.failInitialization) throw new Error("signer initialization failed");

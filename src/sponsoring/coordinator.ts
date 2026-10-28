@@ -1,4 +1,4 @@
-import type { Trc20SponsoringCoordinator, Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { Trc20SponsoringCoordinator, Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 
 export interface OwnerBinding { network: string; owner: string; permissionId: number }
 export interface CapacityLimits { energy: bigint; bandwidth: bigint; budget: bigint; management: bigint }

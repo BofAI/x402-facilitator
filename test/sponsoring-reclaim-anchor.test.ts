@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { TronWeb, utils } from "tronweb";
-import { serializeSignedTronTransaction, type Trc20ApprovalResourceSponsoringRequest } from "@bankofai/x402-tron";
+import { serializeSignedTronTransaction } from "@bankofai/x402-tron";
+import { type Trc20ApprovalResourceSponsoringRequest } from "@bankofai/x402-tron-extensions";
 import { createAnchoredSponsoringChain } from "../src/sponsoring/sdk-chain.js";
 import { createReclaimAnchor } from "../src/sponsoring/reclaim-anchor.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Trc20ResourceSponsoringChain, Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { Trc20ResourceSponsoringChain, Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 import { SqliteSponsoringCoordinator } from "../src/sponsoring/store.js";
 import { guardSponsoringChain } from "../src/sponsoring/chain.js";
 import { recoverExpiredOperation } from "../src/sponsoring/recovery.js";

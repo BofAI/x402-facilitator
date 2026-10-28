@@ -6,7 +6,7 @@ import { serialize, deserialize } from "node:v8";
 import { capacityDenial, validateSave } from "./operation-validation.js";
 import type { SponsoringCoordinator, OwnerBinding, CapacityLimits } from "./coordinator.js";
 export type { OwnerBinding, CapacityLimits } from "./coordinator.js";
-import type { Trc20SponsoringCoordinator, Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { Trc20SponsoringCoordinator, Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 type Trc20SponsoringAdmission = Awaited<ReturnType<Trc20SponsoringCoordinator["admit"]>>;
 
 type Row = { payload: Uint8Array; checksum: string };

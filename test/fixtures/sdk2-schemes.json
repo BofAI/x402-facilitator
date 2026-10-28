@@ -1,0 +1,137 @@
+{
+  "provenance": {
+    "sdk": "@bankofai/x402-tron@2.0.0",
+    "core": "@bankofai/x402-core@1.1.1",
+    "registry": "https://registry.npmjs.org",
+    "signedAtMs": 1792108800000,
+    "testPrivateKeys": {
+      "payer": "1111111111111111111111111111111111111111111111111111111111111111",
+      "receiver": "2222222222222222222222222222222222222222222222222222222222222222",
+      "facilitator": "3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    "identityNote": "Public deterministic fixtures, never funded or connected to a chain"
+  },
+  "payloads": {
+    "upto": {
+      "x402Version": 2,
+      "payload": {
+        "signature": "0x2d627dbf272841a678d243930b332068b2ce395455d8f23c045ea05168de91c105fc90bf81a40fe65e6cbc9b8011f3d57ee9f1fefb7dd5ce28932cdd18c688731c",
+        "permit2Authorization": {
+          "from": "0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a",
+          "permitted": {
+            "token": "0xeca9bc828a3005b9a3b909f2cc5c2a54794de05f",
+            "amount": "1000"
+          },
+          "spender": "0x6d33e7b5c21035ccb03c5c0e347a5953eb8fdadc",
+          "nonce": "0x3a91d41e96863e2e648a5b293ceda8fc9c49296a756a79ac31122718d127743e",
+          "deadline": "1792109100",
+          "witness": {
+            "to": "0x1563915e194d8cfba1943570603f7606a3115508",
+            "facilitator": "0x5cbdd86a2fa8dc4bddd8a8f69dba48572eec07fb",
+            "validAfter": "0"
+          }
+        }
+      },
+      "resource": {
+        "url": "https://test.invalid/upto"
+      },
+      "accepted": {
+        "network": "tron:3448148188",
+        "asset": "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+        "amount": "1000",
+        "payTo": "TBvJUBXorwBPzqvV38vjDgegj5Eh6g2Tsq",
+        "maxTimeoutSeconds": 300,
+        "scheme": "upto",
+        "extra": {
+          "assetTransferMethod": "permit2",
+          "permit2FacilitatorAddress": "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8"
+        }
+      }
+    },
+    "batchDeposit": {
+      "x402Version": 2,
+      "payload": {
+        "type": "deposit",
+        "channelConfig": {
+          "payer": "TCLBgkbfVkJroVBJVqBEsxtPNQEQMTQCLQ",
+          "payerAuthorizer": "TCLBgkbfVkJroVBJVqBEsxtPNQEQMTQCLQ",
+          "receiver": "TBvJUBXorwBPzqvV38vjDgegj5Eh6g2Tsq",
+          "receiverAuthorizer": "TBvJUBXorwBPzqvV38vjDgegj5Eh6g2Tsq",
+          "token": "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+          "withdrawDelay": 900,
+          "salt": "0x1212121212121212121212121212121212121212121212121212121212121212"
+        },
+        "voucher": {
+          "channelId": "0xedbc910c388d17d279658317db30ef08a1e17902d00b35d2908d654c64170272",
+          "maxClaimableAmount": "1000",
+          "signature": "0x1d34f1b33371da5a0d0745913843b5a8d81192af9265c59152ae2ba205fb45ea08d1d141f141af1c66d52c4649f55b1f467b7ccee01f10f2e8ee8e673119c6091c"
+        },
+        "deposit": {
+          "amount": "5000",
+          "authorization": {
+            "permit2Authorization": {
+              "from": "0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a",
+              "permitted": {
+                "token": "0xeca9bc828a3005b9a3b909f2cc5c2a54794de05f",
+                "amount": "5000"
+              },
+              "spender": "0x351f888cba888ccd1e12ed62fa4d98ed3fe32675",
+              "nonce": "0x209f75b2ba873fcb4f5f7a34e4f7e1c919c92dbe3f71830c6c2df05c2f95c52f",
+              "deadline": "1792109100",
+              "witness": {
+                "channelId": "0xedbc910c388d17d279658317db30ef08a1e17902d00b35d2908d654c64170272"
+              },
+              "signature": "0xa9803819fea1318b199184c30da24534922292b8c2df097b62df9ef7dd65e57548334badae9a1333b6b27819617bdcc966cae5d451465c76f3749a1223a09f561b"
+            }
+          }
+        }
+      },
+      "accepted": {
+        "network": "tron:3448148188",
+        "asset": "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+        "amount": "1000",
+        "payTo": "TBvJUBXorwBPzqvV38vjDgegj5Eh6g2Tsq",
+        "maxTimeoutSeconds": 300,
+        "scheme": "batch-settlement",
+        "extra": {
+          "assetTransferMethod": "permit2",
+          "receiverAuthorizer": "TBvJUBXorwBPzqvV38vjDgegj5Eh6g2Tsq",
+          "withdrawDelay": 900
+        }
+      }
+    },
+    "batchVoucher": {
+      "x402Version": 2,
+      "accepted": {
+        "network": "tron:3448148188",
+        "asset": "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+        "amount": "1000",
+        "payTo": "TBvJUBXorwBPzqvV38vjDgegj5Eh6g2Tsq",
+        "maxTimeoutSeconds": 300,
+        "scheme": "batch-settlement",
+        "extra": {
+          "assetTransferMethod": "permit2",
+          "receiverAuthorizer": "TBvJUBXorwBPzqvV38vjDgegj5Eh6g2Tsq",
+          "withdrawDelay": 900
+        }
+      },
+      "payload": {
+        "type": "voucher",
+        "channelConfig": {
+          "payer": "TCLBgkbfVkJroVBJVqBEsxtPNQEQMTQCLQ",
+          "payerAuthorizer": "TCLBgkbfVkJroVBJVqBEsxtPNQEQMTQCLQ",
+          "receiver": "TBvJUBXorwBPzqvV38vjDgegj5Eh6g2Tsq",
+          "receiverAuthorizer": "TBvJUBXorwBPzqvV38vjDgegj5Eh6g2Tsq",
+          "token": "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+          "withdrawDelay": 900,
+          "salt": "0x1212121212121212121212121212121212121212121212121212121212121212"
+        },
+        "voucher": {
+          "channelId": "0xedbc910c388d17d279658317db30ef08a1e17902d00b35d2908d654c64170272",
+          "maxClaimableAmount": "1000",
+          "signature": "0x1d34f1b33371da5a0d0745913843b5a8d81192af9265c59152ae2ba205fb45ea08d1d141f141af1c66d52c4649f55b1f467b7ccee01f10f2e8ee8e673119c6091c"
+        }
+      }
+    }
+  }
+}
