@@ -246,7 +246,7 @@ Dependencies are pinned to published npm artifacts:
 
 - Official `@x402/core`, `@x402/evm`, and `@x402/extensions`: `2.28.0`.
 - TRON mechanism and resource extension: `2.1.0`.
-- Agent Wallet: `3.0.0`.
+- Agent Wallet: `3.1.0-beta.1` (explicit prerelease pin).
 
 The root installation pins all Zod users to `4.6.6` to reject oversized constrained
 collections before validating elements. Compatibility tests cover official Core

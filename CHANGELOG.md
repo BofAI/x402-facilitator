@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Support Agent Wallet 3.1.0-beta.1 with its native Zod 4 dependency, retaining
+  wallet-backed EVM/TRON transaction signing and restricted Resource Owner signing.
 - Use official x402 Core, EVM, and generic extensions with the aligned TRON 2.1
   stable mechanism and independent resource extension.
 - Preserve wallet-backed signing, receipt fallback, replay protection, and
