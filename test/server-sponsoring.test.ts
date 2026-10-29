@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { x402Facilitator } from "@bankofai/x402-core/facilitator";
+import type { x402Facilitator } from "@x402/core/facilitator";
 import { createApp } from "../src/server.js";
 import { setApiKeyCacheForTest } from "../src/auth.js";
 import { resetRateLimitState } from "../src/rate-limit.js";

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Trc20ResourceSponsoringChain, Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { Trc20ResourceSponsoringChain, Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 import { guardSponsoringChain } from "../src/sponsoring/chain.js";
 import { RecoverableChainError } from "../src/sponsoring/recovery-errors.js";
 

@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Pool, type PoolClient } from "pg";
 import { providers } from "tronweb";
 import { createFacilitatorTronSigner } from "@bankofai/x402-tron";
-import { x402Facilitator } from "@bankofai/x402-core/facilitator";
-import type { PaymentPayload, PaymentRequirements } from "@bankofai/x402-core/types";
+import { x402Facilitator } from "@x402/core/facilitator";
+import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { permit2Identity, registerPermit2ReplayGuard, withPermit2SettlementLock } from "../src/permit2-replay.js";
 import { disposeDatabase, getDatabasePool, getPermit2LockPool, initDatabase } from "../src/db/index.js";
 

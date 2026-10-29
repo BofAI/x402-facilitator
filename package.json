@@ -5,7 +5,7 @@
   "type": "module",
   "private": true,
   "engines": {
-    "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
+    "node": "^24.22.1 || >=26.12.1"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -15,15 +15,13 @@
     "test": "vitest run",
     "test:postgres": "SPONSORING_REQUIRE_POSTGRES=1 vitest run test/sponsoring-postgres.test.ts test/sponsoring-service-postgres.test.ts",
     "test:watch": "vitest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:gateway": "npm run build && node --test test/gateway-integration.mjs"
   },
   "dependencies": {
     "@1password/sdk": "^0.3.1",
-    "@bankofai/agent-wallet": "3.0.0",
-    "@bankofai/x402-core": "1.1.1",
-    "@bankofai/x402-evm": "1.1.1",
-    "@bankofai/x402-extensions": "1.2.0",
-    "@bankofai/x402-tron": "2.0.0",
+    "@bankofai/agent-wallet": "3.1.0-beta.1",
+    "@bankofai/x402-tron": "2.1.0",
     "@hono/node-server": "^2.0.12",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
@@ -33,7 +31,11 @@
     "tronweb": "^6.4.0",
     "viem": "^2.21.0",
     "yaml": "^2.5.0",
-    "zod": "^3.25.76"
+    "zod": "4.6.6",
+    "@bankofai/x402-tron-extensions": "2.1.0",
+    "@x402/core": "2.28.0",
+    "@x402/evm": "2.28.0",
+    "@x402/extensions": "2.28.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
@@ -45,13 +47,13 @@
     "vitest": "^4.1.11"
   },
   "overrides": {
-    "@bankofai/x402-core": "$@bankofai/x402-core",
     "tronweb": {
       "axios": "1.20.0"
     },
     "follow-redirects": "^1.16.1",
     "ws": "^8.21.1",
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "zod": "$zod"
   },
   "optionalDependencies": {
     "ioredis": "^5.4.0"

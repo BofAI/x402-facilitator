@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import type { Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 import { SqliteSponsoringCoordinator } from "../src/sponsoring/store.js";
 
 const binding = { network: "tron:0xcd8690dc", owner: "owner-a", permissionId: 2 };
