@@ -1,4 +1,4 @@
-import { BaseError, FeeCapTooLowError, InsufficientFundsError, encodeFunctionData, type Abi, type PublicClient } from "viem";
+import { BaseError, FeeCapTooLowError, InsufficientFundsError, encodeFunctionData, keccak256, type Abi, type PublicClient } from "viem";
 import { containsNodeError, getNodeError } from "viem/utils";
 import { appendDataSuffix, toFacilitatorEvmSigner, type ClientEvmSigner, type FacilitatorEvmSigner } from "@x402/evm";
 import type { Erc20ApprovalGasSponsoringSigner } from "@x402/extensions";
@@ -17,11 +17,24 @@ interface EvmWallet {
 
 interface NonceState {
   tail: Promise<void>;
-  nextNonce?: number;
-  uncertainNonce?: number;
+  transactions: Map<number, { hash: `0x${string}`; serializedTransaction: `0x${string}` }>;
 }
 // A wallet shared by signers in this process must use one nonce queue.
 const nonceStates = new Map<string, NonceState>();
+
+// Match node response details, never arbitrary transport/error message text.
+function nodeDetails(error: unknown): string | undefined {
+  return error instanceof BaseError && containsNodeError(error) ? error.details?.trim().toLowerCase() : undefined;
+}
+function alreadyKnown(error: unknown): boolean {
+  const details = nodeDetails(error);
+  return details === "already known" || details === "known transaction" || details === "transaction already imported";
+}
+function rejectedBeforeAcceptance(error: unknown): boolean {
+  const rejection = error instanceof BaseError && containsNodeError(error) ? getNodeError(error, {}) : error;
+  return rejection instanceof InsufficientFundsError || rejection instanceof FeeCapTooLowError ||
+    nodeDetails(error) === "transaction underpriced";
+}
 
 export async function createAuthorizerEvmSigner(wallet: {
   getAddress(): string | Promise<string>;
@@ -44,7 +57,7 @@ export async function createFacilitatorEvmSigner(wallet: EvmWallet, options: {
   const key = `${options.network}:${address.toLowerCase()}`;
   let state = nonceStates.get(key);
   if (!state) {
-    state = { tail: Promise.resolve() };
+    state = { tail: Promise.resolve(), transactions: new Map() };
     nonceStates.set(key, state);
   }
   const nonces = state;
@@ -55,39 +68,62 @@ export async function createFacilitatorEvmSigner(wallet: EvmWallet, options: {
     nonces.tail = new Promise<void>(resolve => { release = resolve; });
     await previous;
     try {
-      const [chainId, pendingNonce, fees] = await Promise.all([
+      const [chainId, pendingNonce, latestNonce, fees] = await Promise.all([
         client.getChainId(), client.getTransactionCount({ address, blockTag: "pending" }),
-        client.estimateFeesPerGas(),
+        client.getTransactionCount({ address, blockTag: "latest" }), client.estimateFeesPerGas(),
       ]);
-      if (nonces.uncertainNonce !== undefined) {
-        if (pendingNonce <= nonces.uncertainNonce) throw new Error("evm_nonce_reconciliation_required");
-        delete nonces.uncertainNonce;
+      let confirmedNonce = latestNonce;
+      let nonce = Math.max(pendingNonce, confirmedNonce);
+      // Keep every unmined original even after pending advances: the pool may
+      // later drop an earlier transaction and move pending backwards.
+      for (const [reserved, transaction] of [...nonces.transactions].sort(([a], [b]) => a - b)) {
+        if (reserved < confirmedNonce) { nonces.transactions.delete(reserved); continue; }
+        // An earlier gap owned by another writer cannot be repaired from this
+        // process's journal; do not allocate past it or replace its transaction.
+        if (reserved > nonce) throw new Error("evm_nonce_reconciliation_required");
+        if (reserved >= pendingNonce) {
+          try {
+            await client.sendRawTransaction({ serializedTransaction: transaction.serializedTransaction });
+            logger.info("x402 evm: original tx rebroadcast", { hash: transaction.hash, nonce: reserved });
+          } catch (error) {
+            if (!alreadyKnown(error)) {
+              // A nonce-too-low response alone is not proof of mining. Use a
+              // fresh confirmed account nonce before discarding the original.
+              const confirmed = await client.getTransactionCount({ address, blockTag: "latest" });
+              if (confirmed > reserved) {
+                nonces.transactions.delete(reserved);
+                confirmedNonce = Math.max(confirmedNonce, confirmed);
+                nonce = Math.max(nonce, confirmedNonce);
+                continue;
+              }
+              throw new Error("evm_nonce_reconciliation_required", { cause: error });
+            }
+          }
+        }
+        nonce = Math.max(nonce, reserved + 1);
       }
-      const nonce = Math.max(pendingNonce, nonces.nextNonce ?? pendingNonce);
       const gas = gasOverride ?? await client.estimateGas({ account: address, to, data, value: 0n });
       const signed = await wallet.signTransaction({ to, data, value: 0n, nonce, gas, chainId,
         maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas });
       const raw = typeof signed === "string" ? signed : signed.family === "evm" ? signed.rawTransaction : undefined;
       if (typeof raw !== "string") throw new Error("EVM signTransaction must return an EVM signed transaction artifact");
-      // A broadcast error may mean the RPC accepted the transaction. Reserve its
-      // nonce until the chain confirms it advanced; never sign a replacement here.
-      nonces.nextNonce = nonce + 1;
+      // Journal the exact signed bytes in this process before submitting. Unknown
+      // results and dropped transactions must recover this original, not a replacement.
+      const serializedTransaction = `0x${raw.replace(/^0x/, "")}` as `0x${string}`;
+      const transaction = { serializedTransaction, hash: keccak256(serializedTransaction) };
+      nonces.transactions.set(nonce, transaction);
       logger.debug("x402 evm: broadcast start", { to, chainId, nonce });
       try {
-        const hash = await client.sendRawTransaction({ serializedTransaction: `0x${raw.replace(/^0x/, "")}` });
+        const hash = await client.sendRawTransaction({ serializedTransaction: transaction.serializedTransaction });
         logger.info("x402 evm: broadcast ok", { to, hash });
         return hash;
       } catch (error) {
-        // Only explicit node rejections prove this attempt was not accepted.
-        // Transport failures and unknown errors retain the reservation.
-        const rejection = error instanceof BaseError && containsNodeError(error)
-          ? getNodeError(error, {}) : error;
-        if (rejection instanceof InsufficientFundsError || rejection instanceof FeeCapTooLowError) {
-          nonces.nextNonce = nonce;
-        } else {
-          nonces.uncertainNonce = nonce;
-        }
-        logger.error("x402 evm: broadcast failed", { to, error: error instanceof Error ? error.message : String(error) });
+        if (alreadyKnown(error)) return transaction.hash;
+        // Only a fresh attempt's explicit rejection releases its reservation.
+        // Rejections while recovering an older attempt never release that original.
+        if (rejectedBeforeAcceptance(error)) nonces.transactions.delete(nonce);
+        logger.error("x402 evm: broadcast failed", { to,
+          error: error instanceof BaseError ? error.shortMessage : error instanceof Error ? error.message : String(error) });
         throw error;
       }
     } finally {

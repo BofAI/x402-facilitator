@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Pin published TRON SDK and resource extension 2.1.1 with official x402 2.29.0.
-- Release EVM nonce reservations after explicit insufficient-funds or fee-cap rejections, while blocking retries after ambiguous broadcasts.
+- Release fresh EVM nonce reservations after explicit insufficient-funds, fee-cap, or transaction-underpriced node rejections.
+- Retain unmined signed transactions per nonce and rebroadcast the original bytes before allocating past a dropped transaction; keep recovery failures blocked until the original is accepted or its nonce is mined.
 - Align compatibility assertions with Core 2.29 verification hooks and EVM invalid-payload errors.
 - Refresh follow-redirects to 1.16.2 in the lockfile.
 

@@ -257,6 +257,15 @@ Resource execution and coordination use the independent
 bridge, receipt fallback, database-backed Permit2 replay guard, and lifecycle
 logging through official Core hooks.
 
+The EVM wallet bridge shares an in-process nonce queue per network and wallet.
+It retains each unmined transaction's hash and signed bytes even when the pending
+nonce advances. If the pool drops an earlier transaction or a broadcast response
+is lost, the next send first rebroadcasts the original bytes in nonce order.
+Only a fresh transaction's explicit insufficient-funds, fee-cap or transaction-underpriced
+node rejection releases that reservation. Failed recovery blocks new signing;
+an advanced mined account nonce can release the consumed original. This state is
+in memory and does not provide durable restart recovery or cross-process nonce coordination.
+
 To exercise Gateway and Facilitator together with real HTTP and a disposable
 PostgreSQL database, build the Gateway checkout, then run:
 
