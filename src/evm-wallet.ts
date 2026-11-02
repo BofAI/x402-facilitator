@@ -1,4 +1,5 @@
-import { encodeFunctionData, type Abi, type PublicClient } from "viem";
+import { BaseError, FeeCapTooLowError, InsufficientFundsError, encodeFunctionData, type Abi, type PublicClient } from "viem";
+import { containsNodeError, getNodeError } from "viem/utils";
 import { appendDataSuffix, toFacilitatorEvmSigner, type ClientEvmSigner, type FacilitatorEvmSigner } from "@x402/evm";
 import type { Erc20ApprovalGasSponsoringSigner } from "@x402/extensions";
 import { logger } from "./logger.js";
@@ -77,7 +78,15 @@ export async function createFacilitatorEvmSigner(wallet: EvmWallet, options: {
         logger.info("x402 evm: broadcast ok", { to, hash });
         return hash;
       } catch (error) {
-        nonces.uncertainNonce = nonce;
+        // Only explicit node rejections prove this attempt was not accepted.
+        // Transport failures and unknown errors retain the reservation.
+        const rejection = error instanceof BaseError && containsNodeError(error)
+          ? getNodeError(error, {}) : error;
+        if (rejection instanceof InsufficientFundsError || rejection instanceof FeeCapTooLowError) {
+          nonces.nextNonce = nonce;
+        } else {
+          nonces.uncertainNonce = nonce;
+        }
         logger.error("x402 evm: broadcast failed", { to, error: error instanceof Error ? error.message : String(error) });
         throw error;
       }

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Pin published TRON SDK and resource extension 2.1.1 with official x402 2.29.0.
+- Release EVM nonce reservations after explicit insufficient-funds or fee-cap rejections, while blocking retries after ambiguous broadcasts.
+- Align compatibility assertions with Core 2.29 verification hooks and EVM invalid-payload errors.
+- Refresh follow-redirects to 1.16.2 in the lockfile.
+
 - Support Agent Wallet 3.1.0-beta.1 with its native Zod 4 dependency, retaining
   wallet-backed EVM/TRON transaction signing and restricted Resource Owner signing.
 - Use official x402 Core, EVM, and generic extensions with the aligned TRON 2.1

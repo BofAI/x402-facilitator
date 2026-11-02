@@ -60,7 +60,7 @@ describe("official Core service registration", () => {
         paymentPayload: { x402Version: 2, accepted: requirements, payload: {} }, paymentRequirements: requirements,
       }) });
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ isValid: false, invalidReason: "invalid_exact_evm_unexpected_error" });
+    expect(await response.json()).toMatchObject({ isValid: false, invalidReason: "invalid_payload" });
     expect(signers.evm.writeContract).not.toHaveBeenCalled();
   });
   it.each(["permit2", "eip3009"])("rejects missing TRON %s authorization as a verification result", async method => {

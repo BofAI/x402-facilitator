@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { encodeFunctionData } from "viem";
+import { createPublicClient, custom, encodeFunctionData } from "viem";
 import type { EvmRpcClient } from "../src/evm-wallet.js";
 
 const rpc = {
@@ -93,6 +93,24 @@ describe("service-owned EVM wallet overlay with official signer", () => {
     rpc.getTransactionCount.mockResolvedValueOnce(8);
     await expect(signer.sendTransaction({ to: recipient, data: "0x" })).resolves.toBe("0xabc");
     expect(sign).toHaveBeenLastCalledWith(expect.objectContaining({ nonce: 8 }));
+  });
+
+  it.each([
+    ["insufficient funds for gas * price + value", "0x7777777777777777777777777777777777777777"],
+    ["max fee per gas less than block base fee", "0x8888888888888888888888888888888888888888"],
+  ])("reuses the nonce after an explicit RPC rejection: %s", async (message, address) => {
+    let broadcasts = 0;
+    const publicClient = createPublicClient({ transport: custom({ request: async () => {
+      if (++broadcasts === 1) throw { code: -32000, message };
+      return "0xabc";
+    } }) });
+    const sign = vi.fn<(args: { nonce: number }) => Promise<string>>(async () => "0x1234");
+    const signer = await createFacilitatorEvmSigner({ getAddress: () => address, signTransaction: sign },
+      { ...options, client: { ...rpc, sendRawTransaction: publicClient.sendRawTransaction } as unknown as EvmRpcClient });
+    await expect(signer.sendTransaction({ to: recipient, data: "0x" })).rejects.toThrow(message);
+    await expect(signer.sendTransaction({ to: recipient, data: "0x" })).resolves.toBe("0xabc");
+    expect(sign.mock.calls.map(([args]) => args.nonce)).toEqual([7, 7]);
+    expect(broadcasts).toBe(2);
   });
 
   it("does not consume a nonce when wallet signing fails before broadcast", async () => {

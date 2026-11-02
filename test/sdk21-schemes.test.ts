@@ -359,7 +359,8 @@ describe("published SDK 2.1 protocol failure boundaries", () => {
     const response = await test.post("/verify", payload);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ isValid: false, invalidReason: "invalid_batch_settlement_tron_payload_type" });
-    expect(test.hooks).toEqual(["verify-failed"]);
+    // Core 2.29 sends returned rejections through onAfterVerify; failure hooks handle throws.
+    expect(test.hooks).toEqual(["verified"]);
     expect(test.writes).toHaveLength(0);
   });
   it("rejects a claim whose receiver authorizer differs from the configured wallet", async () => {
