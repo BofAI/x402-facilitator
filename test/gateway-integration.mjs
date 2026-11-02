@@ -242,6 +242,10 @@ test("SDK 2.1 → Gateway → Facilitator HTTP → PostgreSQL → upstream; repl
   const replay = await jsonAt(`${f.facilitatorUrl}/settle`, post({ paymentPayload: f.payment, paymentRequirements: f.requirements }));
   assert.equal(replay.body.success, false);
   assert.equal(replay.body.errorReason, "permit2_nonce_consumed");
+  const gatewayReplay = await pay(f);
+  assert.equal(gatewayReplay.status, 400);
+  assert.equal(gatewayReplay.body.code, "permit2_nonce_consumed");
+  assert.equal(gatewayReplay.headers.get("PAYMENT-RESPONSE"), null);
   assert.deepEqual(f.stats(), { settlements: 1, deliveries: 1 });
   assert.equal((await getDatabasePool().query("SELECT count(*) FROM settlements WHERE tx_hash=$1 AND status='success'", [settlement.transaction])).rows[0].count, "1");
   assert.equal((await fetch(`${f.facilitatorUrl}/metrics`)).status, 200);
