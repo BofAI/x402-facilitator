@@ -66,29 +66,18 @@ export async function createSponsoringService(config: SponsoringConfig, settleme
       permissionId: config.permission_id, confirmationMode: "packed", confirmationTimeoutMs: 90000,
       minimumApprovalBroadcastWindowMs: 285000, confirmationPollIntervalMs: 3000 }, reclaimAnchor.blockHeader);
     const chain = guardSponsoringChain({ ...base, async confirm(txID) {
-      const operation = await storageBoundary(() => store.findAction(txID));
-      const approvalExpiration = operation?.approvalTxID === txID ? Number(operation.request.approvalExpiration) : undefined;
-      const expiration = approvalExpiration ?? await storageBoundary(() => store.expiration(txID));
-      // Approval bytes come from the client, so their expiry is in the operation,
-      // not the Resource Owner transaction journal. Avoid polling expired absence.
-      const result = approvalExpiration !== undefined && Date.now() >= approvalExpiration ? "unknown" : await base.confirm(txID);
+      const result = await base.confirm(txID);
       if (result !== "unknown") return result;
-      if (expiration === undefined || !Number.isSafeInteger(expiration) || expiration <= 0) return result;
+      const expiration = await storageBoundary(() => store.expiration(txID));
+      if (expiration === undefined) return result;
       // base.confirm intentionally folds transport failures into "unknown".
       // A successful fresh read is required before declaring an expired tx absent.
       const receipt = await tron.solidityNode.request<{ blockNumber?: number; receipt?: { result?: string }; Error?: string }>(
         "walletsolidity/gettransactioninfobyid", { value: txID }, "post");
-      if (!receipt || typeof receipt !== "object" || Array.isArray(receipt) || receipt.Error) throw new RecoverableChainError(new Error("sponsor_confirmation_unavailable"));
+      if (receipt.Error) throw new RecoverableChainError(new Error("sponsor_confirmation_unavailable"));
       if (receipt.blockNumber != null) return receipt.receipt?.result && receipt.receipt.result !== "SUCCESS" ? "failed" : "confirmed";
       const block = await tron.solidityNode.request<{ block_header: { raw_data: { timestamp: number } } }>("walletsolidity/getnowblock", {}, "post");
-      if (!Number.isSafeInteger(block.block_header?.raw_data?.timestamp) || block.block_header.raw_data.timestamp <= expiration) return "unknown";
-      // The head may have crossed expiry and solidified Approval between the
-      // preceding receipt read and this head read. Recheck after that proof.
-      const finalReceipt = await tron.solidityNode.request<{ blockNumber?: number; receipt?: { result?: string }; Error?: string }>(
-        "walletsolidity/gettransactioninfobyid", { value: txID }, "post");
-      if (!finalReceipt || typeof finalReceipt !== "object" || Array.isArray(finalReceipt) || finalReceipt.Error) throw new RecoverableChainError(new Error("sponsor_confirmation_unavailable"));
-      if (finalReceipt.blockNumber != null) return finalReceipt.receipt?.result && finalReceipt.receipt.result !== "SUCCESS" ? "failed" : "confirmed";
-      return "failed";
+      return block.block_header.raw_data.timestamp > expiration ? "failed" : "unknown";
     } }, store, { assertReclaim: reclaimAnchor.assertBroadcast });
     const sdk = createTrc20ApprovalResourceSponsoringRuntime({ chain, coordinator: store,
       policy: createStaticTrc20ResourceSponsoringPolicy({ allowedNetworks: [config.network],

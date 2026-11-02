@@ -70,11 +70,7 @@ export function guardSponsoringChain(base: Trc20ResourceSponsoringChain, store: 
       if (!operation || txID !== operation.approvalTxID) return base.confirm(txID);
       const deadline = Math.min(now() + (timing.confirmationTimeoutMs ?? 90_000),
         (await storageBoundary(() => store.deadlines(operation.key))).businessDeadline, Number(operation.request.approvalExpiration));
-      if (now() >= deadline) {
-        // Business timeout stops execution, not historical reconciliation. After
-        // signed Approval expiry, the base must prove a receipt or chain expiry.
-        return now() >= Number(operation.request.approvalExpiration) ? base.confirm(txID) : "unknown";
-      }
+      if (now() >= deadline) return "unknown";
       const receiptStatus = await base.confirm(txID);
       if (receiptStatus !== "confirmed") return receiptStatus;
       do {

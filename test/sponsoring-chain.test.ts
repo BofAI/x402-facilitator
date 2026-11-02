@@ -20,16 +20,6 @@ function fixture() {
   return { chain, base, store, operation, setNow: (value: number) => { now = value; } };
 }
 describe("sponsoring chain boundary", () => {
-  it.each(["confirmed", "failed", "unknown"] as const)("reconciles expired Approval as %s beyond its business window", async status => {
-    const { chain, base, operation, setNow } = fixture();
-    operation.request.approvalExpiration = "500000";
-    setNow(500001);
-    vi.mocked(base.confirm).mockResolvedValue(status);
-    expect(await chain.confirm("approve")).toBe(status);
-    expect(base.confirm).toHaveBeenCalledWith("approve");
-    expect(base.allowanceSufficient).not.toHaveBeenCalled();
-  });
-
   it.each(["prepareDelegate", "prepareUndelegate"] as const)("does not classify local %s validation as transport failure", async method => {
     const { store, base } = fixture();
     base[method].mockRejectedValue(new Error("resource_owner_signed_transaction_mismatch"));
