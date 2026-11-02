@@ -70,6 +70,43 @@ function requestDigest(request: Trc20ApprovalResourceSponsoringRequest): string 
 }
 
 describe("sponsoring service lifecycle", () => {
+  it.each([false, true])("rechecks receipt after the solidified head crosses Approval expiry (final read unavailable=%s)", async unavailable => {
+    vi.useFakeTimers();
+    const now = 1_000_000; vi.setSystemTime(now);
+    const config = testConfig(), key = "expired-approval-race";
+    const store = new SqliteSponsoringCoordinator(config.database, { network: config.network, owner: config.owner,
+      permissionId: config.permission_id }, { energy: 1_000_000n, bandwidth: 1_000_000n, budget: 100n, management: 1000n });
+    const request = { network: config.network, approvalTxID: "approval", approvalExpiration: String(now - 1000),
+      paymentRequirements: { network: config.network, amount: "1" } } as Trc20ApprovalResourceSponsoringRequest;
+    await store.admit({ key, network: config.network, approvalTxID: "approval", payer: config.owner,
+      requestDigest: key, request, status: "failed_recovering", revision: 0, createdAtMs: now - 600000,
+      recoveryStartedAtMs: now - 600000, budgetUnits: 1n,
+      plan: { energyRequired: 0n, bandwidthRequired: 0n, managementBandwidthRequired: 0n, replacementCost: 0n, legs: [] },
+      actions: [{ kind: "approval", txID: "approval", signedTransaction: "aa", status: "unknown" }] });
+    store.close();
+    let receiptReads = 0;
+    const rpc = vi.spyOn(providers.HttpProvider.prototype, "request").mockImplementation(async path => {
+      if (path === "walletsolidity/gettransactioninfobyid") {
+        if (++receiptReads === 1) return {};
+        if (unavailable) throw new Error("RPC unavailable");
+        return { id: "approval", blockNumber: 100, receipt: { result: "SUCCESS" } };
+      }
+      if (path === "walletsolidity/getnowblock") return { block_header: { raw_data: { timestamp: now } } };
+      if (path === "walletsolidity/getdelegatedresourceaccountindexv2") return { toAccounts: [] };
+      throw new Error(`Unexpected RPC: ${path}`);
+    });
+    const service = await createSponsoringService(config, settlement);
+    try {
+      service.start(); await vi.advanceTimersByTimeAsync(100);
+      const db = new DatabaseSync(config.database, { readOnly: true });
+      try {
+        const row = db.prepare("SELECT payload FROM operations WHERE key=?").get(key) as { payload: Uint8Array };
+        expect(deserialize(row.payload).actions).toContainEqual(expect.objectContaining({ kind: "approval", status: unavailable ? "unknown" : "confirmed" }));
+      } finally { db.close(); }
+      expect(receiptReads).toBe(2);
+    } finally { await service.close(); rpc.mockRestore(); vi.useRealTimers(); }
+  });
+
   it.each(["absent", "rpc-failure", "malformed", "failed", "invalid-block"] as const)(
     "classifies pre-expiry reclaim evidence %s without releasing delegated capacity", async evidence => {
       vi.useFakeTimers();
