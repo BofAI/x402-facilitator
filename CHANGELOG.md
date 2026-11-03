@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-03
+
 ### Changed
 
 - Pin published TRON SDK and resource extension 2.1.1 with official x402 2.29.0.
