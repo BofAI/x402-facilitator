@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { utils, type TronWeb } from "tronweb";
-import type { PreparedTronAction, Trc20ApprovalResourceSponsoringRequest } from "@bankofai/x402-tron";
+import type { PreparedTronAction, Trc20ApprovalResourceSponsoringRequest } from "@bankofai/x402-tron-extensions";
 import { ApprovalPendingError, RecoverableChainError } from "./recovery-errors.js";
 
 interface Block {

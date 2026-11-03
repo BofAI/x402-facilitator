@@ -1,12 +1,15 @@
-import { createTronWebResourceSponsoringChain, type Trc20ApprovalResourceSponsoringRequest,
-  type TronWebResourceSponsoringChainOptions } from "@bankofai/x402-tron";
+import { createTronWebResourceSponsoringChain, type Trc20ApprovalResourceSponsoringRequest, type TronWebResourceSponsoringChainOptions } from "@bankofai/x402-tron-extensions";
 import type { TronWeb } from "tronweb";
 
 type BlockHeader = NonNullable<NonNullable<Parameters<TronWeb["transactionBuilder"]["undelegateResource"]>[4]>["blockHeader"]>;
 
 /** Keep reclaim ordering in the facilitator. Each request supplies TronWeb's
  * public blockHeader option without modifying the SDK or the shared client. */
-export async function createAnchoredSponsoringChain(options: TronWebResourceSponsoringChainOptions,
+export interface AnchoredSponsoringChainOptions extends Omit<TronWebResourceSponsoringChainOptions, "tronWeb"> {
+  tronWeb: TronWeb;
+}
+
+export async function createAnchoredSponsoringChain(options: AnchoredSponsoringChainOptions,
   blockHeader: (request: Trc20ApprovalResourceSponsoringRequest) => Promise<BlockHeader>) {
   const base = await createTronWebResourceSponsoringChain(options);
   return { ...base, async prepareUndelegate(...args: Parameters<typeof base.prepareUndelegate>) {

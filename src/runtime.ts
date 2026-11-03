@@ -33,7 +33,7 @@ import { initDatabase } from "./db/index.js";
 import { startApiKeyRefresher } from "./auth.js";
 import type { GasFreeProxySettings } from "./gasfree-proxy.js";
 import { logger, setLogLevel, setLogFile, toSdkLogger } from "./logger.js";
-import { setLogger } from "@bankofai/x402-core";
+import { setLogger } from "@bankofai/x402-tron";
 
 /** Aggregated, immutable runtime configuration resolved once at startup. */
 export interface RuntimeConfig {

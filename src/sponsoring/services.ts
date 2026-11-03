@@ -1,4 +1,5 @@
-import { normalizeTronNetwork, type Trc20ApprovalResourceSponsoringRuntime } from "@bankofai/x402-tron";
+import { normalizeTronNetwork } from "@bankofai/x402-tron";
+import { type Trc20ApprovalResourceSponsoringRuntime } from "@bankofai/x402-tron-extensions";
 import type { SponsoringConfig } from "./config.js";
 import type { SponsoringService } from "./service.js";
 

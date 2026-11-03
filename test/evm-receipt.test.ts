@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { GasSponsoringFacilitatorEvmSigner } from "@bankofai/x402-evm/adapters/agent-wallet";
+import type { GasSponsoringFacilitatorEvmSigner } from "../src/evm-wallet.js";
 import { withReceiptFallback, type ReceiptWaiter } from "../src/evm-receipt.js";
 
 const HASH = `0x${"ab".repeat(32)}` as `0x${string}`;

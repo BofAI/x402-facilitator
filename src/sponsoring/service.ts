@@ -1,10 +1,8 @@
 import { TronWeb, providers } from "tronweb";
 import { isDeepStrictEqual } from "node:util";
 import type { Pool } from "pg";
-import { createTrc20ApprovalResourceSponsoringRuntime,
-  createStaticTrc20ResourceSponsoringPolicy, createTrc20ApprovalPolicy,
-  type FacilitatorTronSigner, type Trc20ApprovalResourceSponsoringRuntime,
-  normalizeTronNetwork, type Trc20SponsoringOperation, type Trc20ResourceLeg } from "@bankofai/x402-tron";
+import { createTrc20ApprovalPolicy, type FacilitatorTronSigner, normalizeTronNetwork } from "@bankofai/x402-tron";
+import { createTrc20ApprovalResourceSponsoringRuntime, createStaticTrc20ResourceSponsoringPolicy, type Trc20ApprovalResourceSponsoringRuntime, type Trc20SponsoringOperation, type Trc20ResourceLeg } from "@bankofai/x402-tron-extensions";
 import { createSponsoringCoordinator } from "./store-factory.js";
 import { guardSponsoringChain } from "./chain.js";
 import { createAnchoredSponsoringChain } from "./sdk-chain.js";

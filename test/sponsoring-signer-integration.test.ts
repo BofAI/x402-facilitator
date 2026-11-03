@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { TronWeb, utils } from "tronweb";
-import { createTronWebResourceSponsoringChain, TRON_NILE, type Trc20ApprovalResourceSponsoringRequest } from "@bankofai/x402-tron";
+import { TRON_NILE } from "@bankofai/x402-tron";
+import { createTronWebResourceSponsoringChain, type Trc20ApprovalResourceSponsoringRequest } from "@bankofai/x402-tron-extensions";
 import { buildResourceOwnerSigner } from "../src/sponsoring/signer.js";
 import { sponsoringConfigSchema } from "../src/sponsoring/config.js";
 

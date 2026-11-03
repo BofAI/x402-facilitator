@@ -3,9 +3,9 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { Pool, PoolClient } from "pg";
 import { TronWeb } from "tronweb";
 import { PERMIT2_ADDRESSES, normalizeAddressForSigning } from "@bankofai/x402-tron";
-import { PERMIT2_ADDRESS } from "@bankofai/x402-evm";
-import type { x402Facilitator } from "@bankofai/x402-core/facilitator";
-import type { PaymentPayload, PaymentRequirements } from "@bankofai/x402-core/types";
+import { PERMIT2_ADDRESS } from "@x402/evm";
+import type { x402Facilitator } from "@x402/core/facilitator";
+import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { familyOf, requireCanonicalNetwork, type CanonicalNetwork } from "./network.js";
 import { logger } from "./logger.js";
 

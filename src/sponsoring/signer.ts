@@ -1,6 +1,7 @@
 import { resolveWallet, type Wallet } from "@bankofai/agent-wallet";
 import { TronWeb } from "tronweb";
-import { normalizeSignedTronTransaction, type TronResourceOwnerSigner } from "@bankofai/x402-tron";
+import { normalizeSignedTronTransaction } from "@bankofai/x402-tron";
+import { type TronResourceOwnerSigner } from "@bankofai/x402-tron-extensions";
 import type { SponsoringConfig } from "./config.js";
 import { assertPermit2SettlementLease } from "../permit2-replay.js";
 
