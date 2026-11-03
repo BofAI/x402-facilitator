@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { serialize } from "node:v8";
 import { Pool } from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Trc20SponsoringOperation } from "@bankofai/x402-tron";
+import type { Trc20SponsoringOperation } from "@bankofai/x402-tron-extensions";
 import { PostgresSponsoringCoordinator } from "../src/sponsoring/postgres-store.js";
 
 const url = process.env.SPONSORING_TEST_DATABASE_URL;

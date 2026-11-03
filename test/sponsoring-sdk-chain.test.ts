@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { TronWeb, utils } from "tronweb";
-import type { Trc20ApprovalResourceSponsoringRequest } from "@bankofai/x402-tron";
+import type { Trc20ApprovalResourceSponsoringRequest } from "@bankofai/x402-tron-extensions";
 import { createAnchoredSponsoringChain } from "../src/sponsoring/sdk-chain.js";
 
 const owner = "TGRjCWwtr3MTX3GKmnTQqo8GAhAFwRCNV9";

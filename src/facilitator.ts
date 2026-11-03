@@ -12,21 +12,20 @@
  * forwards to the official relayer. `gasfreeBaseUrlFor` supplies that proxy base per
  * network (or null to skip exact_gasfree registration).
  */
-import { x402Facilitator } from "@bankofai/x402-core/facilitator";
-import { createFacilitator } from "@bankofai/x402-core";
+import { x402Facilitator } from "@x402/core/facilitator";
 import { registerExactTronScheme } from "@bankofai/x402-tron/exact/facilitator";
 import { registerExactGasFreeTronScheme } from "@bankofai/x402-tron/gasfree/facilitator";
 import { UptoTronScheme } from "@bankofai/x402-tron/upto/facilitator";
 import { BatchSettlementTronScheme } from "@bankofai/x402-tron/batch-settlement/facilitator";
-import { registerExactEvmScheme } from "@bankofai/x402-evm/exact/facilitator";
-import { UptoEvmScheme } from "@bankofai/x402-evm/upto/facilitator";
-import { BatchSettlementEvmScheme } from "@bankofai/x402-evm/batch-settlement/facilitator";
+import { ExactEvmScheme } from "./evm-exact.js";
+import { UptoEvmScheme } from "@x402/evm/upto/facilitator";
+import { BatchSettlementEvmScheme } from "@x402/evm/batch-settlement/facilitator";
 import {
   createErc20ApprovalGasSponsoringExtension,
-  createTrc20ApprovalResourceSponsoringExtension,
   type Erc20ApprovalGasSponsoringSigner,
-} from "@bankofai/x402-extensions";
-import type { GasSponsoringFacilitatorEvmSigner } from "@bankofai/x402-evm/adapters/agent-wallet";
+} from "@x402/extensions";
+import { createTrc20ApprovalResourceSponsoringExtension } from "@bankofai/x402-tron-extensions";
+import type { GasSponsoringFacilitatorEvmSigner } from "./evm-wallet.js";
 import {
   buildTronFacilitatorSigner,
   buildEvmFacilitatorSigner,
@@ -40,7 +39,7 @@ import {
   ALL_SCHEMES,
   enabledNetworks,
 } from "./config.js";
-import { logger } from "./logger.js";
+import { logger, attachFacilitatorLogging } from "./logger.js";
 import type { SponsoringService } from "./sponsoring/service.js";
 import { routingSponsoringRuntime, sponsoringForNetwork } from "./sponsoring/services.js";
 import { registerPermit2ReplayGuard } from "./permit2-replay.js";
@@ -120,7 +119,9 @@ async function registerEvmNetwork(setup: NetworkSetup): Promise<GasSponsoringFac
   });
 
   if (has("exact")) {
-    registerExactEvmScheme(facilitator, { signer, networks: caip });
+    // The official helper also enables v1 on every legacy network. This HTTP
+    // service accepts v2 only and must advertise exactly its configured networks.
+    facilitator.register(caip, new ExactEvmScheme(signer));
     logger.info("Registered exact (EVM)", { network });
   }
 
@@ -184,10 +185,18 @@ export async function buildFacilitator(
   cfg: FacilitatorConfig,
   opts: BuildFacilitatorOptions,
 ): Promise<x402Facilitator> {
-  // createFacilitator() = new x402Facilitator() with the SDK's structured
-  // verify/settle logging hooks pre-attached; output flows through the global
-  // logger wired in src/index.ts.
-  const facilitator = createFacilitator();
+  const facilitator = attachFacilitatorLogging(new x402Facilitator());
+  // Keep incomplete client authorizations in the verification error contract.
+  // Genuine RPC failures and the SDK's explicit rejection reasons pass through.
+  facilitator.onVerifyFailure(async ({ paymentPayload, requirements, error }) => {
+    if (!(error instanceof TypeError) || requirements.scheme !== "exact" ||
+      !requirements.network.startsWith("tron:")) return;
+    const authorization = paymentPayload.payload.permit2Authorization ?? paymentPayload.payload.authorization;
+    if (!authorization || typeof authorization !== "object" || Array.isArray(authorization)) {
+      return { recovered: true, result: { isValid: false,
+        invalidReason: "invalid_exact_tron_payload_authorization" } };
+    }
+  });
   const networks = cfg.facilitator.networks ?? {};
   const evmGasSponsoringSigners: Record<string, GasSponsoringFacilitatorEvmSigner> = {};
 

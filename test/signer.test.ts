@@ -21,8 +21,8 @@ import { buildEvmAuthorizerSigner, buildTronAuthorizerSigner, buildEvmFacilitato
 const captured = vi.hoisted(() => ({ wallets: {} as Record<string, {
   signTransaction(payload: Record<string, unknown>): Promise<unknown>;
 }> }));
-vi.mock("@bankofai/x402-evm/adapters/agent-wallet", async importOriginal => {
-  const actual = await importOriginal<typeof import("@bankofai/x402-evm/adapters/agent-wallet")>();
+vi.mock("../src/evm-wallet.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../src/evm-wallet.js")>();
   return { ...actual, createFacilitatorEvmSigner: (...args: Parameters<typeof actual.createFacilitatorEvmSigner>) => {
     captured.wallets.evm = args[0];
     return actual.createFacilitatorEvmSigner(...args);

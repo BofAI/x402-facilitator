@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Pin published TRON SDK and resource extension 2.1.1 with official x402 2.29.0.
+- Release fresh EVM nonce reservations after explicit insufficient-funds, fee-cap, or transaction-underpriced node rejections.
+- Retain unmined signed transactions per nonce and rebroadcast the original bytes before allocating past a dropped transaction; keep recovery failures blocked until the original is accepted or its nonce is mined.
+- Align compatibility assertions with Core 2.29 verification hooks and EVM invalid-payload errors.
+- Refresh follow-redirects to 1.16.2 in the lockfile.
+
+- Support Agent Wallet 3.1.0-beta.1 with its native Zod 4 dependency, retaining
+  wallet-backed EVM/TRON transaction signing and restricted Resource Owner signing.
+- Use official x402 Core, EVM, and generic extensions with the aligned TRON 2.1
+  stable mechanism and independent resource extension.
+- Preserve wallet-backed signing, receipt fallback, replay protection, and
+  verification/settlement logging through application adapters and Core hooks.
+- Return a protocol rejection for incomplete TRON exact authorizations instead
+  of an HTTP 500 response.
+
+### Security
+
+- Pin Zod 4.6.6 across the dependency tree to reject oversized constrained
+  collections before parsing elements, addressing GHSA-mrhx-c7xc-m3w5.
+- Pin Docker and CI to Node.js 24.22.1 for the SDK runtime floor and October 2026 security fixes.
+  Require patched Node.js 24/26 release lines for source installations.
+- Retain the patched system Brotli requirement and keep dependency auditing separate from image installs.
+
 ## [2.2.2] - 2026-10-25
 
 ### Security
