@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-11-10
+
+### Changed
+
+- Upgrade the Boa TRON SDK and resource extension to 2.1.2 and use a single TronWeb 6.5.1 installation.
+- Update the Node.js runtime used by Docker and CI to 24.22.2 and refresh the runtime and development dependencies.
+- Use 1Password Connect in production. Set `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN` at runtime with read access to the production vault.
+
+### Security
+
+- Update Hono Node Server to 2.1.6, Axios to 1.21.1, follow-redirects to 1.16.3, Zod to 4.6.7, and the lint toolchain's minimatch to 11.0.5.
+
 ## [2.3.0] - 2026-11-03
 
 ### Changed

@@ -1,6 +1,6 @@
 {
   "name": "x402-facilitator",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "x402 Facilitator service (TypeScript, @bankofai/x402-* ecosystem)",
   "type": "module",
   "private": true,
@@ -19,43 +19,57 @@
     "test:gateway": "npm run build && node --test test/gateway-integration.mjs"
   },
   "dependencies": {
-    "@1password/sdk": "^0.3.1",
+    "@1password/sdk": "^0.5.0",
     "@bankofai/agent-wallet": "3.1.0-beta.1",
-    "@bankofai/x402-tron": "2.1.1",
-    "@hono/node-server": "^2.0.12",
+    "@bankofai/x402-tron": "2.1.2",
+    "@hono/node-server": "^2.1.6",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
-    "hono-rate-limiter": "0.5.3",
+    "hono-rate-limiter": "0.5.4",
     "pg": "^8.13.0",
     "prom-client": "^15.1.0",
-    "tronweb": "^6.4.0",
+    "tronweb": "^6.5.1",
     "viem": "^2.21.0",
     "yaml": "^2.5.0",
-    "zod": "4.6.6",
-    "@bankofai/x402-tron-extensions": "2.1.1",
+    "zod": "4.6.7",
+    "@bankofai/x402-tron-extensions": "2.1.2",
     "@x402/core": "2.29.0",
     "@x402/evm": "2.29.0",
     "@x402/extensions": "2.29.0"
   },
   "devDependencies": {
-    "@types/node": "^22.13.4",
+    "@types/node": "^24.19.2",
     "@types/pg": "^8.11.10",
     "eslint": "^10.8.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.3",
+    "typescript": "~6.0.3",
     "typescript-eslint": "^8.64.0",
-    "vitest": "^4.1.11"
+    "vitest": "^5.1.0"
   },
   "overrides": {
     "tronweb": {
-      "axios": "1.20.0"
+      "axios": "1.21.1",
+      "bignumber.js": "9.3.1",
+      "eventemitter3": "5.0.4",
+      "semver": "7.8.6",
+      "tslib": "2.9.1",
+      "validator": "13.15.35"
     },
-    "follow-redirects": "^1.16.1",
-    "ws": "^8.21.1",
-    "esbuild": "^0.28.1",
-    "zod": "$zod"
+    "follow-redirects": "^1.16.3",
+    "ws": "^8.22.2",
+    "esbuild": "^0.28.2",
+    "zod": "$zod",
+    "eslint": {
+      "minimatch": "11.0.5"
+    },
+    "@eslint/config-array": {
+      "minimatch": "11.0.5"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "11.0.5"
+    }
   },
   "optionalDependencies": {
-    "ioredis": "^5.4.0"
+    "ioredis": "^6.0.0"
   }
 }

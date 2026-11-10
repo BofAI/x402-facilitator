@@ -13,9 +13,9 @@ database:
   max_open_conns: 100
 
 onepassword:
-  # Retains production Service Account mode; inject OP_SERVICE_ACCOUNT_TOKEN.
+  # Connect endpoint and token are injected via OP_CONNECT_HOST / OP_CONNECT_TOKEN.
   # Fill references as vault/item/field, not secret values.
-  mode: service_account
+  mode: connect
   database_url: "x402-facilitator/psql/url"
   # Production database credential references restored from Git history.
   database_user: "x402-facilitator/psql/user"
