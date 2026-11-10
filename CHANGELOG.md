@@ -9,11 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Pin published TRON SDK and resource extension 2.1.1 with official x402 2.29.0.
+- Use 1Password Connect in production. Inject `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN` with access to the production vault.
+
+- Update the Node.js runtime pin to 24.22.2 and refresh runtime and development dependencies, including 1Password SDK 0.5, ioredis 6, TypeScript 6, and Vitest 5.
+- Upgrade the Hono Node server to 2.1.6 and the lint toolchain’s minimatch to 11.0.5 to address dependency advisories.
+
+- Upgrade the published TRON SDK and resource extension to 2.1.2 and align on TronWeb 6.5.1.
 - Release fresh EVM nonce reservations after explicit insufficient-funds, fee-cap, or transaction-underpriced node rejections.
 - Retain unmined signed transactions per nonce and rebroadcast the original bytes before allocating past a dropped transaction; keep recovery failures blocked until the original is accepted or its nonce is mined.
 - Align compatibility assertions with Core 2.29 verification hooks and EVM invalid-payload errors.
-- Refresh follow-redirects to 1.16.2 in the lockfile.
+- Refresh TronWeb dependencies within their existing major versions, including Axios 1.21.1 and follow-redirects 1.16.3.
 
 - Support Agent Wallet 3.1.0-beta.1 with its native Zod 4 dependency, retaining
   wallet-backed EVM/TRON transaction signing and restricted Resource Owner signing.
