@@ -23,7 +23,7 @@ A TypeScript/Node service.
 
 ### Prerequisites
 
-- Node.js 24.22.1+ (24.x) or 26.12.1+. Docker and CI pin 24.22.1.
+- Node.js 24.22.1+ (24.x) or 26.12.1+. Docker and CI pin 24.22.2.
 - PostgreSQL
 - A configured agent-wallet v3 provider (`raw_secret`, `privy`, or `wallet_cli`)
 - Optional: 1Password service-account token (`OP_SERVICE_ACCOUNT_TOKEN`)

@@ -1,5 +1,5 @@
 # x402 Facilitator v2 (TypeScript / Node)
-FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS base
+FROM node:24.22.2-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS base
 # CVE-2026-111497: use Bookworm's patched system Brotli in both stages.
 # Fail the build if the configured Debian repositories do not provide the fix.
 RUN apt-get update \

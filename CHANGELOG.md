@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Update the Node.js runtime pin to 24.22.2 and refresh runtime and development dependencies, including 1Password SDK 0.5, ioredis 6, TypeScript 6, and Vitest 5.
+- Upgrade the Hono Node server to 2.1.6 and the lint toolchain’s minimatch to 11.0.5 to address dependency advisories.
+
 - Upgrade the published TRON SDK and resource extension to 2.1.2 and align on TronWeb 6.5.1.
 - Release fresh EVM nonce reservations after explicit insufficient-funds, fee-cap, or transaction-underpriced node rejections.
 - Retain unmined signed transactions per nonce and rebroadcast the original bytes before allocating past a dropped transaction; keep recovery failures blocked until the original is accepted or its nonce is mined.
