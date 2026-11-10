@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Use 1Password Connect in production. Inject `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN` with access to the production vault.
+
 - Update the Node.js runtime pin to 24.22.2 and refresh runtime and development dependencies, including 1Password SDK 0.5, ioredis 6, TypeScript 6, and Vitest 5.
 - Upgrade the Hono Node server to 2.1.6 and the lint toolchain’s minimatch to 11.0.5 to address dependency advisories.
 

@@ -26,7 +26,7 @@ A TypeScript/Node service.
 - Node.js 24.22.1+ (24.x) or 26.12.1+. Docker and CI pin 24.22.2.
 - PostgreSQL
 - A configured agent-wallet v3 provider (`raw_secret`, `privy`, or `wallet_cli`)
-- Optional: 1Password service-account token (`OP_SERVICE_ACCOUNT_TOKEN`)
+- For the built-in configs, a reachable 1Password Connect endpoint and a token with read access to the environment’s vault.
 
 ### Install and run
 
@@ -166,9 +166,8 @@ This broadens who can benefit from resources, without bypassing payment signatur
 asset policy, API-key settings or resource limits.
 
 Secrets resolve **env first, then 1Password**. Secret references keep the
-`vault/item/field` format. `onepassword.mode` selects `connect` (built-in dev)
-or `service_account` (built-in prod and the default when omitted); providers do
-not fall back to one another. Connect uses `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN`;
+`vault/item/field` format. `onepassword.mode` selects `connect` (built-in dev and prod)
+or `service_account` (the default when omitted). Each mode uses its own credentials. Connect uses `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN`;
 Service Accounts use `OP_SERVICE_ACCOUNT_TOKEN` / `onepassword.token`.
 Connect supports vault/item names or IDs and field IDs or unique labels. Duplicate
 names/labels are rejected; use IDs to disambiguate. Requests have a 10-second
@@ -286,7 +285,7 @@ docker build -t x402-facilitator .
 
 docker run -p 8001:8001 -p 9001:9001 \
   -e FACILITATOR_SERVICE_ENV=dev \
-  -e OP_SERVICE_ACCOUNT_TOKEN \
+  -e OP_CONNECT_HOST -e OP_CONNECT_TOKEN \
   -v "$PWD/logs:/app/logs" \
   x402-facilitator
 ```
@@ -304,9 +303,8 @@ Both `config/facilitator.config.dev.yaml` and
 runtime with `FACILITATOR_SERVICE_ENV=dev` or `FACILITATOR_SERVICE_ENV=prod`; no
 config-directory mount is required. `FACILITATOR_CONFIG_PATH` remains available
 for an explicit custom path.
-`OP_SERVICE_ACCOUNT_TOKEN` must be injected only at container runtime (for
-example by the deployment platform's secret environment-variable facility);
-it is never stored in the image or either YAML file.
+Inject `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN` at container runtime. The Connect
+token for the selected environment must have read access to its referenced vault.
 
 ## Status
 

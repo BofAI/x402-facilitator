@@ -74,7 +74,7 @@ describe("loadConfig", () => {
   it("loads production secret references and operator-confirmed Nile sponsorship", () => {
     const cfg = loadConfig(resolve("config/facilitator.config.prod.yaml"));
     expect(cfg.database.url).toBeUndefined();
-    expect(cfg.onepassword).toMatchObject({ mode: "service_account",
+    expect(cfg.onepassword).toMatchObject({ mode: "connect",
       database_url: "x402-facilitator/psql/url", database_user: "x402-facilitator/psql/user",
       database_password: "x402-facilitator/psql/password" });
     expect(cfg.logging?.dir).toBe("/app/logs");

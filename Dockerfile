@@ -22,7 +22,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY --from=build /app/dist ./dist
 # Bake the non-secret environment configs into the image. They contain only
-# 1Password references; OP_SERVICE_ACCOUNT_TOKEN remains a runtime env variable.
+# 1Password references; Connect credentials are injected at runtime.
 # Copy explicitly so a local config/facilitator.config.yaml is never included.
 COPY config/facilitator.config.dev.yaml ./config/facilitator.config.dev.yaml
 COPY config/facilitator.config.prod.yaml ./config/facilitator.config.prod.yaml
