@@ -82,7 +82,7 @@ describe("loadConfig", () => {
       api_key_database_url: "x402-facilitator/psql/devcenter-url" });
     expect(cfg.logging?.dir).toBe("/app/logs");
     expect(cfg.resource_sponsoring?.[0]).toMatchObject({ network: "tron:3448148188",
-      owner: "THuJK6PNaXibaQhxUdqUXczU57Y8EKhpex", permission_id: 3,
+      owner: "op://x402-facilitator/sponsoring/owner", permission_id: 3,
       require_api_key: true, energy_stake_sun: "10000000000", bandwidth_stake_sun: "20000000000",
       budget_sun: "500000000", management_bandwidth: "5000" });
     expect(enabledNetworks(cfg)).toEqual(["tron:3448148188", "tron:728126428", "eip155:97", "eip155:56", "eip155:84532", "eip155:8453"]);
@@ -432,19 +432,20 @@ describe("sponsoring Owner from 1Password", () => {
   });
 
   it.each([
-    ["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf", true],
-    ["invalid-owner", false],
-  ])("validates the resolved address from Connect (%s)", async (value, valid) => {
+    { env: "dev", vault: "x402-facilitator-dev", value: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf", valid: true },
+    { env: "prod", vault: "x402-facilitator", value: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf", valid: true },
+    { env: "dev", vault: "x402-facilitator-dev", value: "invalid-owner", valid: false },
+  ])("validates the resolved $env address from Connect ($value)", async ({ env, vault, value, valid }) => {
     vi.stubEnv("OP_CONNECT_HOST", "http://connect.example");
     vi.stubEnv("OP_CONNECT_TOKEN", "test-connect-token");
     const payloads = [
-      [{ name: "x402-facilitator-dev", id: "a".repeat(26) }],
+      [{ name: vault, id: "a".repeat(26) }],
       [{ title: "sponsoring", id: "b".repeat(26) }],
       { fields: [{ label: "owner", value }] },
     ];
     vi.stubGlobal("fetch", vi.fn(async () => Response.json(payloads.shift())));
 
-    const cfg = loadConfig(resolve("config/facilitator.config.dev.yaml"));
+    const cfg = loadConfig(resolve(`config/facilitator.config.${env}.yaml`));
     const configs = getSponsoringConfigs(cfg);
     if (valid) {
       await expect(configs).resolves.toMatchObject([{ owner: value }]);

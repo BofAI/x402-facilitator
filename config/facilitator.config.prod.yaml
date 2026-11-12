@@ -86,7 +86,7 @@ resource_sponsoring:
 
   # Use a Nile Owner dedicated to this PG ledger; never reuse an Owner with
   # outstanding obligations in another database. Keep its master key off-server.
-  owner: "THuJK6PNaXibaQhxUdqUXczU57Y8EKhpex"
+  owner: "op://x402-facilitator/sponsoring/owner"
   wallet_id: "resource-active"
   # Uses AGENT_WALLET_DIR; keep settlement as the active/default wallet.
   # Owner, resource-active signer and settlement must be distinct addresses.

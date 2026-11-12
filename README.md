@@ -83,10 +83,16 @@ Duplicate networks (including decimal/hex aliases) are rejected. SQLite entries
 must use distinct absolute file paths. PostgreSQL entries share the application
 connection pool and are isolated by network and Owner.
 
-The built-in dev config reads its Nile Owner address from
-`op://x402-facilitator-dev/sponsoring/owner`. Provision the `owner` field with
-the TRON address before deploying. Facilitator resolves and validates it at
-startup. Custom configurations also accept a literal TRON address.
+The built-in configs read their Nile Owner addresses from 1Password.
+
+| Environment | 1Password reference |
+| --- | --- |
+| `dev` | `op://x402-facilitator-dev/sponsoring/owner` |
+| `prod` | `op://x402-facilitator/sponsoring/owner` |
+
+Provision each `owner` field with its environment's TRON address before
+deploying. Facilitator resolves and validates the address at startup. Custom
+configurations also accept a literal TRON address.
 
 For example, after provisioning the addresses, wallets, assets and stake:
 
