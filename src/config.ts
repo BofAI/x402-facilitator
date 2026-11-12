@@ -275,14 +275,13 @@ export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
   return databaseUrlWithCredentials(rawUrl, user, password);
 }
 
-/** Resolve a separate DevCenter connection when configured. */
+/** Resolve the required DevCenter connection. */
 export async function getApiKeyDatabaseOptions(cfg: FacilitatorConfig): Promise<{
   url: string;
   sslMode: "disable" | "verify-full";
-} | undefined> {
+}> {
   const secretRef = cfg.onepassword?.api_key_database_url;
   const database = cfg.api_key_database;
-  if (secretRef === undefined && database === undefined) return undefined;
 
   const source = secretRef === undefined ? "api_key_database.url" : "onepassword.api_key_database_url";
   const rawUrl = secretRef === undefined

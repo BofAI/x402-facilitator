@@ -387,8 +387,12 @@ facilitator:
 });
 
 describe("DevCenter API key database config", () => {
-  it("is optional and defaults to verified TLS when configured", async () => {
-    expect(await getApiKeyDatabaseOptions(loadConfig(writeConfig(VALID)))).toBeUndefined();
+  it("requires a DevCenter URL at startup", async () => {
+    await expect(getApiKeyDatabaseOptions(loadConfig(writeConfig(VALID))))
+      .rejects.toThrow(/api_key_database\.url or onepassword\.api_key_database_url/);
+  });
+
+  it("defaults to verified TLS", async () => {
     const cfg = loadConfig(writeConfig(VALID + '\napi_key_database:\n  url: "postgresql://reader@localhost/devcenter"\n'));
     expect(await getApiKeyDatabaseOptions(cfg)).toEqual({
       url: "postgresql://reader@localhost/devcenter",

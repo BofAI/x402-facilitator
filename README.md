@@ -66,7 +66,8 @@ Choose a YAML configuration source explicitly. Set `FACILITATOR_SERVICE_ENV=dev`
 set `FACILITATOR_CONFIG_PATH` to an explicit YAML file; the explicit path takes
 precedence. The process fails before startup when neither is set.
 
-Required: `database.url`, `facilitator.networks` (≥1 network, listed = enabled).
+Configure the main database URL, the DevCenter API key database URL, and at
+least one enabled network under `facilitator.networks`.
 
 Optional Nile/Shasta Approval resource sponsoring supports SQLite or shared PostgreSQL
 storage. Both built-in configs enable Nile-only sponsorship and require
@@ -251,7 +252,8 @@ The main database also backs PostgreSQL sponsoring and Permit2 advisory locks.
 
 ### DevCenter API key database
 
-Both built-in configurations set `onepassword.api_key_database_url`. Provision
+Facilitator requires a DevCenter connection for API key reads. Both built-in
+configurations set `onepassword.api_key_database_url`. Provision
 the field in each vault before deploying its image.
 
 | Environment | 1Password reference |
@@ -271,12 +273,11 @@ default. For a private CA, configure the Node trust store, for example with
 DevCenter owns the key tables and manages key issuance and revocation. Facilitator
 reads only active keys, using one dedicated connection per process. Ensure the
 target database has the original `seller_id` for each key so existing settlement
-history remains associated with the correct seller. With a separate database
-configured, Facilitator creates its own settlement schema on the main database
-and skips the legacy key table setup. Deployments without a separate database
-configuration continue to read keys from the main database.
+history remains associated with the correct seller. Facilitator creates its
+settlement schema on the main database and reads `api_keys_plus` only from
+DevCenter.
 
-Startup requires a successful key read when DevCenter is configured. After
+Startup requires a successful key read from DevCenter. After
 startup, keys are read from memory and refreshed every
 `rate_limit.api_key_refresh_interval` seconds (default 60). If refreshes fail,
 the last successful snapshot is valid for up to three refresh intervals. After

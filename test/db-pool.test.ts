@@ -13,7 +13,8 @@ vi.mock("pg", () => ({ Pool: class {
   end = fake.end;
   on() {}
 } }));
-const options = { url: "postgresql://unused", poolSize: 1, maxOverflow: 0, maxLifeTime: 60, sslMode: "disable" };
+const apiKeyDatabase = { url: "postgresql://unused/devcenter", sslMode: "verify-full" as const };
+const options = { url: "postgresql://unused", poolSize: 1, maxOverflow: 0, maxLifeTime: 60, sslMode: "disable", apiKeyDatabase };
 afterEach(async () => { await disposeDatabase(); vi.resetAllMocks(); });
 it("only exposes the shared pool after successful initialization and before disposal", async () => {
   expect(() => getDatabasePool()).toThrow(/not initialized/);
@@ -36,19 +37,18 @@ it("keeps Permit2 locks on a separate lazy pool with the database's lifecycle", 
   expect(database.getPermit2LockPool()).not.toBe(getDatabasePool());
   expect(database.getPermit2LockPool()).toBe(database.getPermit2LockPool());
   await disposeDatabase();
-  expect(fake.end).toHaveBeenCalledTimes(2);
+  expect(fake.end).toHaveBeenCalledTimes(3);
   expect(() => database.getPermit2LockPool()).toThrow(/not initialized/);
 });
-it("disposes both pools even when one close rejects", async () => {
+it("disposes all three pools even when one close rejects", async () => {
   await initDatabase(options);
   fake.end.mockRejectedValueOnce(new Error("end failed"));
   await expect(disposeDatabase()).rejects.toThrow("end failed");
-  expect(fake.end).toHaveBeenCalledTimes(2);
+  expect(fake.end).toHaveBeenCalledTimes(3);
   expect(() => getDatabasePool()).toThrow(/not initialized/);
 });
 
 it("loads only active keys from DevCenter and keeps business queries and DDL on the main database", async () => {
-  const apiKeyDatabase = { url: "postgresql://unused/devcenter", sslMode: "verify-full" as const };
   fake.query.mockImplementation(async function (this: { url: string }, query: string | { text: string }) {
     const sql = typeof query === "string" ? query : query.text;
     if (this.url === apiKeyDatabase.url) {
@@ -59,7 +59,7 @@ it("loads only active keys from DevCenter and keeps business queries and DDL on 
     return { rows: [] };
   });
 
-  await initDatabase({ ...options, apiKeyDatabase });
+  await initDatabase(options);
   expect(await database.getActiveApiKeyAuth()).toEqual([
     { key: "test-devcenter-key", sellerId: "original-seller" },
   ]);

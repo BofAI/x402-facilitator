@@ -8,9 +8,7 @@
  *   - getSettlementsByAuthorization           (GET /payments?network=&nonce=...)
  *   - getSettlementsBySeller                  (GET /payments seller feed)
  *
- * On init the `settlements` table is ensured (CREATE TABLE IF NOT EXISTS); v1's
- * `payment_records` is neither created nor touched. `sellers` / `api_keys_plus`
- * are only ensured on the main database in legacy single-database mode.
+ * Startup ensures the settlements schema. DevCenter owns the API key table.
  */
 import { Pool } from "pg";
 import { and, desc, eq } from "drizzle-orm";
@@ -26,7 +24,7 @@ export interface DbInitOptions {
   maxOverflow: number;
   maxLifeTime: number;
   sslMode: string;
-  apiKeyDatabase?: { url: string; sslMode: "disable" | "verify-full" };
+  apiKeyDatabase: { url: string; sslMode: "disable" | "verify-full" };
 }
 
 let pool: Pool | null = null;
@@ -34,24 +32,6 @@ let permit2LockPool: Pool | null = null;
 let db: NodePgDatabase | null = null;
 let apiKeyPool: Pool | null = null;
 let apiKeyDb: NodePgDatabase | null = null;
-
-const CREATE_LEGACY_AUTH_TABLES_SQL = `
-CREATE TABLE IF NOT EXISTS sellers (
-  id BIGSERIAL PRIMARY KEY,
-  seller_id VARCHAR(64) NOT NULL UNIQUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS api_keys_plus (
-  id BIGSERIAL PRIMARY KEY,
-  seller_id VARCHAR(64) NOT NULL,
-  wallet_address VARCHAR(128) NOT NULL,
-  name VARCHAR(64) NOT NULL DEFAULT 'default',
-  key VARCHAR(64) NOT NULL UNIQUE,
-  is_active BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS ix_api_keys_plus_seller_id ON api_keys_plus (seller_id);
-`;
 
 /** Facilitator-owned schema, including deduplication of successful settlements. */
 export const CREATE_TABLES_SQL = `
@@ -100,21 +80,19 @@ export async function initDatabase(opts: DbInitOptions): Promise<void> {
   // use a separate lazy pool so a pool size of one cannot deadlock itself.
   permit2LockPool = new Pool(poolOptions);
   try {
-    await pool.query(opts.apiKeyDatabase ? CREATE_TABLES_SQL : CREATE_LEGACY_AUTH_TABLES_SQL + CREATE_TABLES_SQL);
-    if (opts.apiKeyDatabase) {
-      apiKeyPool = new Pool({
-        connectionString: opts.apiKeyDatabase.url,
-        ssl: sslFor(opts.apiKeyDatabase.sslMode),
-        max: 1,
-        idleTimeoutMillis: 30_000,
-        connectionTimeoutMillis: 5_000,
-        statement_timeout: 5_000,
-        query_timeout: 6_000,
-        options: "-c default_transaction_read_only=on",
-      });
-      apiKeyPool.on("error", () => logger.error("Idle API key database connection failed"));
-      apiKeyDb = drizzle(apiKeyPool);
-    }
+    await pool.query(CREATE_TABLES_SQL);
+    apiKeyPool = new Pool({
+      connectionString: opts.apiKeyDatabase.url,
+      ssl: sslFor(opts.apiKeyDatabase.sslMode),
+      max: 1,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+      statement_timeout: 5_000,
+      query_timeout: 6_000,
+      options: "-c default_transaction_read_only=on",
+    });
+    apiKeyPool.on("error", () => logger.error("Idle API key database connection failed"));
+    apiKeyDb = drizzle(apiKeyPool);
     db = drizzle(pool);
   } catch (error) {
     try { await disposeDatabase(); }
@@ -156,7 +134,8 @@ export function getPermit2LockPool(): Pool {
 
 /** Active API keys with their seller id (for the in-memory auth + seller cache). */
 export async function getActiveApiKeyAuth(): Promise<{ key: string; sellerId: string }[]> {
-  return (apiKeyDb ?? getDb())
+  if (!apiKeyDb) throw new Error("API key database not initialized. Call initDatabase first.");
+  return apiKeyDb
     .select({ key: apiKeys.key, sellerId: apiKeys.sellerId })
     .from(apiKeys)
     .where(eq(apiKeys.isActive, true));

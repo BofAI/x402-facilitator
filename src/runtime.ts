@@ -99,7 +99,7 @@ export function redactDatabaseUrl(databaseUrl: string): string {
   }
 }
 
-export async function initDb(cfg: FacilitatorConfig): Promise<boolean> {
+export async function initDb(cfg: FacilitatorConfig): Promise<void> {
   const databaseUrl = await getDatabaseUrl(cfg);
   const apiKeyDatabase = await getApiKeyDatabaseOptions(cfg);
   logger.info("Initializing database", { url: redactDatabaseUrl(databaseUrl) });
@@ -111,13 +111,11 @@ export async function initDb(cfg: FacilitatorConfig): Promise<boolean> {
     sslMode: databaseSslMode(cfg),
     apiKeyDatabase,
   });
-  return apiKeyDatabase !== undefined;
 }
 
 /** Stage 4: API-key cache + periodic refresh. */
-export async function initAuth(cfg: FacilitatorConfig, dedicatedDatabase: boolean): Promise<void> {
-  const interval = apiKeyRefreshInterval(cfg);
-  await startApiKeyRefresher(interval, dedicatedDatabase ? { maxAgeSeconds: interval * 3 } : {});
+export async function initAuth(cfg: FacilitatorConfig): Promise<void> {
+  await startApiKeyRefresher(apiKeyRefreshInterval(cfg));
 }
 
 /** Stage 5: GasFree proxy settings + per-network base URL resolver. */
@@ -154,10 +152,10 @@ export async function buildRuntimeConfig(cfg: FacilitatorConfig): Promise<Runtim
   initLogging(cfg);
   await initSecrets(cfg);
   const sponsoringConfigs = await getSponsoringConfigs(cfg);
-  const dedicatedApiKeyDatabase = await initDb(cfg);
+  await initDb(cfg);
   let gasfreeSettings: GasFreeProxySettings;
   try {
-    await initAuth(cfg, dedicatedApiKeyDatabase);
+    await initAuth(cfg);
     gasfreeSettings = await initGasFree(cfg);
   } catch (err) {
     stopApiKeyRefresher();

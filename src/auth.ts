@@ -64,16 +64,12 @@ export function refreshApiKeysCache(): Promise<boolean> {
   return refreshInFlight;
 }
 
-/** A bounded cache age also requires an initial successful read before serving. */
-export async function startApiKeyRefresher(
-  intervalSeconds: number,
-  { maxAgeSeconds = Infinity }: { maxAgeSeconds?: number } = {},
-): Promise<void> {
-  const loaded = await refreshApiKeysCache();
-  if (!loaded && Number.isFinite(maxAgeSeconds)) {
+/** Load the initial DevCenter snapshot before serving, then refresh periodically. */
+export async function startApiKeyRefresher(intervalSeconds: number): Promise<void> {
+  if (!(await refreshApiKeysCache())) {
     throw new Error("Unable to load API keys from the configured DevCenter database");
   }
-  maxCacheAgeMs = maxAgeSeconds * 1000;
+  maxCacheAgeMs = intervalSeconds * 3 * 1000;
   refresherTimer = setInterval(() => {
     void refreshApiKeysCache();
   }, intervalSeconds * 1000);

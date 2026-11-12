@@ -159,7 +159,7 @@ describe("DevCenter API key cache", () => {
 
   it("rejects startup when the first read fails", async () => {
     readKeys.mockRejectedValueOnce(new Error("database unavailable"));
-    await expect(startApiKeyRefresher(60, { maxAgeSeconds: 180 })).rejects.toThrow(/API key/i);
+    await expect(startApiKeyRefresher(60)).rejects.toThrow(/API key/i);
   });
 
   it("retains seller scope during a short outage, fails closed at expiry, and recovers", async () => {
@@ -171,7 +171,7 @@ describe("DevCenter API key cache", () => {
     const lookup = (key: string) =>
       app.request("/payments?network=eip155:97&nonce=0x1", { headers: { "X-API-KEY": key } });
 
-    await startApiKeyRefresher(60, { maxAgeSeconds: 180 });
+    await startApiKeyRefresher(60);
     await vi.advanceTimersByTimeAsync(120_000);
     expect((await lookup("k1")).status).toBe(200);
     expect(getSettlementsByAuthorization).toHaveBeenLastCalledWith(expect.objectContaining({ sellerId: "SELLER1" }));
