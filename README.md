@@ -206,7 +206,7 @@ and set `NODE_EXTRA_CA_CERTS` to its container path before starting Node.js.
 Alternatively, set `rate_limit.store` and `rate_limit.redis_url` in YAML;
 the store environment variable and either URL environment variable override YAML.
 The dev config enables TLS Valkey and references
-`x402-facilitator-nile_dev/redis/VALKEY_PASSWORD` through Connect.
+`x402-facilitator-dev/redis/VALKEY_PASSWORD` through Connect.
 `VALKEY_EXPIRE` is not used: counter expiration follows each configured rate-limit window.
 
 BSC transaction creation and broadcast use the primary RPC. Receipt confirmation waits up
@@ -245,7 +245,7 @@ the field in each vault before deploying its image.
 
 | Environment | 1Password reference |
 | --- | --- |
-| `dev` | `x402-facilitator-nile_dev/psql/devcenter-url` |
+| `dev` | `x402-facilitator-dev/psql/devcenter-url` |
 | `prod` | `x402-facilitator/psql/devcenter-url` |
 
 Store a `postgresql://` DSN with the DevCenter database name and dedicated

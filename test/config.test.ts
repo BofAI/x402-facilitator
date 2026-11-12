@@ -99,13 +99,13 @@ describe("loadConfig", () => {
     expect(cfg.resource_sponsoring?.[0]?.owner).toBe("TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y");
     expect(cfg.onepassword).toEqual({
       mode: "connect",
-      database_url: "x402-facilitator-nile_dev/psql/url",
-      database_user: "x402-facilitator-nile_dev/psql/user",
-      database_password: "x402-facilitator-nile_dev/psql/password",
-      api_key_database_url: "x402-facilitator-nile_dev/psql/devcenter-url",
-      trongrid_api_key: "x402-facilitator-nile_dev/trongrid/trongrid_api_key",
-      gasfree_api_key_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_key_nile",
-      gasfree_api_secret_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_secret_nile",
+      database_url: "x402-facilitator-dev/psql/url",
+      database_user: "x402-facilitator-dev/psql/user",
+      database_password: "x402-facilitator-dev/psql/password",
+      api_key_database_url: "x402-facilitator-dev/psql/devcenter-url",
+      trongrid_api_key: "x402-facilitator-dev/trongrid/trongrid_api_key",
+      gasfree_api_key_nile: "x402-facilitator-dev/gasfree/gasfree_api_key_nile",
+      gasfree_api_secret_nile: "x402-facilitator-dev/gasfree/gasfree_api_secret_nile",
     });
     expect(cfg.logging?.dir).toBe("/data/logs/facilitator");
     expect(cfg.resource_sponsoring?.[0]?.permission_id).toBe(3);
