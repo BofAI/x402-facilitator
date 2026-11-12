@@ -77,7 +77,8 @@ describe("loadConfig", () => {
     expect(cfg.database.url).toBeUndefined();
     expect(cfg.onepassword).toMatchObject({ mode: "connect",
       database_url: "x402-facilitator/psql/url", database_user: "x402-facilitator/psql/user",
-      database_password: "x402-facilitator/psql/password" });
+      database_password: "x402-facilitator/psql/password",
+      api_key_database_url: "x402-facilitator/psql/devcenter_readonly_url" });
     expect(cfg.logging?.dir).toBe("/app/logs");
     expect(cfg.resource_sponsoring?.[0]).toMatchObject({ network: "tron:3448148188",
       owner: "THuJK6PNaXibaQhxUdqUXczU57Y8EKhpex", permission_id: 3,
@@ -101,6 +102,7 @@ describe("loadConfig", () => {
       database_url: "x402-facilitator-nile_dev/psql/url",
       database_user: "x402-facilitator-nile_dev/psql/user",
       database_password: "x402-facilitator-nile_dev/psql/password",
+      api_key_database_url: "x402-facilitator-nile_dev/psql/devcenter_readonly_url",
       trongrid_api_key: "x402-facilitator-nile_dev/trongrid/trongrid_api_key",
       gasfree_api_key_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_key_nile",
       gasfree_api_secret_nile: "x402-facilitator-nile_dev/gasfree/gasfree_api_secret_nile",

@@ -240,17 +240,17 @@ The main database also backs PostgreSQL sponsoring and Permit2 advisory locks.
 
 ### DevCenter API key database
 
-Set `onepassword.api_key_database_url` to enable a separate DevCenter connection.
-Add the reference to the existing `onepassword` block in the deployment YAML.
+Both built-in configurations set `onepassword.api_key_database_url`. Provision
+the field in each vault before deploying its image.
 
-```yaml
-onepassword:
-  api_key_database_url: "<vault>/<item>/<field>"
-```
+| Environment | 1Password reference |
+| --- | --- |
+| `dev` | `x402-facilitator-nile_dev/psql/devcenter_readonly_url` |
+| `prod` | `x402-facilitator/psql/devcenter_readonly_url` |
 
 Store a `postgresql://` DSN with the DevCenter database name and dedicated
-read-only role in the referenced field. Grant the role database `CONNECT`, schema `USAGE`, and `SELECT` on
-`api_keys_plus(key, seller_id, is_active)`. The connection uses verified TLS by
+read-only role in the referenced field. Grant the role database `CONNECT`, schema
+`USAGE`, and `SELECT` on `api_keys_plus(key, seller_id, is_active)`. The connection uses verified TLS by
 default. For a private CA, configure the Node trust store, for example with
 `NODE_EXTRA_CA_CERTS`. For local testing, use `api_key_database.url` and, if needed,
 `api_key_database.ssl_mode: disable`. Set TLS through `ssl_mode` and omit
