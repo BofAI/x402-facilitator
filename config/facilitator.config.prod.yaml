@@ -26,6 +26,7 @@ onepassword:
   gasfree_api_secret_nile: "x402-facilitator/gasfree/gasfree_api_secret_nile"
   gasfree_api_key_mainnet: "x402-facilitator/gasfree/gasfree_api_key_mainnet"
   gasfree_api_secret_mainnet: "x402-facilitator/gasfree/gasfree_api_secret_mainnet"
+  sponsoring_owner: "x402-facilitator/sponsoring/owner"
 
 server:
   host: "0.0.0.0"
@@ -86,7 +87,6 @@ resource_sponsoring:
 
   # Use a Nile Owner dedicated to this PG ledger; never reuse an Owner with
   # outstanding obligations in another database. Keep its master key off-server.
-  owner: "x402-facilitator/sponsoring/owner"
   wallet_id: "resource-active"
   # Uses AGENT_WALLET_DIR; keep settlement as the active/default wallet.
   # Owner, resource-active signer and settlement must be distinct addresses.

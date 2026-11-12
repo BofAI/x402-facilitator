@@ -84,7 +84,7 @@ Duplicate networks (including decimal/hex aliases) are rejected. SQLite entries
 must use distinct absolute file paths. PostgreSQL entries share the application
 connection pool and are isolated by network and Owner.
 
-The built-in configs read their Nile Owner addresses from 1Password.
+The built-in configs use `onepassword.sponsoring_owner` for their Nile Owner addresses.
 
 | Environment | 1Password reference |
 | --- | --- |
@@ -93,7 +93,9 @@ The built-in configs read their Nile Owner addresses from 1Password.
 
 Provision each `owner` field with its environment's TRON address before
 deploying. Facilitator resolves and validates the address at startup. Custom
-configurations also accept a literal TRON address.
+configurations can set `resource_sponsoring.owner` directly. With multiple
+sponsoring entries, set `owner` on each entry that does not use
+`onepassword.sponsoring_owner`.
 
 For example, after provisioning the addresses, wallets, assets and stake:
 

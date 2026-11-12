@@ -98,6 +98,14 @@ const facilitatorConfigSchema = z
       ctx.addIssue({ code: "custom", path: ["api_key_database", "url"],
         message: "api_key_database.url or onepassword.api_key_database_url is required" });
     }
+    const missingOwners = cfg.resource_sponsoring?.filter(config => config.owner === undefined).length ?? 0;
+    if (missingOwners > 1) {
+      ctx.addIssue({ code: "custom", path: ["resource_sponsoring"],
+        message: "only one entry may use onepassword.sponsoring_owner; configure owner on the other entries" });
+    } else if (missingOwners === 1 && !parseOpRef(cfg.onepassword?.sponsoring_owner)) {
+      ctx.addIssue({ code: "custom", path: ["onepassword", "sponsoring_owner"],
+        message: "a vault/item/field reference is required when resource_sponsoring.owner is omitted" });
+    }
     const { max_open_conns: open, max_idle_conns: idle } = cfg.database;
     if (open !== undefined && idle !== undefined && idle > open) {
       ctx.addIssue({
@@ -314,10 +322,11 @@ export async function getApiKeyDatabaseOptions(cfg: FacilitatorConfig): Promise<
 /** Resolve configured Owner addresses before creating sponsoring services. */
 export async function getSponsoringConfigs(cfg: FacilitatorConfig): Promise<SponsoringConfig[]> {
   return Promise.all((cfg.resource_sponsoring ?? []).map(async (config, index) => {
-    if (!parseOpRef(config.owner)) return config;
+    const ownerInput = config.owner;
+    if (ownerInput !== undefined && !parseOpRef(ownerInput)) return { ...config, owner: ownerInput };
 
-    const source = `resource_sponsoring.${index}.owner`;
-    const value = await resolveRequiredOpField(cfg, source, config.owner);
+    const source = ownerInput === undefined ? "onepassword.sponsoring_owner" : `resource_sponsoring.${index}.owner`;
+    const value = await resolveRequiredOpField(cfg, source, ownerInput ?? cfg.onepassword?.sponsoring_owner);
     const owner = sponsoringConfigSchema.shape.owner.safeParse(value.trim());
     if (!owner.success) throw new Error(`${source}: invalid TRON address from 1Password`);
     return { ...config, owner: owner.data };
@@ -333,7 +342,7 @@ async function resolveRequiredSecret(
   return resolveRequiredOpField(cfg, `onepassword.${key}`, value);
 }
 
-async function resolveRequiredOpField(cfg: FacilitatorConfig, source: string, value: string): Promise<string> {
+async function resolveRequiredOpField(cfg: FacilitatorConfig, source: string, value: string | undefined): Promise<string> {
   const ref = parseOpRef(value);
   if (!ref) throw new Error(`${source} must be a vault/item/field reference`);
   const token = opToken(cfg);

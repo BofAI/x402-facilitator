@@ -38,11 +38,14 @@ describe("loadConfig", () => {
     const cfg = parse(readFileSync(resolve("config/facilitator.config.dev.yaml"), "utf8"));
     cfg.facilitator.networks["tron:2494104990"] = { schemes: ["exact"] };
     cfg.resource_sponsoring = [cfg.resource_sponsoring,
-      { ...cfg.resource_sponsoring, network: "tron:0x94a9059e", require_api_key: true, wallet_id: "shasta-active" }];
+      { ...cfg.resource_sponsoring, network: "tron:0x94a9059e", require_api_key: true,
+        wallet_id: "shasta-active", owner: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf" }];
     expect(loadConfig(writeConfig(stringify(cfg))).resource_sponsoring).toMatchObject([
       { network: "tron:3448148188", require_api_key: false },
       { network: "tron:2494104990", require_api_key: true, wallet_id: "shasta-active" },
     ]);
+    delete cfg.resource_sponsoring[1].owner;
+    expect(() => loadConfig(writeConfig(stringify(cfg)))).toThrow(/only one entry may use onepassword.sponsoring_owner/);
   });
 
   it("rejects duplicate canonical sponsor networks and networks not enabled for payment", () => {
@@ -50,7 +53,8 @@ describe("loadConfig", () => {
     const nile = cfg.resource_sponsoring;
     cfg.resource_sponsoring = [nile, { ...nile, network: "tron:3448148188" }];
     expect(() => loadConfig(writeConfig(stringify(cfg)))).toThrow(/duplicate sponsoring network/i);
-    cfg.resource_sponsoring = [nile, { ...nile, network: "tron:2494104990", require_api_key: true }];
+    cfg.resource_sponsoring = [nile, { ...nile, network: "tron:2494104990", require_api_key: true,
+      owner: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf" }];
     expect(() => loadConfig(writeConfig(stringify(cfg)))).toThrow(/must be enabled/);
   });
 
@@ -79,10 +83,11 @@ describe("loadConfig", () => {
     expect(cfg.onepassword).toMatchObject({ mode: "connect",
       database_url: "x402-facilitator/psql/url", database_user: "x402-facilitator/psql/user",
       database_password: "x402-facilitator/psql/password",
-      api_key_database_url: "x402-facilitator/psql/devcenter-url" });
+      api_key_database_url: "x402-facilitator/psql/devcenter-url",
+      sponsoring_owner: "x402-facilitator/sponsoring/owner" });
     expect(cfg.logging?.dir).toBe("/app/logs");
     expect(cfg.resource_sponsoring?.[0]).toMatchObject({ network: "tron:3448148188",
-      owner: "x402-facilitator/sponsoring/owner", permission_id: 3,
+      permission_id: 3,
       require_api_key: true, energy_stake_sun: "10000000000", bandwidth_stake_sun: "20000000000",
       budget_sun: "500000000", management_bandwidth: "5000" });
     expect(enabledNetworks(cfg)).toEqual(["tron:3448148188", "tron:728126428", "eip155:97", "eip155:56", "eip155:84532", "eip155:8453"]);
@@ -97,7 +102,7 @@ describe("loadConfig", () => {
   it("loads the configured dev Owner reference and rejects an invalid replacement", () => {
     const path = resolve(process.cwd(), "config/facilitator.config.dev.yaml");
     const cfg = loadConfig(path);
-    expect(cfg.resource_sponsoring?.[0]?.owner).toBe("x402-facilitator-dev/sponsoring/owner");
+    expect(cfg.resource_sponsoring?.[0]?.owner).toBeUndefined();
     expect(cfg.onepassword).toEqual({
       mode: "connect",
       database_url: "x402-facilitator-dev/psql/url",
@@ -107,6 +112,7 @@ describe("loadConfig", () => {
       trongrid_api_key: "x402-facilitator-dev/trongrid/trongrid_api_key",
       gasfree_api_key_nile: "x402-facilitator-dev/gasfree/gasfree_api_key_nile",
       gasfree_api_secret_nile: "x402-facilitator-dev/gasfree/gasfree_api_secret_nile",
+      sponsoring_owner: "x402-facilitator-dev/sponsoring/owner",
     });
     expect(cfg.logging?.dir).toBe("/data/logs/facilitator");
     expect(cfg.resource_sponsoring?.[0]?.permission_id).toBe(3);
@@ -118,7 +124,7 @@ describe("loadConfig", () => {
     expect(cfg.rate_limit?.anonymous).toBe("10/minute");
     const invalid = readFileSync(path, "utf8")
       .replace("x402-facilitator-dev/sponsoring/owner", "REPLACE_WITH_DEV_RESOURCE_OWNER");
-    expect(() => loadConfig(writeConfig(invalid))).toThrow(/resource_sponsoring\.0\.owner: invalid TRON address/);
+    expect(() => loadConfig(writeConfig(invalid))).toThrow(/onepassword\.sponsoring_owner: a vault\/item\/field reference is required/);
     expect(cfg.onepassword?.mode).toBe("connect");
     expect(cfg.logging?.level).toBe("info");
     expect(cfg.resource_sponsoring?.[0]?.storage).toEqual({ type: "postgres" });
