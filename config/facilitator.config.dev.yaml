@@ -65,7 +65,7 @@ resource_sponsoring:
 
   # OP: set the development deployment's Owner, NOT a local acceptance-test Owner.
   # Keep the Owner master key off the server. Owner, signer and settlement must differ.
-  owner: "TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y"
+  owner: "op://x402-facilitator-dev/sponsoring/owner"
   wallet_id: "resource-active"
   # wallet_dir is omitted: use AGENT_WALLET_DIR, otherwise ~/.agent-wallet.
   # Provision resource-active alongside settlement, but keep settlement active.

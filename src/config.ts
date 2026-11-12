@@ -13,7 +13,7 @@ import { z } from "zod";
 import { getSecretFromOnePassword, isUsableToken, parseOpRef, type OnePasswordOptions } from "./onepassword.js";
 import { logger, type Level } from "./logger.js";
 import { requireCanonicalNetwork } from "./network.js";
-import { sponsoringConfigsSchema } from "./sponsoring/config.js";
+import { sponsoringConfigSchema, sponsoringConfigsSchema, type SponsoringConfig } from "./sponsoring/config.js";
 
 /** Payment schemes a network can enable. `exact_gasfree` (TRON) rides with `exact`. */
 export type Scheme = "exact" | "upto" | "batch-settlement";
@@ -312,28 +312,45 @@ export async function getApiKeyDatabaseOptions(cfg: FacilitatorConfig): Promise<
   return { url: url.href, sslMode: database?.ssl_mode ?? "verify-full" };
 }
 
+/** Resolve configured Owner addresses before creating sponsoring services. */
+export async function getSponsoringConfigs(cfg: FacilitatorConfig): Promise<SponsoringConfig[]> {
+  return Promise.all((cfg.resource_sponsoring ?? []).map(async (config, index) => {
+    if (!config.owner.startsWith("op://")) return config;
+
+    const source = `resource_sponsoring.${index}.owner`;
+    const value = await resolveRequiredOpField(cfg, source, config.owner.slice(5));
+    const owner = sponsoringConfigSchema.shape.owner.safeParse(value.trim());
+    if (!owner.success) throw new Error(`${source}: invalid TRON address from 1Password`);
+    return { ...config, owner: owner.data };
+  }));
+}
+
 /** Resolve a required credential reference before creating service clients. */
 async function resolveRequiredSecret(
   cfg: FacilitatorConfig,
   key: "database_url" | "database_user" | "database_password" | "redis_password" | "api_key_database_url",
   value: string,
 ): Promise<string> {
+  return resolveRequiredOpField(cfg, `onepassword.${key}`, value);
+}
+
+async function resolveRequiredOpField(cfg: FacilitatorConfig, source: string, value: string): Promise<string> {
   const ref = parseOpRef(value);
-  if (!ref) throw new Error(`onepassword.${key} must be a vault/item/field reference`);
+  if (!ref) throw new Error(`${source} must be a vault/item/field reference`);
   const token = opToken(cfg);
   if (!isUsableToken(token)) {
-    if (opOptions(cfg).mode === "connect") throw new Error(`onepassword.${key} requires a valid OP_CONNECT_TOKEN`);
-    throw new Error(`onepassword.${key} requires a valid OP_SERVICE_ACCOUNT_TOKEN or onepassword.token`);
+    if (opOptions(cfg).mode === "connect") throw new Error(`${source} requires a valid OP_CONNECT_TOKEN`);
+    throw new Error(`${source} requires a valid OP_SERVICE_ACCOUNT_TOKEN or onepassword.token`);
   }
   try {
     const secret = await getSecretFromOnePassword(ref, token, opOptions(cfg));
     if (!secret) throw new Error("resolved to an empty value");
     return secret;
   } catch (err) {
-    if (key === "database_url" || key === "api_key_database_url") {
-      throw new Error(`Unable to resolve onepassword.${key}`);
+    if (source === "onepassword.database_url" || source === "onepassword.api_key_database_url") {
+      throw new Error(`Unable to resolve ${source}`);
     }
-    throw new Error(`Unable to resolve onepassword.${key}: ${err instanceof Error ? err.message : "provider error"}`);
+    throw new Error(`Unable to resolve ${source}: ${err instanceof Error ? err.message : "provider error"}`);
   }
 }
 

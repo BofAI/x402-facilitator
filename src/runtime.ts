@@ -18,6 +18,7 @@ import {
   getDatabaseUrl,
   getGasFreeCredentials,
   getRateLimitRedisPassword,
+  getSponsoringConfigs,
   getTrongridApiKey,
   injectAgentWalletPasswordEnv,
   logFilePath,
@@ -33,12 +34,14 @@ import {
 import { disposeDatabase, initDatabase } from "./db/index.js";
 import { startApiKeyRefresher, stopApiKeyRefresher } from "./auth.js";
 import type { GasFreeProxySettings } from "./gasfree-proxy.js";
+import type { SponsoringConfig } from "./sponsoring/config.js";
 import { logger, setLogLevel, setLogFile, toSdkLogger } from "./logger.js";
 import { setLogger } from "@bankofai/x402-tron";
 
 /** Aggregated, immutable runtime configuration resolved once at startup. */
 export interface RuntimeConfig {
   readonly cfg: FacilitatorConfig;
+  readonly sponsoringConfigs: readonly SponsoringConfig[];
   readonly host: string;
   readonly port: number;
   readonly metricsPort: number;
@@ -150,6 +153,7 @@ export function gasfreeBaseUrlResolver(
 export async function buildRuntimeConfig(cfg: FacilitatorConfig): Promise<RuntimeConfig> {
   initLogging(cfg);
   await initSecrets(cfg);
+  const sponsoringConfigs = await getSponsoringConfigs(cfg);
   const dedicatedApiKeyDatabase = await initDb(cfg);
   let gasfreeSettings: GasFreeProxySettings;
   try {
@@ -167,6 +171,7 @@ export async function buildRuntimeConfig(cfg: FacilitatorConfig): Promise<Runtim
 
   return {
     cfg,
+    sponsoringConfigs,
     host: serverHost(cfg),
     port: serverPort(cfg),
     metricsPort: monitoringPort(cfg),

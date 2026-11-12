@@ -2,6 +2,7 @@ import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { TronWeb } from "tronweb";
 import { TRON_NILE, TRON_SHASTA, normalizeTronNetwork } from "@bankofai/x402-tron";
+import { parseOpRef } from "../onepassword.js";
 
 const address = z.string().refine(value => TronWeb.isAddress(value), "invalid TRON address")
   .transform(value => TronWeb.address.fromHex(TronWeb.address.toHex(value)));
@@ -33,10 +34,22 @@ export const sponsoringConfigSchema = z.object({
 
 export type SponsoringConfig = z.infer<typeof sponsoringConfigSchema>;
 
+const sponsoringYamlConfigSchema = sponsoringConfigSchema.safeExtend({
+  owner: z.string().transform((value, ctx) => {
+    if (value.startsWith("op://") && parseOpRef(value.slice(5))) return value;
+
+    const owner = address.safeParse(value);
+    if (owner.success) return owner.data;
+
+    ctx.addIssue({ code: "custom", message: "invalid TRON address or 1Password reference" });
+    return z.NEVER;
+  }),
+});
+
 /** Accept the existing single-network YAML shape, normalize once at the boundary. */
 export const sponsoringConfigsSchema = z.preprocess(
   value => Array.isArray(value) ? value : [value],
-  z.array(sponsoringConfigSchema).min(1).superRefine((configs, ctx) => {
+  z.array(sponsoringYamlConfigSchema).min(1).superRefine((configs, ctx) => {
     const networks = new Set<string>(), paths = new Set<string>();
     configs.forEach((config, index) => {
       if (networks.has(config.network)) ctx.addIssue({ code: z.ZodIssueCode.custom,

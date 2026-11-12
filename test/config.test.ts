@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import { parse, stringify } from "yaml";
 import {
   configPath,
@@ -9,6 +9,7 @@ import {
   enabledNetworks,
   getDatabaseUrl,
   getApiKeyDatabaseOptions,
+  getSponsoringConfigs,
   databaseUrlWithCredentials,
   serverPort,
 } from "../src/config.js";
@@ -93,10 +94,10 @@ describe("loadConfig", () => {
     expect(loadConfig(writeConfig(yaml + '\nonepassword:\n  database_url: "vault/item/url"\n')).database.url).toBeUndefined();
   });
 
-  it("loads the configured dev Owner and rejects an invalid replacement", () => {
+  it("loads the configured dev Owner reference and rejects an invalid replacement", () => {
     const path = resolve(process.cwd(), "config/facilitator.config.dev.yaml");
     const cfg = loadConfig(path);
-    expect(cfg.resource_sponsoring?.[0]?.owner).toBe("TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y");
+    expect(cfg.resource_sponsoring?.[0]?.owner).toBe("op://x402-facilitator-dev/sponsoring/owner");
     expect(cfg.onepassword).toEqual({
       mode: "connect",
       database_url: "x402-facilitator-dev/psql/url",
@@ -116,7 +117,7 @@ describe("loadConfig", () => {
     expect(cfg.rate_limit?.redis_url).toBeUndefined();
     expect(cfg.rate_limit?.anonymous).toBe("10/minute");
     const invalid = readFileSync(path, "utf8")
-      .replace("TAqdN2WQUUJcX1hK9EvUAvQFCLGLbQX61Y", "REPLACE_WITH_DEV_RESOURCE_OWNER");
+      .replace("op://x402-facilitator-dev/sponsoring/owner", "REPLACE_WITH_DEV_RESOURCE_OWNER");
     expect(() => loadConfig(writeConfig(invalid))).toThrow(/resource_sponsoring\.0\.owner: invalid TRON address/);
     expect(cfg.onepassword?.mode).toBe("connect");
     expect(cfg.logging?.level).toBe("info");
@@ -421,5 +422,34 @@ onepassword:
   it("rejects DSN parameters that override the configured TLS mode", async () => {
     const cfg = loadConfig(writeConfig(VALID + '\napi_key_database:\n  url: "postgresql://reader@localhost/devcenter?sslmode=disable"\n'));
     await expect(getApiKeyDatabaseOptions(cfg)).rejects.toThrow(/ssl_mode/);
+  });
+});
+
+describe("sponsoring Owner from 1Password", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ["TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf", true],
+    ["invalid-owner", false],
+  ])("validates the resolved address from Connect (%s)", async (value, valid) => {
+    vi.stubEnv("OP_CONNECT_HOST", "http://connect.example");
+    vi.stubEnv("OP_CONNECT_TOKEN", "test-connect-token");
+    const payloads = [
+      [{ name: "x402-facilitator-dev", id: "a".repeat(26) }],
+      [{ title: "sponsoring", id: "b".repeat(26) }],
+      { fields: [{ label: "owner", value }] },
+    ];
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(payloads.shift())));
+
+    const cfg = loadConfig(resolve("config/facilitator.config.dev.yaml"));
+    const configs = getSponsoringConfigs(cfg);
+    if (valid) {
+      await expect(configs).resolves.toMatchObject([{ owner: value }]);
+    } else {
+      await expect(configs).rejects.toThrow(/invalid TRON address/);
+    }
   });
 });
