@@ -245,8 +245,8 @@ the field in each vault before deploying its image.
 
 | Environment | 1Password reference |
 | --- | --- |
-| `dev` | `x402-facilitator-nile_dev/psql/devcenter_readonly_url` |
-| `prod` | `x402-facilitator/psql/devcenter_readonly_url` |
+| `dev` | `x402-facilitator-nile_dev/psql/devcenter-url` |
+| `prod` | `x402-facilitator/psql/devcenter-url` |
 
 Store a `postgresql://` DSN with the DevCenter database name and dedicated
 read-only role in the referenced field. Grant the role database `CONNECT`, schema
