@@ -14,6 +14,7 @@ import {
   databaseMaxLifeTime,
   databaseMaxOpenConns,
   databaseSslMode,
+  getApiKeyDatabaseOptions,
   getDatabaseUrl,
   getGasFreeCredentials,
   getRateLimitRedisPassword,
@@ -29,8 +30,8 @@ import {
   serverHost,
   serverPort,
 } from "./config.js";
-import { initDatabase } from "./db/index.js";
-import { startApiKeyRefresher } from "./auth.js";
+import { disposeDatabase, initDatabase } from "./db/index.js";
+import { startApiKeyRefresher, stopApiKeyRefresher } from "./auth.js";
 import type { GasFreeProxySettings } from "./gasfree-proxy.js";
 import { logger, setLogLevel, setLogFile, toSdkLogger } from "./logger.js";
 import { setLogger } from "@bankofai/x402-tron";
@@ -95,8 +96,9 @@ export function redactDatabaseUrl(databaseUrl: string): string {
   }
 }
 
-export async function initDb(cfg: FacilitatorConfig): Promise<void> {
+export async function initDb(cfg: FacilitatorConfig): Promise<boolean> {
   const databaseUrl = await getDatabaseUrl(cfg);
+  const apiKeyDatabase = await getApiKeyDatabaseOptions(cfg);
   logger.info("Initializing database", { url: redactDatabaseUrl(databaseUrl) });
   await initDatabase({
     url: databaseUrl,
@@ -104,12 +106,15 @@ export async function initDb(cfg: FacilitatorConfig): Promise<void> {
     maxOverflow: Math.max(0, databaseMaxOpenConns(cfg) - databaseMaxIdleConns(cfg)),
     maxLifeTime: databaseMaxLifeTime(cfg),
     sslMode: databaseSslMode(cfg),
+    apiKeyDatabase,
   });
+  return apiKeyDatabase !== undefined;
 }
 
 /** Stage 4: API-key cache + periodic refresh. */
-export async function initAuth(cfg: FacilitatorConfig): Promise<void> {
-  await startApiKeyRefresher(apiKeyRefreshInterval(cfg));
+export async function initAuth(cfg: FacilitatorConfig, dedicatedDatabase: boolean): Promise<void> {
+  const interval = apiKeyRefreshInterval(cfg);
+  await startApiKeyRefresher(interval, dedicatedDatabase ? { maxAgeSeconds: interval * 3 } : {});
 }
 
 /** Stage 5: GasFree proxy settings + per-network base URL resolver. */
@@ -145,9 +150,20 @@ export function gasfreeBaseUrlResolver(
 export async function buildRuntimeConfig(cfg: FacilitatorConfig): Promise<RuntimeConfig> {
   initLogging(cfg);
   await initSecrets(cfg);
-  await initDb(cfg);
-  await initAuth(cfg);
-  const gasfreeSettings = await initGasFree(cfg);
+  const dedicatedApiKeyDatabase = await initDb(cfg);
+  let gasfreeSettings: GasFreeProxySettings;
+  try {
+    await initAuth(cfg, dedicatedApiKeyDatabase);
+    gasfreeSettings = await initGasFree(cfg);
+  } catch (err) {
+    stopApiKeyRefresher();
+    try {
+      await disposeDatabase();
+    } catch {
+      logger.error("Database cleanup after startup failure failed");
+    }
+    throw err;
+  }
 
   return {
     cfg,

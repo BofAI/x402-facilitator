@@ -2,10 +2,19 @@ import { afterEach, expect, it, vi } from "vitest";
 import { disposeDatabase, getDatabasePool, initDatabase } from "../src/db/index.js";
 import * as database from "../src/db/index.js";
 
-const fake = vi.hoisted(() => ({ query: vi.fn(async () => ({ rows: [] })), end: vi.fn(async () => {}) }));
-vi.mock("pg", () => ({ Pool: class { query = fake.query; end = fake.end; } }));
+const fake = vi.hoisted(() => ({
+  query: vi.fn<(query: string | { text: string }) => Promise<{ rows: unknown[][] }>>(async () => ({ rows: [] })),
+  end: vi.fn(async () => {}),
+}));
+vi.mock("pg", () => ({ Pool: class {
+  constructor(private readonly options: { connectionString: string }) {}
+  get url() { return this.options.connectionString; }
+  query = fake.query;
+  end = fake.end;
+  on() {}
+} }));
 const options = { url: "postgresql://unused", poolSize: 1, maxOverflow: 0, maxLifeTime: 60, sslMode: "disable" };
-afterEach(async () => { await disposeDatabase(); vi.clearAllMocks(); });
+afterEach(async () => { await disposeDatabase(); vi.resetAllMocks(); });
 it("only exposes the shared pool after successful initialization and before disposal", async () => {
   expect(() => getDatabasePool()).toThrow(/not initialized/);
   await initDatabase(options);
@@ -36,4 +45,25 @@ it("disposes both pools even when one close rejects", async () => {
   await expect(disposeDatabase()).rejects.toThrow("end failed");
   expect(fake.end).toHaveBeenCalledTimes(2);
   expect(() => getDatabasePool()).toThrow(/not initialized/);
+});
+
+it("loads only active keys from DevCenter and keeps business queries and DDL on the main database", async () => {
+  const apiKeyDatabase = { url: "postgresql://unused/devcenter", sslMode: "verify-full" as const };
+  fake.query.mockImplementation(async function (this: { url: string }, query: string | { text: string }) {
+    const sql = typeof query === "string" ? query : query.text;
+    if (this.url === apiKeyDatabase.url) {
+      expect(sql).toMatch(/select "key", "seller_id" from "api_keys_plus" where "api_keys_plus"\."is_active" =/i);
+      return { rows: [["test-devcenter-key", "original-seller"]] };
+    }
+    expect(sql).not.toMatch(/api_keys_plus|CREATE TABLE IF NOT EXISTS sellers/);
+    return { rows: [] };
+  });
+
+  await initDatabase({ ...options, apiKeyDatabase });
+  expect(await database.getActiveApiKeyAuth()).toEqual([
+    { key: "test-devcenter-key", sellerId: "original-seller" },
+  ]);
+  await database.getSettlementsBySeller("original-seller", 10, 0);
+  await disposeDatabase();
+  expect(fake.end).toHaveBeenCalledTimes(3);
 });

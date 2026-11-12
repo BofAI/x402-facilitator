@@ -60,6 +60,10 @@ const facilitatorConfigSchema = z
         max_life_time: positiveInt.optional(),
       })
       .strict(),
+    api_key_database: z.object({
+      url: z.string().min(1).optional(),
+      ssl_mode: z.enum(["disable", "verify-full"]).optional(),
+    }).strict().optional(),
     onepassword: z.record(z.string(), z.string().optional()).refine(
       (cfg) => cfg.mode === undefined || cfg.mode === "connect" || cfg.mode === "service_account",
       { message: "mode must be connect or service_account", path: ["mode"] },
@@ -89,6 +93,10 @@ const facilitatorConfigSchema = z
     if (!cfg.database.url && !cfg.onepassword?.database_url) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["database", "url"],
         message: "database.url or onepassword.database_url is required" });
+    }
+    if (cfg.api_key_database && !cfg.api_key_database.url && cfg.onepassword?.api_key_database_url === undefined) {
+      ctx.addIssue({ code: "custom", path: ["api_key_database", "url"],
+        message: "api_key_database.url or onepassword.api_key_database_url is required" });
     }
     const { max_open_conns: open, max_idle_conns: idle } = cfg.database;
     if (open !== undefined && idle !== undefined && idle > open) {
@@ -267,10 +275,47 @@ export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
   return databaseUrlWithCredentials(rawUrl, user, password);
 }
 
+/** Resolve a separate DevCenter connection when configured. */
+export async function getApiKeyDatabaseOptions(cfg: FacilitatorConfig): Promise<{
+  url: string;
+  sslMode: "disable" | "verify-full";
+} | undefined> {
+  const secretRef = cfg.onepassword?.api_key_database_url;
+  const database = cfg.api_key_database;
+  if (secretRef === undefined && database === undefined) return undefined;
+
+  const source = secretRef === undefined ? "api_key_database.url" : "onepassword.api_key_database_url";
+  const rawUrl = secretRef === undefined
+    ? database?.url
+    : await resolveRequiredSecret(cfg, "api_key_database_url", secretRef);
+  if (!rawUrl) throw new Error("api_key_database.url or onepassword.api_key_database_url is required");
+
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error(`${source} must be a valid PostgreSQL connection URL`);
+  }
+  if (!["postgresql:", "postgres:"].includes(url.protocol) || !url.hostname) {
+    throw new Error(`${source} must be a valid PostgreSQL connection URL`);
+  }
+  if (!url.username || url.pathname.length <= 1) {
+    throw new Error(`${source} must specify the DevCenter database name and role`);
+  }
+  // pg merges connection-string parameters after the explicit client options.
+  if (["ssl", "sslmode", "sslcert", "sslkey", "sslrootcert", "sslnegotiation"].some(key => url.searchParams.has(key))) {
+    throw new Error(`${source} must use api_key_database.ssl_mode for TLS settings`);
+  }
+  if (["options", "statement_timeout", "query_timeout"].some(key => url.searchParams.has(key))) {
+    throw new Error(`${source} must omit options, statement_timeout and query_timeout`);
+  }
+  return { url: url.href, sslMode: database?.ssl_mode ?? "verify-full" };
+}
+
 /** Resolve a required credential reference before creating service clients. */
 async function resolveRequiredSecret(
   cfg: FacilitatorConfig,
-  key: "database_url" | "database_user" | "database_password" | "redis_password",
+  key: "database_url" | "database_user" | "database_password" | "redis_password" | "api_key_database_url",
   value: string,
 ): Promise<string> {
   const ref = parseOpRef(value);
@@ -285,7 +330,9 @@ async function resolveRequiredSecret(
     if (!secret) throw new Error("resolved to an empty value");
     return secret;
   } catch (err) {
-    if (key === "database_url") throw new Error("Unable to resolve onepassword.database_url");
+    if (key === "database_url" || key === "api_key_database_url") {
+      throw new Error(`Unable to resolve onepassword.${key}`);
+    }
     throw new Error(`Unable to resolve onepassword.${key}: ${err instanceof Error ? err.message : "provider error"}`);
   }
 }

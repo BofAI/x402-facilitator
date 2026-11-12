@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Support a dedicated read-only DevCenter PostgreSQL connection for API key refreshes. Set `onepassword.api_key_database_url` to enable it.
+
 ### Changed
 
 - Use 1Password Connect in production. Inject `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN` with access to the production vault.

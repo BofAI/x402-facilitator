@@ -8,6 +8,7 @@ import {
   loadConfig,
   enabledNetworks,
   getDatabaseUrl,
+  getApiKeyDatabaseOptions,
   databaseUrlWithCredentials,
   serverPort,
 } from "../src/config.js";
@@ -379,5 +380,44 @@ facilitator:
 `),
     );
     expect(serverPort(cfg)).toBe(9999);
+  });
+});
+
+describe("DevCenter API key database config", () => {
+  it("is optional and defaults to verified TLS when configured", async () => {
+    expect(await getApiKeyDatabaseOptions(loadConfig(writeConfig(VALID)))).toBeUndefined();
+    const cfg = loadConfig(writeConfig(VALID + '\napi_key_database:\n  url: "postgresql://reader@localhost/devcenter"\n'));
+    expect(await getApiKeyDatabaseOptions(cfg)).toEqual({
+      url: "postgresql://reader@localhost/devcenter",
+      sslMode: "verify-full",
+    });
+  });
+
+  it("rejects a configured block without a URL or 1Password reference", () => {
+    expect(() => loadConfig(writeConfig(VALID + "\napi_key_database:\n  ssl_mode: disable\n")))
+      .toThrow(/api_key_database\.url or onepassword\.api_key_database_url/);
+  });
+
+  it("fails when the explicit secret reference is invalid even if a local URL is set", async () => {
+    const cfg = loadConfig(writeConfig(VALID + `
+api_key_database:
+  url: "postgresql://reader@localhost/devcenter"
+onepassword:
+  api_key_database_url: invalid
+`));
+    await expect(getApiKeyDatabaseOptions(cfg)).rejects.toThrow(/onepassword\.api_key_database_url/);
+  });
+
+  it.each(["postgresql://localhost/devcenter", "postgresql://reader@localhost", "postgresql://reader@localhost/"])(
+    "requires an explicit database and role in %s",
+    async (url) => {
+      const cfg = loadConfig(writeConfig(VALID + `\napi_key_database:\n  url: "${url}"\n`));
+      await expect(getApiKeyDatabaseOptions(cfg)).rejects.toThrow(/database name and role/);
+    },
+  );
+
+  it("rejects DSN parameters that override the configured TLS mode", async () => {
+    const cfg = loadConfig(writeConfig(VALID + '\napi_key_database:\n  url: "postgresql://reader@localhost/devcenter?sslmode=disable"\n'));
+    await expect(getApiKeyDatabaseOptions(cfg)).rejects.toThrow(/ssl_mode/);
   });
 });

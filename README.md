@@ -235,9 +235,43 @@ Lookups are seller-scoped when the request carries a valid `X-API-KEY`.
 
 The `settlements` table (created on startup) is keyed on
 `(network, scheme, asset, payer, nonce)` — the on-chain authorization identity — with
-a partial-unique index enforcing one successful settlement per authorization. The
-shared `sellers` / `api_keys_plus` tables are reused unchanged for auth and seller
-scoping. The legacy `payment_records` table is not used.
+a partial-unique index enforcing one successful settlement per authorization.
+The main database also backs PostgreSQL sponsoring and Permit2 advisory locks.
+
+### DevCenter API key database
+
+Set `onepassword.api_key_database_url` to enable a separate DevCenter connection.
+Add the reference to the existing `onepassword` block in the deployment YAML.
+
+```yaml
+onepassword:
+  api_key_database_url: "<vault>/<item>/<field>"
+```
+
+Store a `postgresql://` DSN with the DevCenter database name and dedicated
+read-only role in the referenced field. Grant the role database `CONNECT`, schema `USAGE`, and `SELECT` on
+`api_keys_plus(key, seller_id, is_active)`. The connection uses verified TLS by
+default. For a private CA, configure the Node trust store, for example with
+`NODE_EXTRA_CA_CERTS`. For local testing, use `api_key_database.url` and, if needed,
+`api_key_database.ssl_mode: disable`. Set TLS through `ssl_mode` and omit
+`options`, `statement_timeout`, and `query_timeout` from the DSN. An explicit
+1Password reference takes precedence over a local URL.
+
+DevCenter owns the key tables and manages key issuance and revocation. Facilitator
+reads only active keys, using one dedicated connection per process. Ensure the
+target database has the original `seller_id` for each key so existing settlement
+history remains associated with the correct seller. With a separate database
+configured, Facilitator creates its own settlement schema on the main database
+and skips the legacy key table setup. Deployments without a separate database
+configuration continue to read keys from the main database.
+
+Startup requires a successful key read when DevCenter is configured. After
+startup, keys are read from memory and refreshed every
+`rate_limit.api_key_refresh_interval` seconds (default 60). If refreshes fail,
+the last successful snapshot is valid for up to three refresh intervals. After
+that, requests with `X-API-KEY` to `/verify`, `/settle`, and the payment lookup
+routes return HTTP 503 until a refresh succeeds. Anonymous requests continue
+under the existing anonymous policy.
 
 ## SDK consumption
 

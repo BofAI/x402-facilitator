@@ -16,10 +16,15 @@ import { logger } from "./logger.js";
 export interface AuthVars {
   isAuthenticated: boolean;
   apiKey: string | null;
+  sellerId: string | null;
+  apiKeyCacheUnavailable: boolean;
 }
 
 let apiKeyCache: Set<string> = new Set();
 let sellerByKey: Map<string, string> = new Map();
+let lastRefreshAt = 0;
+let maxCacheAgeMs = Infinity;
+let refreshInFlight: Promise<boolean> | null = null;
 let refresherTimer: ReturnType<typeof setInterval> | null = null;
 
 /** Constant-time membership check against the cache (mirrors v1 _constant_time_key_check). */
@@ -35,21 +40,40 @@ function constantTimeKeyCheck(apiKey: string): boolean {
   return found;
 }
 
-/** Refresh the API-key cache from the database (best-effort; logs on failure). */
-export async function refreshApiKeysCache(): Promise<void> {
+async function loadApiKeys(): Promise<boolean> {
   try {
     const rows = await getActiveApiKeyAuth();
     apiKeyCache = new Set(rows.map((r) => r.key));
     sellerByKey = new Map(rows.map((r) => [r.key, r.sellerId]));
+    lastRefreshAt = performance.now();
     logger.info("API key cache refreshed", { count: apiKeyCache.size });
+    return true;
   } catch (err) {
-    logger.error("Failed to refresh API key cache", { err: String(err) });
+    // Drizzle wraps pg errors. Keep diagnostic codes without exposing connection details.
+    const cause = err instanceof Error && err.cause ? err.cause : err;
+    const code = cause instanceof Error && "code" in cause && typeof cause.code === "string"
+      && /^[A-Z0-9_]{1,32}$/.test(cause.code) ? cause.code : undefined;
+    logger.error("Failed to refresh API key cache", { code });
+    return false;
   }
 }
 
-/** Start the periodic refresher (returns immediately after the first load). */
-export async function startApiKeyRefresher(intervalSeconds: number): Promise<void> {
-  await refreshApiKeysCache();
+/** Coalesce concurrent refreshes so a delayed read cannot overwrite newer keys. */
+export function refreshApiKeysCache(): Promise<boolean> {
+  refreshInFlight ??= loadApiKeys().finally(() => { refreshInFlight = null; });
+  return refreshInFlight;
+}
+
+/** A bounded cache age also requires an initial successful read before serving. */
+export async function startApiKeyRefresher(
+  intervalSeconds: number,
+  { maxAgeSeconds = Infinity }: { maxAgeSeconds?: number } = {},
+): Promise<void> {
+  const loaded = await refreshApiKeysCache();
+  if (!loaded && Number.isFinite(maxAgeSeconds)) {
+    throw new Error("Unable to load API keys from the configured DevCenter database");
+  }
+  maxCacheAgeMs = maxAgeSeconds * 1000;
   refresherTimer = setInterval(() => {
     void refreshApiKeysCache();
   }, intervalSeconds * 1000);
@@ -71,22 +95,16 @@ export function setApiKeyCacheForTest(keys: Iterable<string>): void {
   sellerByKey = new Map();
 }
 
-/** Seller id for an authenticated API key, resolved from the cache, or null. */
-export function sellerIdForApiKey(apiKey: string | null): string | null {
-  if (!apiKey) return null;
-  return sellerByKey.get(apiKey) ?? null;
-}
-
-/** Middleware that resolves auth state from the X-API-KEY header. */
+/** Capture both auth and seller scope from the same cache snapshot for the request. */
 export const authMiddleware: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  c.set("isAuthenticated", false);
-  c.set("apiKey", null);
-
   const apiKey = c.req.header("X-API-KEY");
-  if (apiKey && constantTimeKeyCheck(apiKey)) {
-    c.set("isAuthenticated", true);
-    c.set("apiKey", apiKey);
-  }
+  const unavailable = Boolean(apiKey) && performance.now() - lastRefreshAt >= maxCacheAgeMs;
+  const authenticatedKey = apiKey && !unavailable && constantTimeKeyCheck(apiKey) ? apiKey : null;
+
+  c.set("apiKeyCacheUnavailable", unavailable);
+  c.set("isAuthenticated", authenticatedKey !== null);
+  c.set("apiKey", authenticatedKey);
+  c.set("sellerId", authenticatedKey ? sellerByKey.get(authenticatedKey) ?? null : null);
   await next();
 };
 
