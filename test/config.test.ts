@@ -82,7 +82,7 @@ describe("loadConfig", () => {
       api_key_database_url: "x402-facilitator/psql/devcenter-url" });
     expect(cfg.logging?.dir).toBe("/app/logs");
     expect(cfg.resource_sponsoring?.[0]).toMatchObject({ network: "tron:3448148188",
-      owner: "op://x402-facilitator/sponsoring/owner", permission_id: 3,
+      owner: "x402-facilitator/sponsoring/owner", permission_id: 3,
       require_api_key: true, energy_stake_sun: "10000000000", bandwidth_stake_sun: "20000000000",
       budget_sun: "500000000", management_bandwidth: "5000" });
     expect(enabledNetworks(cfg)).toEqual(["tron:3448148188", "tron:728126428", "eip155:97", "eip155:56", "eip155:84532", "eip155:8453"]);
@@ -97,7 +97,7 @@ describe("loadConfig", () => {
   it("loads the configured dev Owner reference and rejects an invalid replacement", () => {
     const path = resolve(process.cwd(), "config/facilitator.config.dev.yaml");
     const cfg = loadConfig(path);
-    expect(cfg.resource_sponsoring?.[0]?.owner).toBe("op://x402-facilitator-dev/sponsoring/owner");
+    expect(cfg.resource_sponsoring?.[0]?.owner).toBe("x402-facilitator-dev/sponsoring/owner");
     expect(cfg.onepassword).toEqual({
       mode: "connect",
       database_url: "x402-facilitator-dev/psql/url",
@@ -117,7 +117,7 @@ describe("loadConfig", () => {
     expect(cfg.rate_limit?.redis_url).toBeUndefined();
     expect(cfg.rate_limit?.anonymous).toBe("10/minute");
     const invalid = readFileSync(path, "utf8")
-      .replace("op://x402-facilitator-dev/sponsoring/owner", "REPLACE_WITH_DEV_RESOURCE_OWNER");
+      .replace("x402-facilitator-dev/sponsoring/owner", "REPLACE_WITH_DEV_RESOURCE_OWNER");
     expect(() => loadConfig(writeConfig(invalid))).toThrow(/resource_sponsoring\.0\.owner: invalid TRON address/);
     expect(cfg.onepassword?.mode).toBe("connect");
     expect(cfg.logging?.level).toBe("info");

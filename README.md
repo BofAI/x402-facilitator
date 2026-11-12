@@ -88,8 +88,8 @@ The built-in configs read their Nile Owner addresses from 1Password.
 
 | Environment | 1Password reference |
 | --- | --- |
-| `dev` | `op://x402-facilitator-dev/sponsoring/owner` |
-| `prod` | `op://x402-facilitator/sponsoring/owner` |
+| `dev` | `x402-facilitator-dev/sponsoring/owner` |
+| `prod` | `x402-facilitator/sponsoring/owner` |
 
 Provision each `owner` field with its environment's TRON address before
 deploying. Facilitator resolves and validates the address at startup. Custom

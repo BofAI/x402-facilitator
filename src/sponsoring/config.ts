@@ -36,7 +36,8 @@ export type SponsoringConfig = z.infer<typeof sponsoringConfigSchema>;
 
 const sponsoringYamlConfigSchema = sponsoringConfigSchema.safeExtend({
   owner: z.string().transform((value, ctx) => {
-    if (value.startsWith("op://") && parseOpRef(value.slice(5))) return value;
+    const reference = value.replace(/^op:\/\//, "");
+    if (parseOpRef(reference)) return reference;
 
     const owner = address.safeParse(value);
     if (owner.success) return owner.data;

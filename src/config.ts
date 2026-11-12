@@ -314,10 +314,10 @@ export async function getApiKeyDatabaseOptions(cfg: FacilitatorConfig): Promise<
 /** Resolve configured Owner addresses before creating sponsoring services. */
 export async function getSponsoringConfigs(cfg: FacilitatorConfig): Promise<SponsoringConfig[]> {
   return Promise.all((cfg.resource_sponsoring ?? []).map(async (config, index) => {
-    if (!config.owner.startsWith("op://")) return config;
+    if (!parseOpRef(config.owner)) return config;
 
     const source = `resource_sponsoring.${index}.owner`;
-    const value = await resolveRequiredOpField(cfg, source, config.owner.slice(5));
+    const value = await resolveRequiredOpField(cfg, source, config.owner);
     const owner = sponsoringConfigSchema.shape.owner.safeParse(value.trim());
     if (!owner.success) throw new Error(`${source}: invalid TRON address from 1Password`);
     return { ...config, owner: owner.data };
