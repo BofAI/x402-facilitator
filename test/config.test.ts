@@ -395,6 +395,45 @@ facilitator:
 });
 
 describe("DevCenter API key database config", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    { env: "dev", vault: "x402-facilitator-dev" },
+    { env: "prod", vault: "x402-facilitator" },
+  ])("uses the same 1Password credentials for both $env database URLs", async ({ env, vault }) => {
+    vi.stubEnv("OP_CONNECT_HOST", "http://connect.example");
+    vi.stubEnv("OP_CONNECT_TOKEN", "test-connect-token");
+    const vaultId = "a".repeat(26);
+    const itemId = "b".repeat(26);
+    const payloads = new Map([
+      ["/v1/vaults", [{ name: vault, id: vaultId }]],
+      [`/v1/vaults/${vaultId}/items`, [{ title: "psql", id: itemId }]],
+    ]);
+    vi.stubGlobal("fetch", vi.fn(async (url: URL) => Response.json(payloads.get(url.pathname) ?? {
+      fields: [
+        { label: "url", value: "postgresql+asyncpg://db.example:5432/x402_facilitator" },
+        { label: "devcenter-url", value: "postgresql+asyncpg://db.example:5432/boa_devcenter" },
+        { label: "user", value: "shared-role" },
+        { label: "password", value: "p@ss/%2Fword" },
+      ],
+    })));
+
+    const cfg = loadConfig(resolve(`config/facilitator.config.${env}.yaml`));
+    const main = new URL(await getDatabaseUrl(cfg));
+    const devcenter = await getApiKeyDatabaseOptions(cfg);
+    const apiKeys = new URL(devcenter.url);
+    expect(main.pathname).toBe("/x402_facilitator");
+    expect(apiKeys.pathname).toBe("/boa_devcenter");
+    expect(apiKeys.protocol).toBe("postgresql:");
+    expect(apiKeys.username).toBe(main.username);
+    expect(decodeURIComponent(apiKeys.password)).toBe("p@ss/%2Fword");
+    expect(apiKeys.password).toBe(main.password);
+    expect(devcenter.sslMode).toBe("verify-full");
+  });
+
   it("requires a DevCenter URL at startup", async () => {
     await expect(getApiKeyDatabaseOptions(loadConfig(writeConfig(VALID))))
       .rejects.toThrow(/api_key_database\.url or onepassword\.api_key_database_url/);

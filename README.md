@@ -262,8 +262,12 @@ the field in each vault before deploying its image.
 | `dev` | `x402-facilitator-dev/psql/devcenter-url` |
 | `prod` | `x402-facilitator/psql/devcenter-url` |
 
-Store a `postgresql://` DSN with the DevCenter database name and dedicated
-read-only role in the referenced field. Grant the role database `CONNECT`, schema
+Store the DevCenter host, port and database name in `devcenter-url`, using the
+same URL format as `psql/url` (including `postgresql+asyncpg://`). When the URL has
+no credentials, Facilitator uses the same `onepassword.database_user` and
+`onepassword.database_password` references as the main database. A complete DSN
+can still supply its own credentials. In DevCenter, grant the configured role
+database `CONNECT`, schema
 `USAGE`, and `SELECT` on `api_keys_plus(key, seller_id, is_active)`. The connection uses verified TLS by
 default. For a private CA, configure the Node trust store, for example with
 `NODE_EXTRA_CA_CERTS`. For local testing, use `api_key_database.url` and, if needed,

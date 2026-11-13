@@ -229,8 +229,8 @@ export function databaseUrlWithCredentials(
 ): string {
   if (!user && !password) return rawUrl;
   const url = new URL(rawUrl);
-  if (user) url.username = user;
-  if (password) url.password = password;
+  if (user) url.username = encodeURIComponent(user);
+  if (password) url.password = encodeURIComponent(password);
   return url.toString();
 }
 
@@ -250,9 +250,22 @@ export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
     throw new Error(`${source} must be a valid connection URL before resolving credentials`);
   }
 
-  if (!["postgresql:", "postgres:", "postgresql+asyncpg:"].includes(url.protocol) || !url.hostname) {
+  if (!isPostgresUrl(url)) {
     throw new Error(`${source} must be a PostgreSQL connection URL`);
   }
+  return resolveDatabaseCredentials(cfg, rawUrl, url, source);
+}
+
+function isPostgresUrl(url: URL): boolean {
+  return ["postgresql:", "postgres:", "postgresql+asyncpg:"].includes(url.protocol) && Boolean(url.hostname);
+}
+
+async function resolveDatabaseCredentials(
+  cfg: FacilitatorConfig,
+  rawUrl: string,
+  url: URL,
+  source: string,
+): Promise<string> {
   const urlHasUser = Boolean(url.username);
   const urlHasPassword = Boolean(url.password);
   const userRef = cfg.onepassword?.database_user;
@@ -261,7 +274,7 @@ export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
   if (urlHasUser || urlHasPassword) {
     if (userRef || passwordRef) {
       throw new Error(
-        "database.url userinfo cannot be combined with onepassword database credential references",
+        `${source} userinfo cannot be combined with onepassword database credential references`,
       );
     }
     return rawUrl;
@@ -269,7 +282,7 @@ export async function getDatabaseUrl(cfg: FacilitatorConfig): Promise<string> {
   if (!userRef && !passwordRef) return rawUrl;
   if (!userRef || !passwordRef) {
     throw new Error(
-      "onepassword.database_user and onepassword.database_password must be configured together when database.url has no credentials",
+      `onepassword.database_user and onepassword.database_password must be configured together when ${source} has no credentials`,
     );
   }
 
@@ -298,10 +311,10 @@ export async function getApiKeyDatabaseOptions(cfg: FacilitatorConfig): Promise<
   } catch {
     throw new Error(`${source} must be a valid PostgreSQL connection URL`);
   }
-  if (!["postgresql:", "postgres:"].includes(url.protocol) || !url.hostname) {
+  if (!isPostgresUrl(url)) {
     throw new Error(`${source} must be a valid PostgreSQL connection URL`);
   }
-  if (!url.username || url.pathname.length <= 1) {
+  if (url.pathname.length <= 1) {
     throw new Error(`${source} must specify the DevCenter database name and role`);
   }
   // pg merges connection-string parameters after the explicit client options.
@@ -311,7 +324,12 @@ export async function getApiKeyDatabaseOptions(cfg: FacilitatorConfig): Promise<
   if (["options", "statement_timeout", "query_timeout"].some(key => url.searchParams.has(key))) {
     throw new Error(`${source} must omit options, statement_timeout and query_timeout`);
   }
-  return { url: url.href, sslMode: database?.ssl_mode ?? "verify-full" };
+  if (url.protocol === "postgresql+asyncpg:") url.protocol = "postgresql:";
+  const connectionUrl = await resolveDatabaseCredentials(cfg, url.href, url, source);
+  if (!new URL(connectionUrl).username) {
+    throw new Error(`${source} must specify the DevCenter database name and role`);
+  }
+  return { url: connectionUrl, sslMode: database?.ssl_mode ?? "verify-full" };
 }
 
 /** Resolve configured Owner addresses before creating sponsoring services. */
