@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Require a dedicated read-only DevCenter PostgreSQL connection for API key reads. Provision the `devcenter-url` 1Password field referenced by each built-in environment config before deploying.
+- Resolve the dev and prod Nile sponsoring Owner addresses from each environment's `sponsoring/owner` 1Password field at startup.
+
 ### Changed
 
 - Use 1Password Connect in production. Inject `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN` with access to the production vault.

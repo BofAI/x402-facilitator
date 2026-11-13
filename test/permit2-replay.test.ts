@@ -183,7 +183,10 @@ describe.skipIf(!url)("PostgreSQL Permit2 authorization lock", () => {
   });
 
   it("keeps a one-connection business pool usable during a Permit2 settlement", async () => {
-    await initDatabase({ url: url!, poolSize: 1, maxOverflow: 0, maxLifeTime: 60, sslMode: "disable" });
+    await initDatabase({
+      url: url!, poolSize: 1, maxOverflow: 0, maxLifeTime: 60, sslMode: "disable",
+      apiKeyDatabase: { url: "postgresql://unused/devcenter", sslMode: "disable" },
+    });
     try {
       const identity = permit2Identity(payment("98765432109876543213"), requirements())!;
       const result = await withPermit2SettlementLock(getPermit2LockPool(), identity,

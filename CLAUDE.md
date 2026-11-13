@@ -52,7 +52,7 @@ Key seams:
 
 - **Config & secrets (`src/config.ts`)** — `FACILITATOR_SERVICE_ENV=dev|prod` selects the matching baked-in YAML; `FACILITATOR_CONFIG_PATH` is an explicit override. Secrets resolve **env first, then 1Password**: any `onepassword.*` value is a `vault/item/field` ref resolved when `OP_SERVICE_ACCOUNT_TOKEN` / `onepassword.token` is set. A network listed under `facilitator.networks` is enabled.
 
-- **Database (`src/db/`, drizzle + `pg`)** — v2 owns a new `settlements` table (created on startup), keyed on the on-chain **authorization identity** `(network, scheme, asset, payer, nonce)`, with a partial-unique index enforcing one successful settlement per authorization. The shared `sellers` / `api_keys_plus` tables are reused unchanged. v1's `payment_records` is unused.
+- **Database (`src/db/`, drizzle + `pg`)** — Facilitator creates the `settlements` table in its main database on startup. The partial-unique index enforces one successful settlement per authorization. The required DevCenter connection reads `api_keys_plus` for auth and seller scoping.
 
 ## Conventions & gotchas
 

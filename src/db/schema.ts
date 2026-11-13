@@ -6,8 +6,7 @@
  * payer, nonce) rather than a client-supplied payment id. v1's `payment_records`
  * is left untouched (read-only legacy / discarded).
  *
- * `sellers` and `api_keys_plus` are SHARED tables (managed by external seller
- * registration), reused unchanged for auth + seller scoping.
+ * DevCenter owns `api_keys_plus`, which supplies auth and seller scoping.
  */
 import { bigserial, boolean, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 
@@ -34,19 +33,9 @@ export const settlements = pgTable("settlements", {
 });
 
 export const apiKeys = pgTable("api_keys_plus", {
-  id: bigserial("id", { mode: "number" }).primaryKey(),
   sellerId: varchar("seller_id", { length: 64 }).notNull(),
-  walletAddress: varchar("wallet_address", { length: 128 }).notNull(),
-  name: varchar("name", { length: 64 }).notNull().default("default"),
-  key: varchar("key", { length: 64 }).notNull().unique(),
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const sellers = pgTable("sellers", {
-  id: bigserial("id", { mode: "number" }).primaryKey(),
-  sellerId: varchar("seller_id", { length: 64 }).notNull().unique(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  key: varchar("key", { length: 64 }).notNull(),
+  isActive: boolean("is_active").notNull(),
 });
 
 export type Settlement = typeof settlements.$inferSelect;

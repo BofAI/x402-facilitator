@@ -20,11 +20,13 @@ onepassword:
   # Production database credential references restored from Git history.
   database_user: "x402-facilitator/psql/user"
   database_password: "x402-facilitator/psql/password"
+  api_key_database_url: "x402-facilitator/psql/devcenter-url"
   trongrid_api_key: "x402-facilitator/trongrid/trongrid_api_key"
   gasfree_api_key_nile: "x402-facilitator/gasfree/gasfree_api_key_nile"
   gasfree_api_secret_nile: "x402-facilitator/gasfree/gasfree_api_secret_nile"
   gasfree_api_key_mainnet: "x402-facilitator/gasfree/gasfree_api_key_mainnet"
   gasfree_api_secret_mainnet: "x402-facilitator/gasfree/gasfree_api_secret_mainnet"
+  sponsoring_owner: "x402-facilitator/sponsoring/owner"
 
 server:
   host: "0.0.0.0"
@@ -85,7 +87,6 @@ resource_sponsoring:
 
   # Use a Nile Owner dedicated to this PG ledger; never reuse an Owner with
   # outstanding obligations in another database. Keep its master key off-server.
-  owner: "THuJK6PNaXibaQhxUdqUXczU57Y8EKhpex"
   wallet_id: "resource-active"
   # Uses AGENT_WALLET_DIR; keep settlement as the active/default wallet.
   # Owner, resource-active signer and settlement must be distinct addresses.

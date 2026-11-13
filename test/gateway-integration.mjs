@@ -43,9 +43,12 @@ const { clientSigner, facilitatorSigner, testRecipient, signedApproval } =
 const network = "tron:3448148188";
 const temporary = mkdtempSync(path.join(tmpdir(), "x402-peripheral-"));
 const schema = `compat_${randomBytes(8).toString("hex")}`;
+const apiKeySchema = `${schema}_auth`;
 const admin = new Pool({ connectionString: databaseUrl.href, max: 1 });
 const scopedUrl = new URL(databaseUrl);
 scopedUrl.searchParams.set("options", `-csearch_path=${schema}`);
+const apiKeyUrl = new URL(databaseUrl);
+apiKeyUrl.searchParams.set("options", `-csearch_path=${apiKeySchema} -cdefault_transaction_read_only=on`);
 const servers = new Set();
 const stores = new Set();
 
@@ -68,13 +71,17 @@ const post = body => ({ method: "POST", headers: { "content-type": "application/
 
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`); // schema is generated hexadecimal, never caller input.
-  await initDatabase({ url: scopedUrl.href, poolSize: 1, maxOverflow: 0, maxLifeTime: 60, sslMode: "disable" });
-  await getDatabasePool().query("INSERT INTO api_keys_plus(seller_id,wallet_address,key) VALUES ($1,$2,$3)",
-    ["compat-seller", testRecipient, "public-test-seller"]);
-  await getDatabasePool().query("INSERT INTO api_keys_plus(seller_id,wallet_address,key) VALUES ($1,$2,$3)",
-    ["other-seller", testRecipient, "public-test-other"]);
-  await refreshApiKeysCache();
-
+  await admin.query(`CREATE SCHEMA ${apiKeySchema}`);
+  await admin.query(`CREATE TABLE ${apiKeySchema}.api_keys_plus (
+    key text PRIMARY KEY, seller_id text NOT NULL, is_active boolean NOT NULL DEFAULT true
+  )`);
+  await admin.query(`INSERT INTO ${apiKeySchema}.api_keys_plus (seller_id, key) VALUES ($1, $2), ($3, $4)`,
+    ["compat-seller", "public-test-seller", "other-seller", "public-test-other"]);
+  await initDatabase({
+    url: scopedUrl.href, poolSize: 1, maxOverflow: 0, maxLifeTime: 60, sslMode: "disable",
+    apiKeyDatabase: { url: apiKeyUrl.href, sslMode: "disable" },
+  });
+  assert.equal(await refreshApiKeysCache(), true);
 });
 
 afterEach(async () => {
@@ -86,6 +93,7 @@ afterEach(async () => {
 after(async () => {
   await disposeDatabase();
   await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  await admin.query(`DROP SCHEMA IF EXISTS ${apiKeySchema} CASCADE`);
   await admin.end();
   rmSync(temporary, { recursive: true, force: true });
 });

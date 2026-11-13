@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   const cfg = loadConfig();
   const rt = await buildRuntimeConfig(cfg);
 
-  const sponsoring = await createSponsoringServices(cfg.resource_sponsoring ?? [], async config =>
+  const sponsoring = await createSponsoringServices(rt.sponsoringConfigs, async config =>
     createSponsoringService(config, await buildTronFacilitatorSigner(requireCanonicalNetwork(config.network)),
       { pool: getDatabasePool() }));
 
