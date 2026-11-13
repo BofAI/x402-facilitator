@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require a dedicated read-only DevCenter PostgreSQL connection for API key reads. Set the `psql/devcenter-url` field in the dev and prod 1Password vaults before deployment.
 - Load the Nile sponsoring Owner through `onepassword.sponsoring_owner` in the built-in configs. Set `sponsoring/owner` in each environment's vault.
 - Refuse startup when the first DevCenter key read fails. During an outage, API key authentication uses the last successful snapshot for up to three refresh intervals and returns HTTP 503 for keyed requests after expiry.
+- Load the configured wallet-cli password on first use through 1Password and cache it for a configurable TTL. Pass each signing lease through stdin and exclude 1Password environment variables from wallet-cli.
 
 ## [2.3.1] - 2026-11-10
 

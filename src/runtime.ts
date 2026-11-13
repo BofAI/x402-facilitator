@@ -20,7 +20,6 @@ import {
   getRateLimitRedisPassword,
   getSponsoringConfigs,
   getTrongridApiKey,
-  injectAgentWalletPasswordEnv,
   logFilePath,
   logLevel,
   maxRequestBodyBytes,
@@ -63,7 +62,7 @@ export function initLogging(cfg: FacilitatorConfig): void {
   logger.info("Configuration loaded", logFile ? { logFile } : undefined);
 }
 
-/** Stage 2: secrets (Redis, agent-wallet password env, TronGrid key injection). */
+/** Stage 2: secrets (Redis and TronGrid key injection). */
 export async function initSecrets(cfg: FacilitatorConfig): Promise<void> {
   // Preserve both existing URL environment aliases as explicit overrides.
   process.env.RATE_LIMIT_STORE ??= cfg.rate_limit?.store ?? "memory";
@@ -74,7 +73,6 @@ export async function initSecrets(cfg: FacilitatorConfig): Promise<void> {
     const password = await getRateLimitRedisPassword(cfg);
     if (password !== undefined) process.env.RATE_LIMIT_REDIS_PASSWORD = password;
   }
-  await injectAgentWalletPasswordEnv(cfg);
   const trongridKey = await getTrongridApiKey(cfg);
   if (trongridKey) {
     process.env.TRON_GRID_API_KEY = trongridKey;

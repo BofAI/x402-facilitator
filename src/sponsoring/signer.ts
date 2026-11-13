@@ -1,4 +1,4 @@
-import { resolveWallet, type Wallet } from "@bankofai/agent-wallet";
+import { resolveWallet, type Wallet, type WalletDependencies } from "@bankofai/agent-wallet";
 import { TronWeb } from "tronweb";
 import { normalizeSignedTronTransaction } from "@bankofai/x402-tron";
 import { type TronResourceOwnerSigner } from "@bankofai/x402-tron-extensions";
@@ -21,8 +21,9 @@ export function assertResourcePermission(account: { active_permission?: Permissi
  * and validates again after signing. Recheck the on-chain key scope each time. */
 export async function buildResourceOwnerSigner(config: SponsoringConfig, tron: TronWeb, settlementAddress: string,
   prepared: (txID: string, expiration: number) => void | Promise<void>,
-  assertOwnership: () => Promise<void> = async () => {}): Promise<TronResourceOwnerSigner> {
-  const wallet: Wallet = await resolveWallet({ network: config.network, walletId: config.wallet_id, dir: config.wallet_dir });
+  assertOwnership: () => Promise<void> = async () => {},
+  dependencies?: WalletDependencies): Promise<TronResourceOwnerSigner> {
+  const wallet: Wallet = await resolveWallet({ network: config.network, walletId: config.wallet_id, dir: config.wallet_dir, dependencies });
   const keyAddress = await wallet.getAddress();
   if (new Set([config.owner, keyAddress, settlementAddress].map(canonical)).size !== 3)
     throw new Error("resource_owner_permission_not_exclusive");

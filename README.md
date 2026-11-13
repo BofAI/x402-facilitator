@@ -194,7 +194,6 @@ credentials retain their existing fallback/disabled behavior. Relevant env vars:
 |---|---|
 | `FACILITATOR_SERVICE_ENV` | `dev` or `prod`; selects the matching baked-in config file |
 | `FACILITATOR_CONFIG_PATH` | Explicit config path; overrides `FACILITATOR_SERVICE_ENV` |
-| `AGENT_WALLET_PASSWORD` | Legacy compatibility hook; v3 removed `local_secure`; not a wallet-cli keystore password |
 | `TRON_GRID_API_KEY` | TronGrid rate limits (shared across TRON networks) |
 | `GASFREE_API_KEY[_NILE\|_MAINNET]` / `GASFREE_API_SECRET[...]` | GasFree relayer creds (gate `exact_gasfree`) |
 | `UPSTREAM_NILE_BASE` / `UPSTREAM_MAINNET_BASE` | Override GasFree upstream bases |
@@ -340,11 +339,27 @@ docker run -p 8001:8001 -p 9001:9001 \
 
 The container runs as non-root (uid/gid 1000); make sure the host `logs/`
 directory is writable by that uid before bind-mounting it. Configure the selected
-v3 wallet provider and mount its required configuration; `wallet_cli` needs its
-optional peer dependency and its own keystore password. The retained 1Password /
-`AGENT_WALLET_PASSWORD` hook does not unlock a v3 provider automatically.
+v3 wallet provider and mount its required configuration. The `wallet_cli`
+provider needs a compatible wallet-cli executable.
 Port `9001` is only
 needed when `monitoring.port` differs from `server.port`.
+
+To let Facilitator manage the wallet-cli password, configure the existing
+`onepassword.agent_wallet_password` reference and optionally set the cache TTL.
+
+```yaml
+onepassword:
+  agent_wallet_password: "<vault>/<item>/<field>"
+wallet_cli:
+  password_cache_ttl_seconds: 300
+```
+
+In each wallet-cli entry that uses this password, set `params.password` to the
+literal marker `facilitator:1password` in `wallets_config.json`. Agent Wallet
+requires this field to construct the signer. All entries using the marker share
+the configured password cache. The first signing request loads the password.
+The cache expires after 300 seconds by default. Agent Wallet passes a one-use
+copy to wallet-cli over stdin and disposes of the copy after signing.
 
 Both `config/facilitator.config.dev.yaml` and
 `config/facilitator.config.prod.yaml` are baked into the image. Select one at

@@ -1,3 +1,4 @@
+import type { WalletDependencies } from "@bankofai/agent-wallet";
 import { TronWeb, providers } from "tronweb";
 import { isDeepStrictEqual } from "node:util";
 import type { Pool } from "pg";
@@ -48,7 +49,7 @@ export interface SponsoringService {
 /** Resource execution uses packed FullNode receipts; inventory and expiry recovery
  * retain solidified reads. Approval requires a packed receipt and allowance. */
 export async function createSponsoringService(config: SponsoringConfig, settlement: FacilitatorTronSigner,
-  options: { pool?: Pool } = {}): Promise<SponsoringService> {
+  options: { pool?: Pool; walletDependencies?: WalletDependencies } = {}): Promise<SponsoringService> {
   const endpoint = rpcFor(requireCanonicalNetwork(config.network));
   const headers = process.env.TRON_GRID_API_KEY ? { "TRON-PRO-API-KEY": process.env.TRON_GRID_API_KEY } : {};
   const provider = () => new RecoverableHttpProvider(endpoint, 15000, "", "", headers);
@@ -57,7 +58,7 @@ export async function createSponsoringService(config: SponsoringConfig, settleme
   try {
     const signer = await buildResourceOwnerSigner(config, tron, settlement.getAddresses()[0],
       (txID, expiration) => storageBoundary(() => store.rememberExpiration(txID, expiration)),
-      () => storageBoundary(() => store.assertOwnership()));
+      () => storageBoundary(() => store.assertOwnership()), options.walletDependencies);
     const reclaimAnchor = createReclaimAnchor(tron);
     const readContract: FacilitatorTronSigner["readContract"] = args =>
       recoverableChainBoundary(() => settlement.readContract(args));

@@ -68,6 +68,9 @@ const facilitatorConfigSchema = z
       (cfg) => cfg.mode === undefined || cfg.mode === "connect" || cfg.mode === "service_account",
       { message: "mode must be connect or service_account", path: ["mode"] },
     ).optional(),
+    wallet_cli: z.object({
+      password_cache_ttl_seconds: positiveInt.max(2_147_483).optional(),
+    }).strict().optional(),
     rate_limit: z
       .object({
         store: z.enum(["memory", "redis"]).optional(),
@@ -213,17 +216,12 @@ export async function getTrongridApiKey(cfg: FacilitatorConfig): Promise<string 
   );
 }
 
-/** Agent-wallet unlock password: env, then 1Password. */
-export async function getAgentWalletPassword(cfg: FacilitatorConfig): Promise<string | undefined> {
-  return process.env.AGENT_WALLET_PASSWORD || (await resolveOpField(cfg, "agent_wallet_password"));
-}
-
-/** Resolve the agent-wallet password and inject it into AGENT_WALLET_PASSWORD (if not already set). */
-export async function injectAgentWalletPasswordEnv(cfg: FacilitatorConfig): Promise<void> {
-  const password = await getAgentWalletPassword(cfg);
-  if (password && !process.env.AGENT_WALLET_PASSWORD) {
-    process.env.AGENT_WALLET_PASSWORD = password;
-  }
+/** Build a lazy reader for the password managed by Facilitator. */
+export function getWalletCliPasswordSource(cfg: FacilitatorConfig): (() => Promise<string>) | undefined {
+  const reference = cfg.onepassword?.agent_wallet_password;
+  if (reference === undefined) return undefined;
+  if (!parseOpRef(reference)) throw new Error("onepassword.agent_wallet_password must be a vault/item/field reference");
+  return () => resolveRequiredOpField(cfg, "onepassword.agent_wallet_password", reference);
 }
 
 /** Inject resolved database credentials into a connection URL. */

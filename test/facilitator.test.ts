@@ -181,7 +181,7 @@ describe("buildFacilitator", () => {
     }, { gasfreeBaseUrlFor: () => null }) as InstanceType<typeof mocks.FakeFacilitator>;
 
     const authorizer = isTron ? mocks.buildTronAuthorizerSigner : mocks.buildEvmAuthorizerSigner;
-    expect(authorizer).toHaveBeenCalledExactlyOnceWith(canonical);
+    expect(authorizer).toHaveBeenCalledExactlyOnceWith(canonical, undefined);
     expect(isTron ? mocks.buildEvmAuthorizerSigner : mocks.buildTronAuthorizerSigner).not.toHaveBeenCalled();
     expect(facilitator.registrations).toEqual([expect.objectContaining({ network: canonical })]);
   });
@@ -201,7 +201,7 @@ describe("buildFacilitator", () => {
       { gasfreeBaseUrlFor: () => null },
     )) as InstanceType<typeof mocks.FakeFacilitator>;
 
-    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("eip155:97");
+    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("eip155:97", undefined);
     expect(facilitator.extensions).toHaveLength(1);
     expect(facilitator.extensions[0].key).toBe("erc20ApprovalGasSponsoring");
     // The fallback signer is network-scoped, never an insertion-ordered arbitrary value.
@@ -244,7 +244,7 @@ describe("buildFacilitator", () => {
       },
       { gasfreeBaseUrlFor: () => null },
     )) as InstanceType<typeof mocks.FakeFacilitator>;
-    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("eip155:97");
+    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("eip155:97", undefined);
     expect(facilitator.extensions).toHaveLength(1);
   });
 
@@ -263,7 +263,7 @@ describe("buildFacilitator", () => {
       { gasfreeBaseUrlFor: () => null },
     )) as InstanceType<typeof mocks.FakeFacilitator>;
 
-    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("eip155:84532");
+    expect(mocks.buildEvmFacilitatorSigner).toHaveBeenCalledWith("eip155:84532", undefined);
     expect(facilitator.registrations).toEqual([
       expect.objectContaining({ network: "eip155:84532" }),
     ]);
