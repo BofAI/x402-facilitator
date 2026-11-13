@@ -344,8 +344,9 @@ provider needs a compatible wallet-cli executable.
 Port `9001` is only
 needed when `monitoring.port` differs from `server.port`.
 
-To let Facilitator manage the wallet-cli password, configure the existing
-`onepassword.agent_wallet_password` reference and optionally set the cache TTL.
+The built-in dev and prod configs set `onepassword.agent_wallet_password` to
+`wallet/agent_wallet_password` in their respective 1Password vaults and set a
+300-second cache TTL. Custom configs can select their own reference and TTL.
 
 ```yaml
 onepassword:

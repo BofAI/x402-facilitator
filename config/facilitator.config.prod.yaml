@@ -27,6 +27,10 @@ onepassword:
   gasfree_api_key_mainnet: "x402-facilitator/gasfree/gasfree_api_key_mainnet"
   gasfree_api_secret_mainnet: "x402-facilitator/gasfree/gasfree_api_secret_mainnet"
   sponsoring_owner: "x402-facilitator/sponsoring/owner"
+  agent_wallet_password: "x402-facilitator/wallet/agent_wallet_password"
+
+wallet_cli:
+  password_cache_ttl_seconds: 300
 
 server:
   host: "0.0.0.0"

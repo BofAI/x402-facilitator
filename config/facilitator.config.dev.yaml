@@ -21,6 +21,10 @@ onepassword:
   gasfree_api_key_nile: "x402-facilitator-dev/gasfree/gasfree_api_key_nile"
   gasfree_api_secret_nile: "x402-facilitator-dev/gasfree/gasfree_api_secret_nile"
   sponsoring_owner: "x402-facilitator-dev/sponsoring/owner"
+  agent_wallet_password: "x402-facilitator-dev/wallet/agent_wallet_password"
+
+wallet_cli:
+  password_cache_ttl_seconds: 300
 
 server:
   host: "0.0.0.0"

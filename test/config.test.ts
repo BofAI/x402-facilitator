@@ -84,7 +84,9 @@ describe("loadConfig", () => {
       database_url: "x402-facilitator/psql/url", database_user: "x402-facilitator/psql/user",
       database_password: "x402-facilitator/psql/password",
       api_key_database_url: "x402-facilitator/psql/devcenter-url",
-      sponsoring_owner: "x402-facilitator/sponsoring/owner" });
+      sponsoring_owner: "x402-facilitator/sponsoring/owner",
+      agent_wallet_password: "x402-facilitator/wallet/agent_wallet_password" });
+    expect(cfg.wallet_cli?.password_cache_ttl_seconds).toBe(300);
     expect(cfg.logging?.dir).toBe("/app/logs");
     expect(cfg.resource_sponsoring?.[0]).toMatchObject({ network: "tron:3448148188",
       permission_id: 3,
@@ -113,7 +115,9 @@ describe("loadConfig", () => {
       gasfree_api_key_nile: "x402-facilitator-dev/gasfree/gasfree_api_key_nile",
       gasfree_api_secret_nile: "x402-facilitator-dev/gasfree/gasfree_api_secret_nile",
       sponsoring_owner: "x402-facilitator-dev/sponsoring/owner",
+      agent_wallet_password: "x402-facilitator-dev/wallet/agent_wallet_password",
     });
+    expect(cfg.wallet_cli?.password_cache_ttl_seconds).toBe(300);
     expect(cfg.logging?.dir).toBe("/data/logs/facilitator");
     expect(cfg.resource_sponsoring?.[0]?.permission_id).toBe(3);
     expect(cfg.resource_sponsoring?.[0]?.management_bandwidth).toBe("5000");
