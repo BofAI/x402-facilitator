@@ -11,26 +11,24 @@ import {
 const FACILITATOR_PASSWORD_REFERENCE = "facilitator:1password";
 
 export class CachedWalletPassword implements SecretProvider {
-  private cached?: { bytes: Buffer; expiresAt: number };
-  private expiry?: ReturnType<typeof setTimeout>;
+  private cached?: Buffer;
   private pending?: Promise<void>;
   private readonly leases = new Set<Buffer>();
   private closed = false;
 
-  constructor(private readonly load: () => Promise<string>, private readonly ttlSeconds: number) {}
+  constructor(private readonly load: () => Promise<string>) {}
 
   async acquire(): Promise<SecretLease> {
     if (this.closed) throw new Error("Wallet-cli password cache is closed");
 
-    if (this.cached && performance.now() >= this.cached.expiresAt) this.clearCache();
     if (!this.cached) {
       this.pending ??= this.refresh().finally(() => { this.pending = undefined; });
       await this.pending;
     }
     if (this.closed) throw new Error("Wallet-cli password cache is closed");
-    if (!this.cached) throw new Error("Wallet-cli password expired before signing");
+    if (!this.cached) throw new Error("Wallet-cli password is unavailable");
 
-    const bytes = Buffer.from(this.cached.bytes);
+    const bytes = Buffer.from(this.cached);
     this.leases.add(bytes);
     let consumed = false;
     return {
@@ -62,9 +60,7 @@ export class CachedWalletPassword implements SecretProvider {
   }
 
   private clearCache(): void {
-    clearTimeout(this.expiry);
-    this.expiry = undefined;
-    this.cached?.bytes.fill(0);
+    this.cached?.fill(0);
     this.cached = undefined;
   }
 
@@ -78,10 +74,7 @@ export class CachedWalletPassword implements SecretProvider {
     }
     if (this.closed) throw new Error("Wallet-cli password cache is closed");
 
-    const ttlMs = this.ttlSeconds * 1000;
-    this.cached = { bytes: Buffer.from(password, "utf8"), expiresAt: performance.now() + ttlMs };
-    this.expiry = setTimeout(() => this.clearCache(), ttlMs);
-    this.expiry.unref();
+    this.cached = Buffer.from(password, "utf8");
   }
 }
 

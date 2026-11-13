@@ -17,7 +17,7 @@ afterEach(() => {
 
 it("loads once on concurrent acquisition and issues independent, single-use leases", async () => {
   const load = vi.fn(async () => "fixture-password");
-  const cache = new CachedWalletPassword(load, 300);
+  const cache = new CachedWalletPassword(load);
   const send = (chunks: Buffer[]) => new Writable({
     write(chunk: Buffer, _encoding, callback) {
       chunks.push(Buffer.from(chunk));
@@ -40,50 +40,54 @@ it("loads once on concurrent acquisition and issues independent, single-use leas
   }
 });
 
-it("wipes an expired cache and reloads the password after rotation", async () => {
+it("reuses the startup password after the 1Password token expires", async () => {
   vi.useFakeTimers();
-  const load = vi.fn().mockResolvedValueOnce("old").mockResolvedValueOnce("rotated");
-  const cache = new CachedWalletPassword(load, 1);
+  const load = vi.fn().mockResolvedValueOnce("old").mockRejectedValue(new Error("Token expired"));
+  const cache = new CachedWalletPassword(load);
   try {
     await (await cache.acquire()).dispose();
-    await vi.advanceTimersByTimeAsync(999);
+    await vi.advanceTimersByTimeAsync(300_000);
     await (await cache.acquire()).dispose();
     expect(load).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(365 * 24 * 60 * 60 * 1000);
     const lease = await cache.acquire();
     const output: Buffer[] = [];
     await lease.writeTo(new Writable({
       write(chunk: Buffer, _encoding, callback) { output.push(chunk); callback(); },
     }));
-    expect(Buffer.concat(output).toString()).toBe("rotated");
+    expect(Buffer.concat(output).toString()).toBe("old");
     await lease.dispose();
-    expect(output[0]).toEqual(Buffer.alloc(7));
-    expect(load).toHaveBeenCalledTimes(2);
+    expect(output[0]).toEqual(Buffer.alloc(3));
+    expect(load).toHaveBeenCalledTimes(1);
   } finally {
     cache.close();
   }
 });
 
-it("rejects an in-flight lookup and invalidates existing leases on close", async () => {
-  vi.useFakeTimers();
+it("invalidates existing leases and rejects acquisition on close", async () => {
+  const cache = new CachedWalletPassword(async () => "initial");
+  const lease = await cache.acquire();
+  cache.close();
+  await expect(cache.acquire()).rejects.toThrow(/closed/);
+  await expect(lease.writeTo(new Writable())).rejects.toThrow(/disposed/);
+});
+
+it("rejects an in-flight lookup on close", async () => {
   let complete!: (password: string) => void;
-  const load = vi.fn().mockResolvedValueOnce("initial").mockImplementationOnce(
+  const load = vi.fn().mockImplementationOnce(
     () => new Promise<string>(resolve => { complete = resolve; }),
   );
-  const cache = new CachedWalletPassword(load, 1);
-  const lease = await cache.acquire();
-  await vi.advanceTimersByTimeAsync(1000);
+  const cache = new CachedWalletPassword(load);
   const pending = cache.acquire();
   cache.close();
   complete("late");
   await expect(pending).rejects.toThrow(/closed/);
   await expect(cache.acquire()).rejects.toThrow(/closed/);
-  await expect(lease.writeTo(new Writable())).rejects.toThrow(/disposed/);
 });
 
 it("retries a failed lookup without exposing the provider error", async () => {
   const load = vi.fn().mockRejectedValueOnce(new Error("internal fixture")).mockResolvedValueOnce("recovered");
-  const cache = new CachedWalletPassword(load, 300);
+  const cache = new CachedWalletPassword(load);
   try {
     await expect(cache.acquire()).rejects.toThrow(/^Unable to read wallet-cli password from 1Password$/);
     await (await cache.acquire()).dispose();
@@ -153,7 +157,7 @@ it("uses real wallet-cli subprocess plumbing without forwarding 1Password tokens
     facilitator: { networks: { [network]: {} } },
     onepassword: { mode: "connect", agent_wallet_password: `${vault}/${item}/password` },
   })!;
-  const cache = new CachedWalletPassword(load, 300);
+  const cache = new CachedWalletPassword(load);
   try {
     const wallet = await resolveWallet({ network, dir, dependencies: walletCliDependencies(cache) });
     await expect(wallet.getAddress()).resolves.toBe("TMSgJxtPw29AFEHMXsjGo4kWV7UwbCToHJ");

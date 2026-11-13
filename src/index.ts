@@ -28,8 +28,10 @@ async function main(): Promise<void> {
   const readWalletPassword = getWalletCliPasswordSource(cfg);
   const rt = await buildRuntimeConfig(cfg);
   const walletPassword = readWalletPassword
-    ? new CachedWalletPassword(readWalletPassword, cfg.wallet_cli?.password_cache_ttl_seconds ?? 300)
+    ? new CachedWalletPassword(readWalletPassword)
     : undefined;
+  // Fetch while the startup credential is valid, before accepting signing requests.
+  if (walletPassword) await (await walletPassword.acquire()).dispose();
   const walletDependencies = walletCliDependencies(walletPassword);
 
   const sponsoring = await createSponsoringServices(rt.sponsoringConfigs, async config =>

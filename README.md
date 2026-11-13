@@ -345,22 +345,24 @@ Port `9001` is only
 needed when `monitoring.port` differs from `server.port`.
 
 The built-in dev and prod configs set `onepassword.agent_wallet_password` to
-`wallet/agent_wallet_password` in their respective 1Password vaults and set a
-300-second cache TTL. Custom configs can select their own reference and TTL.
+`wallet/agent_wallet_password` in their respective 1Password vaults. Custom
+configs can select their own reference.
 
 ```yaml
 onepassword:
   agent_wallet_password: "<vault>/<item>/<field>"
-wallet_cli:
-  password_cache_ttl_seconds: 300
 ```
 
 In each wallet-cli entry that uses this password, set `params.password` to the
 literal marker `facilitator:1password` in `wallets_config.json`. Agent Wallet
 requires this field to construct the signer. All entries using the marker share
-the configured password cache. The first signing request loads the password.
-The cache expires after 300 seconds by default. Agent Wallet passes a one-use
-copy to wallet-cli over stdin and disposes of the copy after signing.
+the configured password cache. Startup loads the password before accepting requests
+and fails if 1Password cannot provide it. Later signing requests use the cache
+without accessing 1Password, even if the startup token has since expired.
+The password stays cached in memory until Facilitator exits, with no expiration
+or automatic refresh. Restart Facilitator after changing the password. Agent
+Wallet passes a one-use copy to wallet-cli over stdin and disposes of the copy
+after signing. Normal shutdown clears the cached password and outstanding copies.
 
 Both `config/facilitator.config.dev.yaml` and
 `config/facilitator.config.prod.yaml` are baked into the image. Select one at

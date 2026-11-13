@@ -68,9 +68,6 @@ const facilitatorConfigSchema = z
       (cfg) => cfg.mode === undefined || cfg.mode === "connect" || cfg.mode === "service_account",
       { message: "mode must be connect or service_account", path: ["mode"] },
     ).optional(),
-    wallet_cli: z.object({
-      password_cache_ttl_seconds: positiveInt.max(2_147_483).optional(),
-    }).strict().optional(),
     rate_limit: z
       .object({
         store: z.enum(["memory", "redis"]).optional(),
