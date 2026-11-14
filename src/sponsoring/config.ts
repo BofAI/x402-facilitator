@@ -2,12 +2,13 @@ import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { TronWeb } from "tronweb";
 import { TRON_NILE, TRON_SHASTA, normalizeTronNetwork } from "@bankofai/x402-tron";
+import { parseOpRef } from "../onepassword.js";
 
 const address = z.string().refine(value => TronWeb.isAddress(value), "invalid TRON address")
   .transform(value => TronWeb.address.fromHex(TronWeb.address.toHex(value)));
 const positiveAmount = z.string().regex(/^[1-9][0-9]*$/).max(78);
 
-export const sponsoringConfigSchema = z.object({
+const sponsoringConfigBaseSchema = z.object({
   network: z.enum(["tron:0xcd8690dc", TRON_NILE, "tron:0x94a9059e", TRON_SHASTA]).transform(normalizeTronNetwork),
   require_api_key: z.boolean().optional(),
   database: z.string().refine(isAbsolute, "must be an absolute persistent path").optional(),
@@ -15,7 +16,6 @@ export const sponsoringConfigSchema = z.object({
     z.object({ type: z.literal("sqlite"), path: z.string().refine(isAbsolute, "must be an absolute persistent path") }).strict(),
     z.object({ type: z.literal("postgres") }).strict(),
   ]).optional(),
-  owner: address,
   wallet_id: z.string().min(1),
   wallet_dir: z.string().refine(isAbsolute).optional(),
   permission_id: z.number().int().min(2).max(9),
@@ -31,12 +31,26 @@ export const sponsoringConfigSchema = z.object({
   .refine(value => value.require_api_key !== false || value.network === TRON_NILE,
     { message: "may be false only for Nile", path: ["require_api_key"] });
 
+export const sponsoringConfigSchema = sponsoringConfigBaseSchema.safeExtend({ owner: address });
 export type SponsoringConfig = z.infer<typeof sponsoringConfigSchema>;
+
+const sponsoringYamlConfigSchema = sponsoringConfigBaseSchema.safeExtend({
+  owner: z.string().transform((value, ctx) => {
+    const reference = value.replace(/^op:\/\//, "");
+    if (parseOpRef(reference)) return reference;
+
+    const owner = address.safeParse(value);
+    if (owner.success) return owner.data;
+
+    ctx.addIssue({ code: "custom", message: "invalid TRON address or 1Password reference" });
+    return z.NEVER;
+  }).optional(),
+});
 
 /** Accept the existing single-network YAML shape, normalize once at the boundary. */
 export const sponsoringConfigsSchema = z.preprocess(
   value => Array.isArray(value) ? value : [value],
-  z.array(sponsoringConfigSchema).min(1).superRefine((configs, ctx) => {
+  z.array(sponsoringYamlConfigSchema).min(1).superRefine((configs, ctx) => {
     const networks = new Set<string>(), paths = new Set<string>();
     configs.forEach((config, index) => {
       if (networks.has(config.network)) ctx.addIssue({ code: z.ZodIssueCode.custom,

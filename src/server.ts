@@ -15,14 +15,14 @@
  * Middleware: Prometheus (outermost) -> CORS -> API-key auth. /settle adds the
  * dynamic rate limiter. Lookups are seller-scoped when the request is authenticated.
  */
-import { Hono, type Context } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
 import type { x402Facilitator } from "@x402/core/facilitator";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { PaymentPayloadV2Schema, PaymentRequirementsV2Schema } from "@x402/core/schemas";
 import { z } from "zod";
-import { authMiddleware, currentApiKey, sellerIdForApiKey, type AuthVars } from "./auth.js";
+import { authMiddleware, type AuthVars } from "./auth.js";
 import { rateLimit } from "./rate-limit.js";
 import { metricsMiddleware, metricsHandler } from "./metrics.js";
 import { registerGasFreeProxy, type GasFreeProxySettings } from "./gasfree-proxy.js";
@@ -133,9 +133,21 @@ function toResponse(s: Settlement) {
  * the SDK contract (invalidReason / errorReason); all other errors use this shape
  * so clients get a stable `code` + `message` pair (P2-03).
  */
-function errorResponse(c: Context, status: 400 | 404 | 413, code: string, message: string): Response {
+function errorResponse(c: Context, status: 400 | 404 | 413 | 503, code: string, message: string): Response {
   return c.json({ code, message }, status);
 }
+
+function requireFreshApiKeyCache(
+  onUnavailable: (c: Context<{ Variables: AuthVars }>) => Response,
+): MiddlewareHandler<{ Variables: AuthVars }> {
+  return async (c, next) => {
+    if (c.get("apiKeyCacheUnavailable")) return onUnavailable(c);
+    await next();
+  };
+}
+
+const requirePaymentLookupAuthCache = requireFreshApiKeyCache((c) =>
+  errorResponse(c, 503, "api_key_auth_unavailable", "API key authentication is temporarily unavailable"));
 
 /**
  * Create the Hono app for a configured facilitator.
@@ -176,7 +188,9 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
     return c.json(state, state.ready ? 200 : 503);
   });
 
-  app.post("/verify", rateLimit(deps.rateLimit, "verify"), async (c) => {
+  const requireVerifyAuthCache = requireFreshApiKeyCache((c) =>
+    c.json({ isValid: false, invalidReason: "api_key_auth_unavailable" }, 503));
+  app.post("/verify", requireVerifyAuthCache, rateLimit(deps.rateLimit, "verify"), async (c) => {
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -211,7 +225,9 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
 
   // /settle: rate limited; settles first, then persists one settlement row keyed on
   // the authorization identity. Save failure never affects the response (v1 ordering).
-  app.post("/settle", rateLimit(deps.rateLimit, "settle"), async (c) => {
+  const requireSettleAuthCache = requireFreshApiKeyCache((c) =>
+    c.json({ success: false, errorReason: "api_key_auth_unavailable" }, 503));
+  app.post("/settle", requireSettleAuthCache, rateLimit(deps.rateLimit, "settle"), async (c) => {
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -267,7 +283,7 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
       logger.warn("settle failed", { network, nonce: payerNonce?.nonce, txHash, reason: result.errorReason });
     }
     try {
-      const sellerId = sellerIdForApiKey(currentApiKey(c));
+      const sellerId = c.get("sellerId");
       await saveSettlement({
         sellerId,
         network,
@@ -299,8 +315,8 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
   });
 
   // Lookup by settlement tx hash.
-  app.get("/payments/tx/:hash", async (c) => {
-    const sellerId = sellerIdForApiKey(currentApiKey(c));
+  app.get("/payments/tx/:hash", requirePaymentLookupAuthCache, async (c) => {
+    const sellerId = c.get("sellerId");
     const rows = await getSettlementsByTxHash(c.req.param("hash"), sellerId);
     if (rows.length === 0) return errorResponse(c, 404, "not_found", "Settlement not found");
     return c.json(rows.map(toResponse));
@@ -308,8 +324,8 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
 
   // Lookup by authorization identity (?network=&nonce=[&asset=&payer=]), or — with no
   // such params — the authenticated seller's settlement feed (?limit=&offset=).
-  app.get("/payments", async (c) => {
-    const sellerId = sellerIdForApiKey(currentApiKey(c));
+  app.get("/payments", requirePaymentLookupAuthCache, async (c) => {
+    const sellerId = c.get("sellerId");
     const network = c.req.query("network");
     const nonce = c.req.query("nonce");
     const asset = c.req.query("asset");

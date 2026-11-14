@@ -9,7 +9,7 @@
  */
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
-import { loadConfig } from "./config.js";
+import { getWalletCliPasswordSource, loadConfig } from "./config.js";
 import { disposeDatabase, getDatabasePool } from "./db/index.js";
 import { stopApiKeyRefresher } from "./auth.js";
 import { buildFacilitator } from "./facilitator.js";
@@ -21,17 +21,26 @@ import { createSponsoringService } from "./sponsoring/service.js";
 import { createSponsoringServices, closeSponsoringServices } from "./sponsoring/services.js";
 import { buildTronFacilitatorSigner } from "./signer.js";
 import { requireCanonicalNetwork } from "./network.js";
+import { CachedWalletPassword, walletCliDependencies } from "./wallet-cli-password.js";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
+  const readWalletPassword = getWalletCliPasswordSource(cfg);
   const rt = await buildRuntimeConfig(cfg);
+  const walletPassword = readWalletPassword
+    ? new CachedWalletPassword(readWalletPassword)
+    : undefined;
+  // Fetch while the startup credential is valid, before accepting signing requests.
+  if (walletPassword) await (await walletPassword.acquire()).dispose();
+  const walletDependencies = walletCliDependencies(walletPassword);
 
-  const sponsoring = await createSponsoringServices(cfg.resource_sponsoring ?? [], async config =>
-    createSponsoringService(config, await buildTronFacilitatorSigner(requireCanonicalNetwork(config.network)),
-      { pool: getDatabasePool() }));
+  const sponsoring = await createSponsoringServices(rt.sponsoringConfigs, async config =>
+    createSponsoringService(config, await buildTronFacilitatorSigner(requireCanonicalNetwork(config.network), walletDependencies),
+      { pool: getDatabasePool(), walletDependencies }));
 
   const facilitator = await buildFacilitator(cfg, {
     gasfreeBaseUrlFor: rt.gasfreeBaseUrlFor,
+    walletDependencies,
     sponsoring,
   });
   logger.info("Facilitator initialized", { networks: Object.keys(cfg.facilitator.networks ?? {}) });
@@ -68,8 +77,12 @@ async function main(): Promise<void> {
     logger.info("Shutting down", { signal });
     stopApiKeyRefresher();
     for (const s of servers) s.close();
-    await closeSponsoringServices(sponsoring);
-    await disposeDatabase();
+    try {
+      await closeSponsoringServices(sponsoring);
+    } finally {
+      walletPassword?.close();
+      await disposeDatabase();
+    }
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

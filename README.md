@@ -66,7 +66,8 @@ Choose a YAML configuration source explicitly. Set `FACILITATOR_SERVICE_ENV=dev`
 set `FACILITATOR_CONFIG_PATH` to an explicit YAML file; the explicit path takes
 precedence. The process fails before startup when neither is set.
 
-Required: `database.url`, `facilitator.networks` (≥1 network, listed = enabled).
+Configure the main database URL, the DevCenter API key database URL, and at
+least one enabled network under `facilitator.networks`.
 
 Optional Nile/Shasta Approval resource sponsoring supports SQLite or shared PostgreSQL
 storage. Both built-in configs enable Nile-only sponsorship and require
@@ -82,6 +83,19 @@ API-key policy; each network must also be enabled under `facilitator.networks`.
 Duplicate networks (including decimal/hex aliases) are rejected. SQLite entries
 must use distinct absolute file paths. PostgreSQL entries share the application
 connection pool and are isolated by network and Owner.
+
+The built-in configs use `onepassword.sponsoring_owner` for their Nile Owner addresses.
+
+| Environment | 1Password reference |
+| --- | --- |
+| `dev` | `x402-facilitator-dev/sponsoring/owner` |
+| `prod` | `x402-facilitator/sponsoring/owner` |
+
+Provision each `owner` field with its environment's TRON address before
+deploying. Facilitator resolves and validates the address at startup. Custom
+configurations can set `resource_sponsoring.owner` directly. With multiple
+sponsoring entries, set `owner` on each entry that does not use
+`onepassword.sponsoring_owner`.
 
 For example, after provisioning the addresses, wallets, assets and stake:
 
@@ -180,7 +194,6 @@ credentials retain their existing fallback/disabled behavior. Relevant env vars:
 |---|---|
 | `FACILITATOR_SERVICE_ENV` | `dev` or `prod`; selects the matching baked-in config file |
 | `FACILITATOR_CONFIG_PATH` | Explicit config path; overrides `FACILITATOR_SERVICE_ENV` |
-| `AGENT_WALLET_PASSWORD` | Legacy compatibility hook; v3 removed `local_secure`; not a wallet-cli keystore password |
 | `TRON_GRID_API_KEY` | TronGrid rate limits (shared across TRON networks) |
 | `GASFREE_API_KEY[_NILE\|_MAINNET]` / `GASFREE_API_SECRET[...]` | GasFree relayer creds (gate `exact_gasfree`) |
 | `UPSTREAM_NILE_BASE` / `UPSTREAM_MAINNET_BASE` | Override GasFree upstream bases |
@@ -206,7 +219,7 @@ and set `NODE_EXTRA_CA_CERTS` to its container path before starting Node.js.
 Alternatively, set `rate_limit.store` and `rate_limit.redis_url` in YAML;
 the store environment variable and either URL environment variable override YAML.
 The dev config enables TLS Valkey and references
-`x402-facilitator-nile_dev/redis/VALKEY_PASSWORD` through Connect.
+`x402-facilitator-dev/redis/VALKEY_PASSWORD` through Connect.
 `VALKEY_EXPIRE` is not used: counter expiration follows each configured rate-limit window.
 
 BSC transaction creation and broadcast use the primary RPC. Receipt confirmation waits up
@@ -235,9 +248,47 @@ Lookups are seller-scoped when the request carries a valid `X-API-KEY`.
 
 The `settlements` table (created on startup) is keyed on
 `(network, scheme, asset, payer, nonce)` — the on-chain authorization identity — with
-a partial-unique index enforcing one successful settlement per authorization. The
-shared `sellers` / `api_keys_plus` tables are reused unchanged for auth and seller
-scoping. The legacy `payment_records` table is not used.
+a partial-unique index enforcing one successful settlement per authorization.
+The main database also backs PostgreSQL sponsoring and Permit2 advisory locks.
+
+### DevCenter API key database
+
+Facilitator requires a DevCenter connection for API key reads. Both built-in
+configurations set `onepassword.api_key_database_url`. Provision
+the field in each vault before deploying its image.
+
+| Environment | 1Password reference |
+| --- | --- |
+| `dev` | `x402-facilitator-dev/psql/devcenter-url` |
+| `prod` | `x402-facilitator/psql/devcenter-url` |
+
+Store the DevCenter host, port and database name in `devcenter-url`, using the
+same URL format as `psql/url` (including `postgresql+asyncpg://`). When the URL has
+no credentials, Facilitator uses the same `onepassword.database_user` and
+`onepassword.database_password` references as the main database. A complete DSN
+can still supply its own credentials. In DevCenter, grant the configured role
+database `CONNECT`, schema
+`USAGE`, and `SELECT` on `api_keys_plus(key, seller_id, is_active)`. The connection uses verified TLS by
+default. For a private CA, configure the Node trust store, for example with
+`NODE_EXTRA_CA_CERTS`. For local testing, use `api_key_database.url` and, if needed,
+`api_key_database.ssl_mode: disable`. Set TLS through `ssl_mode` and omit
+`options`, `statement_timeout`, and `query_timeout` from the DSN. An explicit
+1Password reference takes precedence over a local URL.
+
+DevCenter owns the key tables and manages key issuance and revocation. Facilitator
+reads only active keys, using one dedicated connection per process. Ensure the
+target database has the original `seller_id` for each key so existing settlement
+history remains associated with the correct seller. Facilitator creates its
+settlement schema on the main database and reads `api_keys_plus` only from
+DevCenter.
+
+Startup requires a successful key read from DevCenter. After
+startup, keys are read from memory and refreshed every
+`rate_limit.api_key_refresh_interval` seconds (default 60). If refreshes fail,
+the last successful snapshot is valid for up to three refresh intervals. After
+that, requests with `X-API-KEY` to `/verify`, `/settle`, and the payment lookup
+routes return HTTP 503 until a refresh succeeds. Anonymous requests continue
+under the existing anonymous policy.
 
 ## SDK consumption
 
@@ -292,11 +343,30 @@ docker run -p 8001:8001 -p 9001:9001 \
 
 The container runs as non-root (uid/gid 1000); make sure the host `logs/`
 directory is writable by that uid before bind-mounting it. Configure the selected
-v3 wallet provider and mount its required configuration; `wallet_cli` needs its
-optional peer dependency and its own keystore password. The retained 1Password /
-`AGENT_WALLET_PASSWORD` hook does not unlock a v3 provider automatically.
+v3 wallet provider and mount its required configuration. The `wallet_cli`
+provider needs a compatible wallet-cli executable.
 Port `9001` is only
 needed when `monitoring.port` differs from `server.port`.
+
+The built-in dev and prod configs set `onepassword.agent_wallet_password` to
+`wallet/agent_wallet_password` in their respective 1Password vaults. Custom
+configs can select their own reference.
+
+```yaml
+onepassword:
+  agent_wallet_password: "<vault>/<item>/<field>"
+```
+
+In each wallet-cli entry that uses this password, set `params.password` to the
+literal marker `facilitator:1password` in `wallets_config.json`. Agent Wallet
+requires this field to construct the signer. All entries using the marker share
+the configured password cache. Startup loads the password before accepting requests
+and fails if 1Password cannot provide it. Later signing requests use the cache
+without accessing 1Password, even if the startup token has since expired.
+The password stays cached in memory until Facilitator exits, with no expiration
+or automatic refresh. Restart Facilitator after changing the password. Agent
+Wallet passes a one-use copy to wallet-cli over stdin and disposes of the copy
+after signing. Normal shutdown clears the cached password and outstanding copies.
 
 Both `config/facilitator.config.dev.yaml` and
 `config/facilitator.config.prod.yaml` are baked into the image. Select one at

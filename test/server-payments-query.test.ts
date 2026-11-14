@@ -9,7 +9,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { createApp, type AppDeps } from "../src/server.js";
-import { refreshApiKeysCache } from "../src/auth.js";
+import { refreshApiKeysCache, startApiKeyRefresher, stopApiKeyRefresher } from "../src/auth.js";
+import { getActiveApiKeyAuth, getSettlementsByAuthorization } from "../src/db/index.js";
 import { resetRateLimitState } from "../src/rate-limit.js";
 
 function buildDeps(): AppDeps {
@@ -144,5 +145,51 @@ describe("createApp /payments query branches (P1-11)", () => {
     const res = await get("", false);
     expect(res.status).toBe(400);
     expect(sellerCalls).toBe(0);
+  });
+});
+
+describe("DevCenter API key cache", () => {
+  const readKeys = vi.mocked(getActiveApiKeyAuth);
+
+  afterEach(() => {
+    stopApiKeyRefresher();
+    vi.useRealTimers();
+    readKeys.mockReset();
+  });
+
+  it("rejects startup when the first read fails", async () => {
+    readKeys.mockRejectedValueOnce(new Error("database unavailable"));
+    await expect(startApiKeyRefresher(60)).rejects.toThrow(/API key/i);
+  });
+
+  it("retains seller scope during a short outage, fails closed at expiry, and recovers", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "performance"] });
+    readKeys.mockResolvedValueOnce([{ key: "k1", sellerId: "SELLER1" }]);
+    readKeys.mockRejectedValue(new Error("database unavailable"));
+
+    const app = createApp(fakeFacilitator() as unknown as Hono, buildDeps());
+    const lookup = (key: string) =>
+      app.request("/payments?network=eip155:97&nonce=0x1", { headers: { "X-API-KEY": key } });
+
+    await startApiKeyRefresher(60);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect((await lookup("k1")).status).toBe(200);
+    expect(getSettlementsByAuthorization).toHaveBeenLastCalledWith(expect.objectContaining({ sellerId: "SELLER1" }));
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await lookup("k1")).status).toBe(503);
+    expect((await app.request("/payments?network=eip155:97&nonce=0x1")).status).toBe(200);
+    expect(getSettlementsByAuthorization).toHaveBeenLastCalledWith(expect.objectContaining({ sellerId: null }));
+    for (const [route, failure] of [["/verify", "invalidReason"], ["/settle", "errorReason"]]) {
+      const res = await app.request(route, { method: "POST", headers: { "X-API-KEY": "k1" } });
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ [failure]: "api_key_auth_unavailable" });
+    }
+    expect((await app.request("/health", { headers: { "X-API-KEY": "k1" } })).status).toBe(200);
+
+    readKeys.mockResolvedValue([{ key: "replacement", sellerId: "SELLER1" }]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await app.request("/payments", { headers: { "X-API-KEY": "replacement" } })).status).toBe(200);
+    expect((await app.request("/payments", { headers: { "X-API-KEY": "k1" } })).status).toBe(400);
   });
 });

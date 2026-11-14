@@ -12,6 +12,7 @@
  * forwards to the official relayer. `gasfreeBaseUrlFor` supplies that proxy base per
  * network (or null to skip exact_gasfree registration).
  */
+import type { WalletDependencies } from "@bankofai/agent-wallet";
 import { x402Facilitator } from "@x402/core/facilitator";
 import { registerExactTronScheme } from "@bankofai/x402-tron/exact/facilitator";
 import { registerExactGasFreeTronScheme } from "@bankofai/x402-tron/gasfree/facilitator";
@@ -46,6 +47,7 @@ import { registerPermit2ReplayGuard } from "./permit2-replay.js";
 
 export interface BuildFacilitatorOptions {
   sponsoring?: readonly SponsoringService[];
+  walletDependencies?: WalletDependencies;
   /** Returns the co-located GasFree proxy base URL for a TRON network, or null to skip gasfree. */
   gasfreeBaseUrlFor: (network: string) => string | null;
 }
@@ -68,7 +70,7 @@ interface NetworkSetup {
  */
 async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOptions): Promise<void> {
   const { facilitator, network, caip, has } = setup;
-  const signer = await buildTronFacilitatorSigner(caip);
+  const signer = await buildTronFacilitatorSigner(caip, opts.walletDependencies);
   registerPermit2ReplayGuard(facilitator, caip, signer);
 
   if (has("exact")) {
@@ -98,7 +100,7 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
   if (has("batch-settlement")) {
     // Same agent-wallet doubles as the receiver-authorizer (signs ClaimBatch /
     // Refund TIP-712 digests; its address is published as receiverAuthorizer).
-    const authorizerSigner = await buildTronAuthorizerSigner(caip);
+    const authorizerSigner = await buildTronAuthorizerSigner(caip, opts.walletDependencies);
     facilitator.register(caip, new BatchSettlementTronScheme(signer, authorizerSigner));
     logger.info("Registered batch-settlement (TRON)", {
       network,
@@ -111,9 +113,9 @@ async function registerTronNetwork(setup: NetworkSetup, opts: BuildFacilitatorOp
  * Register the enabled schemes for one EVM network. Symmetric with the TRON
  * handler; EVM has no gasfree variant.
  */
-async function registerEvmNetwork(setup: NetworkSetup): Promise<GasSponsoringFacilitatorEvmSigner> {
+async function registerEvmNetwork(setup: NetworkSetup, opts: BuildFacilitatorOptions): Promise<GasSponsoringFacilitatorEvmSigner> {
   const { facilitator, network, caip, has } = setup;
-  const signer = await buildEvmFacilitatorSigner(caip);
+  const signer = await buildEvmFacilitatorSigner(caip, opts.walletDependencies);
   registerPermit2ReplayGuard(facilitator, caip, {
     readContract: args => signer.readContract({ ...args, address: args.address as `0x${string}` }),
   });
@@ -132,7 +134,7 @@ async function registerEvmNetwork(setup: NetworkSetup): Promise<GasSponsoringFac
   }
 
   if (has("batch-settlement")) {
-    const authorizerSigner = await buildEvmAuthorizerSigner(caip);
+    const authorizerSigner = await buildEvmAuthorizerSigner(caip, opts.walletDependencies);
     facilitator.register(caip, new BatchSettlementEvmScheme(signer, authorizerSigner));
     logger.info("Registered batch-settlement (EVM)", {
       network,
@@ -218,7 +220,7 @@ export async function buildFacilitator(
     if (family === "tron") {
       await registerTronNetwork(setup, opts);
     } else if (family === "evm") {
-      evmGasSponsoringSigners[setup.caip] = await registerEvmNetwork(setup);
+      evmGasSponsoringSigners[setup.caip] = await registerEvmNetwork(setup, opts);
     } else {
       logger.warn("Unsupported network; skipped", { network });
     }
