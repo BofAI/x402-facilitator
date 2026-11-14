@@ -28,6 +28,8 @@ export function isUsableToken(token: string | undefined | null): token is string
 export interface OnePasswordOptions {
   mode?: "service_account" | "connect";
   host?: string;
+  /** Configuration key for diagnostics. Never pass the secret reference or value. */
+  source?: string;
 }
 
 // Only these locally generated messages may be exposed. Never log response bodies,
@@ -88,11 +90,14 @@ async function getConnectSecret(ref: OpRef, token: string, host?: string): Promi
   }
   async function resolveId(value: string, path: string, label: "name" | "title"): Promise<string> {
     if (CONNECT_ID.test(value)) return value;
+    const kind = label === "name" ? "vault" : "item";
     const rows = await request(path);
     if (!Array.isArray(rows)) throw new ConnectError("Invalid 1Password Connect collection response");
     const matches = rows.filter((row) => row && row[label] === value);
-    if (matches.length !== 1 || typeof matches[0].id !== "string" || !CONNECT_ID.test(matches[0].id))
-      throw new ConnectError("1Password Connect vault/item not found or ambiguous; use an ID");
+    if (matches.length === 0) throw new ConnectError(`1Password Connect ${kind} not found`);
+    if (matches.length > 1) throw new ConnectError(`1Password Connect ${kind} name is ambiguous; use an ID`);
+    if (typeof matches[0].id !== "string" || !CONNECT_ID.test(matches[0].id))
+      throw new ConnectError(`1Password Connect returned an invalid ${kind} ID`);
     return matches[0].id;
   }
   try {
@@ -151,7 +156,9 @@ export async function getSecretFromOnePassword(ref: OpRef, token: string, option
     return await client.secrets.resolve(`op://${ref.vault}/${ref.item}/${ref.field}`);
   } catch (err) {
     const reason = err instanceof ConnectError ? err.message : "1Password service account resolution failed";
-    logger.warn("1Password secret resolution failed", { mode: options.mode ?? "service_account", reason });
+    logger.warn("1Password secret resolution failed", {
+      mode: options.mode ?? "service_account", source: options.source, reason,
+    });
     throw new Error(reason);
   }
 }

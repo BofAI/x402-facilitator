@@ -194,14 +194,31 @@ function opToken(cfg: FacilitatorConfig): string | undefined {
 
 /** Resolve a single `onepassword.<key>` reference, or undefined if absent/unusable. */
 async function resolveOpField(cfg: FacilitatorConfig, key: string): Promise<string | undefined> {
-  const ref = parseOpRef(cfg.onepassword?.[key]);
+  const value = cfg.onepassword?.[key];
+  if (value === undefined) return undefined;
+  const ref = parseOpRef(value);
+  const source = `onepassword.${key}`;
+  const options = opOptions(cfg);
   const token = opToken(cfg);
-  if (!ref || !isUsableToken(token)) return undefined;
-  try {
-    return await getSecretFromOnePassword(ref, token, opOptions(cfg));
-  } catch {
+  if (!ref || !isUsableToken(token)) {
+    logger.warn("1Password secret resolution failed", {
+      mode: options.mode, source,
+      reason: !ref ? "Expected a vault/item/field reference"
+        : options.mode === "connect" ? "Missing or placeholder OP_CONNECT_TOKEN"
+          : "Missing or placeholder 1Password service account token",
+    });
     return undefined;
   }
+  try {
+    const secret = await getSecretFromOnePassword(ref, token, { ...options, source });
+    if (secret.trim()) return secret;
+    logger.warn("1Password secret resolution failed", {
+      mode: options.mode, source, reason: "Resolved to an empty value",
+    });
+  } catch {
+    // The provider already logged the sanitized failure reason.
+  }
+  return undefined;
 }
 
 /** TronGrid API key: env, then YAML literal, then 1Password. */
@@ -364,7 +381,7 @@ async function resolveRequiredOpField(cfg: FacilitatorConfig, source: string, va
     throw new Error(`${source} requires a valid OP_SERVICE_ACCOUNT_TOKEN or onepassword.token`);
   }
   try {
-    const secret = await getSecretFromOnePassword(ref, token, opOptions(cfg));
+    const secret = await getSecretFromOnePassword(ref, token, { ...opOptions(cfg), source });
     if (!secret) throw new Error("resolved to an empty value");
     return secret;
   } catch (err) {
