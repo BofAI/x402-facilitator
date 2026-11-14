@@ -17,6 +17,8 @@ RUN npm run build
 
 FROM base AS runtime
 WORKDIR /app
+ARG FACILITATOR_BUILD_REVISION=unknown
+ENV FACILITATOR_BUILD_REVISION=${FACILITATOR_BUILD_REVISION}
 ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev --no-audit --no-fund

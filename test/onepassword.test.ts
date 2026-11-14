@@ -26,9 +26,9 @@ function connectResponse(fields = [{ id: "password", label: "password", value: "
 
 describe("1Password providers", () => {
   it.each([
-    { vaults: [], reason: "1Password Connect vault not found" },
-    { vaults: [{ id: "a".repeat(26), name: "test-vault" }], reason: "1Password Connect item not found" },
-  ])("identifies the TronGrid configuration key when Connect lookup fails: $reason", async ({ vaults, reason }) => {
+    { vaults: [{ id: "c".repeat(26), name: "different-vault" }], stage: "vault", visibleCount: 1 },
+    { vaults: [{ id: "a".repeat(26), name: "test-vault" }], stage: "item", visibleCount: 0 },
+  ])("identifies the TronGrid configuration key when the Connect $stage lookup fails", async ({ vaults, stage, visibleCount }) => {
     vi.stubEnv("OP_CONNECT_HOST", connect.host);
     vi.stubEnv("OP_CONNECT_TOKEN", "connect-test-token");
     vi.stubEnv("TRON_GRID_API_KEY", undefined);
@@ -40,10 +40,13 @@ describe("1Password providers", () => {
       onepassword: { mode: "connect", trongrid_api_key: "test-vault/credentials/password" },
     });
     expect(warn).toHaveBeenCalledWith("1Password secret resolution failed", {
-      mode: "connect", source: "onepassword.trongrid_api_key", reason,
+      mode: "connect", source: "onepassword.trongrid_api_key",
+      reason: `1Password Connect ${stage} not found`, stage, visibleCount, matchCount: 0,
     });
-    expect(warn).toHaveBeenCalledWith("TronGrid API key not configured; default rate limits apply");
-    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/connect-test-token|test-vault|credentials\/password/);
+    expect(warn).toHaveBeenCalledWith("TronGrid API key not configured; default rate limits apply", {
+      onePasswordReferenceConfigured: true,
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/connect-test-token|test-vault|different-vault|credentials\/password/);
   });
 
   it("resolves a Service Account URL before injecting separate credentials", async () => {

@@ -54,12 +54,19 @@ export interface RuntimeConfig {
 }
 
 /** Stage 1: logging (level + file + SDK logger wiring). */
-export function initLogging(cfg: FacilitatorConfig): void {
+function initLogging(cfg: FacilitatorConfig, configFile: string): void {
   const logFile = logFilePath(cfg);
   if (logFile) setLogFile(logFile);
   setLogLevel(logLevel(cfg));
   setLogger(toSdkLogger());
-  logger.info("Configuration loaded", logFile ? { logFile } : undefined);
+  logger.info("Configuration loaded", {
+    logFile: logFile || undefined,
+    configFile,
+    configSource: process.env.FACILITATOR_CONFIG_PATH ? "override" : "built-in",
+    revision: process.env.FACILITATOR_BUILD_REVISION || "unknown",
+    instance: process.env.HOSTNAME,
+    onePasswordMode: cfg.onepassword?.mode ?? "service_account",
+  });
 }
 
 /** Stage 2: secrets (Redis and TronGrid key injection). */
@@ -78,7 +85,9 @@ export async function initSecrets(cfg: FacilitatorConfig): Promise<void> {
     process.env.TRON_GRID_API_KEY = trongridKey;
     logger.info("TronGrid API key injected");
   } else {
-    logger.warn("TronGrid API key not configured; default rate limits apply");
+    logger.warn("TronGrid API key not configured; default rate limits apply", {
+      onePasswordReferenceConfigured: cfg.onepassword?.trongrid_api_key !== undefined,
+    });
   }
 }
 
@@ -146,8 +155,8 @@ export function gasfreeBaseUrlResolver(
  * the secret/db/auth/gasfree stages in order. Each stage fails with its own
  * context rather than mid-way through a monolithic main().
  */
-export async function buildRuntimeConfig(cfg: FacilitatorConfig): Promise<RuntimeConfig> {
-  initLogging(cfg);
+export async function buildRuntimeConfig(cfg: FacilitatorConfig, configFile: string): Promise<RuntimeConfig> {
+  initLogging(cfg, configFile);
   await initSecrets(cfg);
   const sponsoringConfigs = await getSponsoringConfigs(cfg);
   await initDb(cfg);
