@@ -9,7 +9,7 @@
  */
 import { serve, type ServerType } from "@hono/node-server";
 import { Hono } from "hono";
-import { configPath, getWalletCliPasswordSource, loadConfig } from "./config.js";
+import { getWalletCliPasswordSource, loadConfig } from "./config.js";
 import { disposeDatabase, getDatabasePool } from "./db/index.js";
 import { stopApiKeyRefresher } from "./auth.js";
 import { buildFacilitator } from "./facilitator.js";
@@ -24,10 +24,9 @@ import { requireCanonicalNetwork } from "./network.js";
 import { CachedWalletPassword, walletCliDependencies } from "./wallet-cli-password.js";
 
 async function main(): Promise<void> {
-  const configFile = configPath();
-  const cfg = loadConfig(configFile);
+  const cfg = loadConfig();
   const readWalletPassword = getWalletCliPasswordSource(cfg);
-  const rt = await buildRuntimeConfig(cfg, configFile);
+  const rt = await buildRuntimeConfig(cfg);
   const walletPassword = readWalletPassword
     ? new CachedWalletPassword(readWalletPassword)
     : undefined;

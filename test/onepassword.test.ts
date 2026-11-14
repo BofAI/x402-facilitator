@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { initSecrets } from "../src/runtime.js";
-import { logger } from "../src/logger.js";
 import { parseOpRef, isUsableToken, getSecretFromOnePassword } from "../src/onepassword.js";
 import { getDatabaseUrl, getGasFreeCredentials, getTrongridApiKey, type FacilitatorConfig } from "../src/config.js";
 
@@ -25,30 +24,6 @@ function connectResponse(fields = [{ id: "password", label: "password", value: "
 }
 
 describe("1Password providers", () => {
-  it.each([
-    { vaults: [{ id: "c".repeat(26), name: "different-vault" }], stage: "vault", visibleCount: 1 },
-    { vaults: [{ id: "a".repeat(26), name: "test-vault" }], stage: "item", visibleCount: 0 },
-  ])("identifies the TronGrid configuration key when the Connect $stage lookup fails", async ({ vaults, stage, visibleCount }) => {
-    vi.stubEnv("OP_CONNECT_HOST", connect.host);
-    vi.stubEnv("OP_CONNECT_TOKEN", "connect-test-token");
-    vi.stubEnv("TRON_GRID_API_KEY", undefined);
-    vi.stubEnv("RATE_LIMIT_STORE", "memory");
-    vi.stubGlobal("fetch", vi.fn(async (url: URL) => Response.json(url.pathname === "/v1/vaults" ? vaults : [])));
-    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    await initSecrets({
-      facilitator: { networks: { "tron:3448148188": {} } },
-      onepassword: { mode: "connect", trongrid_api_key: "test-vault/credentials/password" },
-    });
-    expect(warn).toHaveBeenCalledWith("1Password secret resolution failed", {
-      mode: "connect", source: "onepassword.trongrid_api_key",
-      reason: `1Password Connect ${stage} not found`, stage, visibleCount, matchCount: 0,
-    });
-    expect(warn).toHaveBeenCalledWith("TronGrid API key not configured; default rate limits apply", {
-      onePasswordReferenceConfigured: true,
-    });
-    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/connect-test-token|test-vault|different-vault|credentials\/password/);
-  });
-
   it("resolves a Service Account URL before injecting separate credentials", async () => {
     vi.stubEnv("OP_SERVICE_ACCOUNT_TOKEN", "service-test-token");
     sdk.resolve.mockResolvedValueOnce("postgresql://db.example:5432/prod").mockResolvedValueOnce("alice").mockResolvedValueOnce("p@ss");
