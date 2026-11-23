@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-11-23
+
+### Changed
+
+- Test TRON SDK 2.1.3 with Exact asset, amount, and transfer-method validation on TN.
+  The TN candidate uses the SDK and resource extension built from BofAI/x402 commit
+  `875d3fbb`. Replace the bundled candidate packages with published dependencies
+  before opening a stable release PR.
+
 ## [2.3.2] - 2026-11-13
 
 ### Changed

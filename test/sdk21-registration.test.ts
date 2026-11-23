@@ -70,7 +70,8 @@ describe("official Core service registration", () => {
     const app = createApp(facilitator, { rateLimit: { authenticated: "10000/minute", anonymous: "10000/minute" },
       gasfreeSettings: () => null, metricsOnMainPort: false, metricsEndpoint: "/metrics", maxRequestBodyBytes: 2048 });
     const requirements = { scheme: "exact", network: "tron:3448148188", amount: "1",
-      asset: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf", payTo: signers.tron.getAddresses()[0],
+      asset: method === "permit2" ? "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf" : "0x3333333333333333333333333333333333333333",
+      payTo: signers.tron.getAddresses()[0],
       maxTimeoutSeconds: 300, extra: { assetTransferMethod: method } };
     const response = await app.request("http://localhost/verify", { method: "POST",
       headers: { "content-type": "application/json" }, body: JSON.stringify({

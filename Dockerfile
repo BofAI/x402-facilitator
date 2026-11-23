@@ -10,6 +10,7 @@ RUN apt-get update \
 FROM base AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
+COPY vendor/tn-sdk/ ./vendor/tn-sdk/
 RUN npm ci --no-audit --no-fund
 COPY tsconfig.json ./
 COPY src ./src
@@ -19,6 +20,7 @@ FROM base AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
+COPY vendor/tn-sdk/ ./vendor/tn-sdk/
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY --from=build /app/dist ./dist
 # Bake the non-secret environment configs into the image. They contain only

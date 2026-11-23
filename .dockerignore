@@ -10,3 +10,7 @@
 !config/
 !config/facilitator.config.dev.yaml
 !config/facilitator.config.prod.yaml
+!vendor/
+!vendor/tn-sdk/
+!vendor/tn-sdk/bankofai-x402-tron-2.1.3-rc.0.tgz
+!vendor/tn-sdk/bankofai-x402-tron-extensions-2.1.3-rc.0.tgz
