@@ -7,14 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.3.3] - 2026-11-23
+## [2.3.3] - 2026-11-24
 
 ### Changed
 
-- Test TRON SDK 2.1.3 with Exact asset, amount, and transfer-method validation on TN.
-  The TN candidate uses the SDK and resource extension built from BofAI/x402 commit
-  `875d3fbb`. Replace the bundled candidate packages with published dependencies
-  before opening a stable release PR.
+- Upgrade the published TRON SDK and resource extension to 2.1.4 and align on TronWeb 6.5.2.
+- Reject invalid TRON Exact assets, zero amounts, and unsupported USDT transfer methods before settlement. The updated TronWeb adapter accepts 20-byte hex asset addresses for contract reads.
 
 ## [2.3.2] - 2026-11-13
 

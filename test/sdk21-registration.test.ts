@@ -82,6 +82,38 @@ describe("official Core service registration", () => {
     expect(await response.json()).toMatchObject({ isValid: false, invalidReason: "invalid_exact_tron_payload_authorization" });
     expect(signers.tron.writeContract).not.toHaveBeenCalled();
   });
+  it.each([
+    { asset: "TW9yNhTySkEHYfjnGQU2u4NAsdb1tW4fbm", amount: "1", reason: "invalid_exact_tron_asset" },
+    { asset: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", amount: "0", reason: "invalid_exact_tron_amount" },
+    { asset: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", amount: "1", reason: "invalid_exact_tron_asset_transfer_method" },
+  ])("rejects TRON Exact $reason before chain access", async ({ asset, amount, reason }) => {
+    const network = "tron:728126428";
+    const facilitator = await buildFacilitator({
+      database: { url: "unused" },
+      facilitator: { networks: { [network]: { schemes: ["exact"] } } },
+    }, { gasfreeBaseUrlFor: () => null });
+    const app = createApp(facilitator, {
+      rateLimit: { authenticated: "10000/minute", anonymous: "10000/minute" },
+      gasfreeSettings: () => null, metricsOnMainPort: false, metricsEndpoint: "/metrics", maxRequestBodyBytes: 2048,
+    });
+    const requirements = {
+      scheme: "exact", network, amount, asset, payTo: signers.tron.getAddresses()[0],
+      maxTimeoutSeconds: 300, extra: { assetTransferMethod: "eip3009" },
+    };
+    const body = JSON.stringify({
+      paymentPayload: { x402Version: 2, accepted: requirements, payload: {} },
+      paymentRequirements: requirements,
+    });
+    const headers = { "content-type": "application/json" };
+    const verify = await app.request("http://localhost/verify", { method: "POST", headers, body });
+    expect(verify.status).toBe(200);
+    expect(await verify.json()).toMatchObject({ isValid: false, invalidReason: reason });
+    const settle = await app.request("http://localhost/settle", { method: "POST", headers, body });
+    expect(settle.status).toBe(200);
+    expect(await settle.json()).toMatchObject({ success: false, errorReason: reason, transaction: "" });
+    expect(signers.tron.readContract).not.toHaveBeenCalled();
+    expect(signers.tron.writeContract).not.toHaveBeenCalled();
+  });
   it("registers the independent resource extension's validation and execution callbacks", async () => {
     const runtime = { verify: vi.fn(), sponsor: vi.fn() };
     const service = { runtime, access: () => ({ network: "tron:3448148188", ready: true }) } as unknown as SponsoringService;
