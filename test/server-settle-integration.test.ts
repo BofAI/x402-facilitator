@@ -8,6 +8,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
+import { x402Facilitator } from "@x402/core/facilitator";
+import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createApp, type AppDeps } from "../src/server.js";
 import { refreshApiKeysCache } from "../src/auth.js";
 import { resetRateLimitState } from "../src/rate-limit.js";
@@ -76,6 +79,15 @@ const V2_BODY = {
   paymentRequirements: V2_REQ,
 };
 
+const evmRequirements = {
+  ...V2_REQ,
+  network: "eip155:84532",
+  asset: "0x2222222222222222222222222222222222222222",
+  payTo: "0x3333333333333333333333333333333333333333",
+  extra: { name: "USD Coin", version: "2" },
+} as const;
+const evmTxHash = `0x${"12".repeat(32)}` as const;
+
 describe("createApp /settle integration (P2-04)", () => {
   beforeEach(async () => {
     resetRateLimitState();
@@ -96,6 +108,76 @@ describe("createApp /settle integration (P2-04)", () => {
     payload: { permit2Authorization: { from: "0x1111111111111111111111111111111111111111", nonce: "1" } } } });
   const settleRequest = (app: ReturnType<typeof makeApp>) => app.request("/settle", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(permit2Body()),
+  });
+
+  function makeEvmExactApp() {
+    const writeContract = vi.fn(async () => evmTxHash);
+    const facilitator = new x402Facilitator().register(evmRequirements.network, new ExactEvmScheme({
+      getAddresses: () => [evmRequirements.payTo],
+      getCode: async ({ address }) => address === evmRequirements.asset ? "0x01" : "0x",
+      readContract: async () => undefined,
+      verifyTypedData: async () => false,
+      writeContract,
+      sendTransaction: async () => { throw new Error("Unexpected transaction"); },
+      waitForTransactionReceipt: async () => ({ status: "success" }),
+    }));
+    const app = createApp(facilitator, buildDeps());
+    const request = (path: "/verify" | "/settle", payload: Record<string, unknown>) => app.request(path, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        paymentPayload: { x402Version: 2, accepted: evmRequirements, payload },
+        paymentRequirements: evmRequirements,
+      }),
+    });
+    return { request, writeContract };
+  }
+
+  it("accepts the same EIP-3009 signature with decimal or legacy hex uint256 fields", async () => {
+    const { request, writeContract } = makeEvmExactApp();
+    const account = privateKeyToAccount(generatePrivateKey());
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const message = {
+      from: account.address,
+      to: evmRequirements.payTo,
+      value: 1000n,
+      validAfter: now - 60n,
+      validBefore: now + 600n,
+      nonce: `0x${"ab".repeat(32)}` as const,
+    };
+    const signature = await account.signTypedData({
+      domain: { ...evmRequirements.extra, chainId: 84532, verifyingContract: evmRequirements.asset },
+      primaryType: "TransferWithAuthorization",
+      types: { TransferWithAuthorization: [
+        { name: "from", type: "address" }, { name: "to", type: "address" },
+        { name: "value", type: "uint256" }, { name: "validAfter", type: "uint256" },
+        { name: "validBefore", type: "uint256" }, { name: "nonce", type: "bytes32" },
+      ] },
+      message,
+    });
+    const decimal = { ...message, value: String(message.value), validAfter: String(message.validAfter),
+      validBefore: String(message.validBefore) };
+    const hex = { ...decimal, value: `0x${message.value.toString(16)}`,
+      validAfter: `0x${message.validAfter.toString(16)}`, validBefore: `0x${message.validBefore.toString(16)}` };
+
+    for (const authorization of [decimal, hex]) {
+      const response = await request("/verify", { authorization, signature });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ isValid: true, payer: account.address });
+    }
+    const response = await request("/settle", { authorization: hex, signature });
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result, result.errorMessage).toMatchObject({ success: true, transaction: evmTxHash });
+    expect(writeContract).toHaveBeenCalledOnce();
+    expect(saved).toMatchObject({ nonce: message.nonce, status: "success", errorReason: null });
+  });
+
+  it("returns and persists the legacy EVM Exact settlement error for a malformed payload", async () => {
+    const { request, writeContract } = makeEvmExactApp();
+    const response = await request("/settle", {});
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ success: false, errorReason: "invalid_payload" });
+    expect(saved).toMatchObject({ status: "failed", errorReason: "invalid_payload" });
+    expect(writeContract).not.toHaveBeenCalled();
   });
 
   it("rejects a concurrent Permit2 authorization before running a second settlement", async () => {

@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Upgrade the published TRON SDK and resource extension to 2.1.4 and align on TronWeb 6.5.2.
 - Upgrade the TRON SDK and resource extension to 2.1.5 with official x402 Core 2.32.0. Preserve existing HTTP error codes, retry headers, and settlement-record behavior for Permit2 preflight failures.
+- Preserve hex-encoded EIP-3009 authorization values for EVM Exact and the `invalid_payload` error on both verification and settlement, including persisted settlement failures.
 - Reject invalid TRON Exact assets, zero amounts, and unsupported USDT transfer methods before settlement. The updated TronWeb adapter accepts 20-byte hex asset addresses for contract reads.
 - Release fresh EVM nonce reservations after explicit insufficient-funds, fee-cap, or transaction-underpriced node rejections.
 - Retain unmined signed transactions per nonce and rebroadcast the original bytes before allocating past a dropped transaction; keep recovery failures blocked until the original is accepted or its nonce is mined.
