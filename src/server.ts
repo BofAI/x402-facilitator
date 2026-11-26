@@ -137,6 +137,21 @@ function errorResponse(c: Context, status: 400 | 404 | 413 | 503, code: string, 
   return c.json({ code, message }, status);
 }
 
+/** Keep Permit2 guard failures consistent across thrown and structured Core results. */
+function permit2FailureResponse(c: Context, reason: string | undefined, network: string): Response | undefined {
+  switch (reason) {
+    case "permit2_authorization_busy":
+    case "permit2_storage_unavailable":
+    case "permit2_nonce_check_unavailable":
+      c.header("Retry-After", "15");
+      return c.json({ success: false, errorReason: reason, network, transaction: "" }, 503);
+    case "permit2_invalid_authorization":
+      return c.json({ success: false, errorReason: reason, network, transaction: "" }, 400);
+    case "permit2_nonce_consumed":
+      return c.json({ success: false, errorReason: reason, network, transaction: "" }, 200);
+  }
+}
+
 function requireFreshApiKeyCache(
   onUnavailable: (c: Context<{ Variables: AuthVars }>) => Response,
 ): MiddlewareHandler<{ Variables: AuthVars }> {
@@ -216,6 +231,10 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         c.header("Retry-After", "15");
         return c.json(result, 503);
       }
+      if (!result.isValid && result.invalidReason === "invalid_exact_evm_payload" &&
+          parsed.paymentRequirements.network.startsWith("eip155:") && parsed.paymentRequirements.scheme === "exact") {
+        return c.json({ ...result, invalidReason: "invalid_payload" });
+      }
       return c.json(result);
     } catch (err) {
       logger.error("verify error", { err: String(err) });
@@ -267,18 +286,19 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         result = await facilitator.settle(paymentPayload, paymentRequirements);
       }
     } catch (err) {
-      const reason = permit2ReplayReason(err);
-      if (reason) {
-        const unavailable = ["permit2_authorization_busy", "permit2_storage_unavailable", "permit2_nonce_check_unavailable"].includes(reason);
-        if (unavailable) c.header("Retry-After", "15");
-        return c.json({ success: false, errorReason: reason, network, transaction: "" },
-          unavailable ? 503 : reason === "permit2_invalid_authorization" ? 400 : 200);
-      }
+      const response = permit2FailureResponse(c, permit2ReplayReason(err), network);
+      if (response) return response;
       logger.error("settle error", { err: String(err), network, nonce: payerNonce?.nonce });
       return c.json({ success: false, errorReason: "internal_error" }, 500);
     }
 
     const txHash = result.transaction || null;
+    // A preflight abort has no settlement to record. Keep failures with a
+    // transaction hash on the regular audit path.
+    if (!result.success && !txHash) {
+      const response = permit2FailureResponse(c, result.errorReason, network);
+      if (response) return response;
+    }
     if (!result.success) {
       logger.warn("settle failed", { network, nonce: payerNonce?.nonce, txHash, reason: result.errorReason });
     }

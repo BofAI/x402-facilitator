@@ -151,6 +151,35 @@ describe("createApp /settle integration (P2-04)", () => {
     expect(saveCallCount).toBe(0);
   });
 
+  it.each([
+    ["permit2_nonce_consumed", 200],
+    ["permit2_invalid_authorization", 400],
+    ["permit2_nonce_check_unavailable", 503],
+    ["permit2_storage_unavailable", 503],
+  ])("preserves the HTTP contract for a structured SDK preflight failure %s", async (reason, status) => {
+    const app = makeApp({ settle: async () => ({
+      success: false, errorReason: reason, network: V2_REQ.network, transaction: "",
+    }) });
+    const response = await settleRequest(app);
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({
+      success: false, errorReason: reason, network: V2_REQ.network, transaction: "",
+    });
+    expect(response.headers.get("Retry-After")).toBe(status === 503 ? "15" : null);
+    expect(authorizationLocked).toBe(false);
+    expect(saveCallCount).toBe(0);
+  });
+
+  it("preserves the settlement record when a failure includes a transaction", async () => {
+    const app = makeApp({ settle: async () => ({
+      success: false, errorReason: "permit2_storage_unavailable", network: V2_REQ.network, transaction: "tx",
+    }) });
+    const response = await settleRequest(app);
+    expect(await response.json()).toMatchObject({ success: false, transaction: "tx" });
+    expect(saveCallCount).toBe(1);
+    expect(saved).toMatchObject({ status: "failed", txHash: "tx" });
+  });
+
   it("rejects malformed Permit2 identity before entering the SDK", async () => {
     let broadcasts = 0;
     const app = makeApp({ settle: async () => { broadcasts++; return { success: true }; } });
