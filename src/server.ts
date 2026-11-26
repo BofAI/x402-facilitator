@@ -35,6 +35,7 @@ import {
   saveSettlement,
   type Settlement,
 } from "./db/index.js";
+import { SETTLEMENT_TEXT_LIMITS } from "./db/schema.js";
 import { logger } from "./logger.js";
 import { sponsoringAccessError } from "./sponsoring/access.js";
 import type { SponsoringService } from "./sponsoring/service.js";
@@ -141,6 +142,17 @@ function parseSettleBody(raw: unknown):
 
 const FEED_DEFAULT_LIMIT = 50;
 const FEED_MAX_LIMIT = 200;
+
+/** Omit metadata PostgreSQL cannot store without changing the payment response. */
+function settlementText(value: string | null | undefined, maxLength: number): string | null {
+  return value != null && value.length <= maxLength && !value.includes("\0") ? value : null;
+}
+
+function databaseSqlState(error: unknown): string | undefined {
+  const cause = error instanceof Error ? error.cause ?? error : error;
+  if (typeof cause !== "object" || cause === null || !("code" in cause)) return undefined;
+  return typeof cause.code === "string" && /^[A-Z0-9]{5}$/.test(cause.code) ? cause.code : undefined;
+}
 
 /** Public JSON shape for a settlement row. */
 function toResponse(s: Settlement) {
@@ -299,8 +311,9 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
     const accepted = paymentPayload.accepted;
     const network = requirements.network ?? accepted?.network ?? "";
     const scheme = requirements.scheme ?? accepted?.scheme ?? "";
-    const asset = requirements.asset ?? accepted?.asset ?? null;
-    const payerNonce = extractPayerNonce(paymentPayload.payload);
+    const asset = settlementText(requirements.asset ?? accepted?.asset, SETTLEMENT_TEXT_LIMITS.asset);
+    const payerNonce = extractPayerNonce(paymentPayload.payload, scheme);
+    const nonce = settlementText(payerNonce?.nonce, SETTLEMENT_TEXT_LIMITS.nonce);
 
     let result;
     try {
@@ -317,22 +330,23 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
     } catch (err) {
       const response = permit2FailureResponse(c, permit2ReplayReason(err), network);
       if (response) return response;
-      logger.error("settle error", { err: String(err), network, nonce: payerNonce?.nonce });
+      logger.error("settle error", { err: String(err), network, nonce });
       return c.json({ success: false, errorReason: "internal_error" }, 500);
     }
 
     if (!result.success && isMalformedEvmExact(requirements, result.errorReason)) {
       result = { ...result, errorReason: "invalid_payload" };
     }
-    const txHash = result.transaction || null;
     // A preflight abort has no settlement to record. Keep failures with a
     // transaction hash on the regular audit path.
-    if (!result.success && !txHash) {
+    if (!result.success && !result.transaction) {
       const response = permit2FailureResponse(c, result.errorReason, network);
       if (response) return response;
     }
+    const txHash = settlementText(result.transaction || null, SETTLEMENT_TEXT_LIMITS.txHash);
+    const errorReason = settlementText(result.errorReason, SETTLEMENT_TEXT_LIMITS.errorReason);
     if (!result.success) {
-      logger.warn("settle failed", { network, nonce: payerNonce?.nonce, txHash, reason: result.errorReason });
+      logger.warn("settle failed", { network, nonce, txHash, reason: errorReason });
     }
     try {
       const sellerId = c.get("sellerId");
@@ -341,21 +355,23 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         network,
         scheme,
         asset,
-        payer: result.payer ?? payerNonce?.payer ?? null,
-        nonce: payerNonce?.nonce ?? null,
+        payer: settlementText(result.payer ?? payerNonce?.payer, SETTLEMENT_TEXT_LIMITS.payer),
+        nonce,
         // Prefer the actually-settled amount (upto/batch); fall back to the
         // requirements amount (exact, where SettleResponse omits it).
-        amount: result.amount ?? requirements.amount ?? null,
+        amount: settlementText(result.amount ?? requirements.amount, SETTLEMENT_TEXT_LIMITS.amount),
         txHash,
         status: result.success ? "success" : "failed",
-        errorReason: result.errorReason ?? null,
+        errorReason,
       });
-      logger.info("settlement saved", { sellerId, network, nonce: payerNonce?.nonce, txHash });
+      logger.info("settlement saved", { sellerId, network, nonce, txHash });
     } catch (err) {
+      // Drizzle's error message may contain the raw SQL parameters.
       logger.error("failed to save settlement (settle result still returned)", {
-        err: String(err),
+        errorName: err instanceof Error ? err.name : "UnknownError",
+        sqlState: databaseSqlState(err),
         network,
-        nonce: payerNonce?.nonce,
+        nonce,
       });
     }
 

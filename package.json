@@ -13,7 +13,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:postgres": "SPONSORING_REQUIRE_POSTGRES=1 vitest run test/sponsoring-postgres.test.ts test/sponsoring-service-postgres.test.ts",
+    "test:postgres": "SPONSORING_REQUIRE_POSTGRES=1 vitest run test/settlement-postgres.test.ts test/sponsoring-postgres.test.ts test/sponsoring-service-postgres.test.ts",
     "test:watch": "vitest",
     "lint": "eslint .",
     "test:gateway": "npm run build && node --test test/gateway-integration.mjs"

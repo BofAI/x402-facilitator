@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgrade the TRON SDK and resource extension to 2.1.5 and official x402 Core, EVM, and extensions to 2.32.0.
 - Preserve existing HTTP error codes, retry headers, and settlement-record behavior for Permit2 preflight failures.
 - Preserve hex-encoded EIP-3009 authorization values for EVM Exact and the `invalid_payload` error on both verification and settlement, including persisted settlement failures.
+- Preserve settlement records when optional addresses or other metadata exceed PostgreSQL column limits. Record those values as NULL and extract batch payer identity from the channel.
 
 ## [2.3.3] - 2026-11-24
 

@@ -13,7 +13,7 @@
 import { Pool } from "pg";
 import { and, desc, eq } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { apiKeys, settlements, type Settlement } from "./schema.js";
+import { apiKeys, settlements, SETTLEMENT_TEXT_LIMITS, type Settlement } from "./schema.js";
 import { logger } from "../logger.js";
 
 export type { Settlement } from "./schema.js";
@@ -40,13 +40,13 @@ CREATE TABLE IF NOT EXISTS settlements (
   seller_id VARCHAR(64),
   network VARCHAR(32) NOT NULL,
   scheme VARCHAR(32) NOT NULL,
-  asset VARCHAR(128),
-  payer VARCHAR(128),
-  nonce VARCHAR(80),
-  amount VARCHAR(80),
-  tx_hash VARCHAR(128),
+  asset VARCHAR(${SETTLEMENT_TEXT_LIMITS.asset}),
+  payer VARCHAR(${SETTLEMENT_TEXT_LIMITS.payer}),
+  nonce VARCHAR(${SETTLEMENT_TEXT_LIMITS.nonce}),
+  amount VARCHAR(${SETTLEMENT_TEXT_LIMITS.amount}),
+  tx_hash VARCHAR(${SETTLEMENT_TEXT_LIMITS.txHash}),
   status VARCHAR(32) NOT NULL,
-  error_reason VARCHAR(128),
+  error_reason VARCHAR(${SETTLEMENT_TEXT_LIMITS.errorReason}),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_settlements_seller_created ON settlements (seller_id, created_at DESC);
