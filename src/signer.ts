@@ -8,7 +8,7 @@
  * TRON uses its SDK signer factory; EVM connects the wallet to official x402
  * through the local bridge. Both delegate signing without exporting keys.
  */
-import { resolveWallet, type Wallet, type Eip712Capable } from "@bankofai/agent-wallet";
+import { resolveWallet, type Wallet, type Eip712Capable, type WalletDependencies } from "@bankofai/agent-wallet";
 import { createPublicClient, http } from "viem";
 import {
   createFacilitatorTronSigner,
@@ -51,9 +51,9 @@ function requireTypedData(wallet: Wallet): Wallet & Eip712Capable {
  * @param network - Canonical CAIP-2 network id (e.g. "tron:0xcd8690dc").
  * @returns A FacilitatorTronSigner bound to that network's TronWeb host.
  */
-export async function buildTronFacilitatorSigner(canonical: CanonicalNetwork): Promise<FacilitatorTronSigner> {
+export async function buildTronFacilitatorSigner(canonical: CanonicalNetwork, dependencies?: WalletDependencies): Promise<FacilitatorTronSigner> {
   const fullHost = rpcFor(canonical);
-  const wallet = await resolveWallet({ network: canonical });
+  const wallet = await resolveWallet({ network: canonical, ...(dependencies && { dependencies }) });
   return createFacilitatorTronSigner({
     getAddress: () => wallet.getAddress(),
     async signTransaction(payload) {
@@ -79,11 +79,12 @@ export async function buildTronFacilitatorSigner(canonical: CanonicalNetwork): P
  */
 export async function buildEvmFacilitatorSigner(
   canonical: CanonicalNetwork,
+  dependencies?: WalletDependencies,
 ): Promise<GasSponsoringFacilitatorEvmSigner> {
   const chainId = chainIdOf(canonical);
   if (chainId === undefined) throw new Error(`Not an EVM network: ${canonical}`);
 
-  const wallet = await resolveWallet({ network: canonical });
+  const wallet = await resolveWallet({ network: canonical, ...(dependencies && { dependencies }) });
 
   const primaryRpcUrl = rpcFor(canonical);
   const signer = await createFacilitatorEvmSigner({
@@ -119,9 +120,9 @@ export async function buildEvmFacilitatorSigner(
  *
  * @returns An EvmAuthorizerSigner ({ address, signTypedData }).
  */
-export async function buildEvmAuthorizerSigner(canonical: CanonicalNetwork = "eip155:1"): Promise<EvmAuthorizerSigner> {
+export async function buildEvmAuthorizerSigner(canonical: CanonicalNetwork = "eip155:1", dependencies?: WalletDependencies): Promise<EvmAuthorizerSigner> {
   // Mainnet default retains legacy no-argument callers; production passes its network.
-  const wallet = requireTypedData(await resolveWallet({ network: canonical }));
+  const wallet = requireTypedData(await resolveWallet({ network: canonical, ...(dependencies && { dependencies }) }));
   return createAuthorizerEvmSigner(wallet);
 }
 
@@ -132,8 +133,8 @@ export async function buildEvmAuthorizerSigner(canonical: CanonicalNetwork = "ei
  *
  * @returns A TRON authorizer signer ({ address, signTypedData }).
  */
-export async function buildTronAuthorizerSigner(canonical: CanonicalNetwork = "tron:728126428"): Promise<TronAuthorizerSignerLike> {
+export async function buildTronAuthorizerSigner(canonical: CanonicalNetwork = "tron:728126428", dependencies?: WalletDependencies): Promise<TronAuthorizerSignerLike> {
   // Mainnet default retains legacy no-argument callers; production passes its network.
-  const wallet = requireTypedData(await resolveWallet({ network: canonical }));
+  const wallet = requireTypedData(await resolveWallet({ network: canonical, ...(dependencies && { dependencies }) }));
   return createAuthorizerTronSigner(wallet);
 }

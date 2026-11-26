@@ -194,7 +194,6 @@ credentials retain their existing fallback/disabled behavior. Relevant env vars:
 |---|---|
 | `FACILITATOR_SERVICE_ENV` | `dev` or `prod`; selects the matching baked-in config file |
 | `FACILITATOR_CONFIG_PATH` | Explicit config path; overrides `FACILITATOR_SERVICE_ENV` |
-| `AGENT_WALLET_PASSWORD` | Legacy compatibility hook; v3 removed `local_secure`; not a wallet-cli keystore password |
 | `TRON_GRID_API_KEY` | TronGrid rate limits (shared across TRON networks) |
 | `GASFREE_API_KEY[_NILE\|_MAINNET]` / `GASFREE_API_SECRET[...]` | GasFree relayer creds (gate `exact_gasfree`) |
 | `UPSTREAM_NILE_BASE` / `UPSTREAM_MAINNET_BASE` | Override GasFree upstream bases |
@@ -263,8 +262,12 @@ the field in each vault before deploying its image.
 | `dev` | `x402-facilitator-dev/psql/devcenter-url` |
 | `prod` | `x402-facilitator/psql/devcenter-url` |
 
-Store a `postgresql://` DSN with the DevCenter database name and dedicated
-read-only role in the referenced field. Grant the role database `CONNECT`, schema
+Store the DevCenter host, port and database name in `devcenter-url`, using the
+same URL format as `psql/url` (including `postgresql+asyncpg://`). When the URL has
+no credentials, Facilitator uses the same `onepassword.database_user` and
+`onepassword.database_password` references as the main database. A complete DSN
+can still supply its own credentials. In DevCenter, grant the configured role
+database `CONNECT`, schema
 `USAGE`, and `SELECT` on `api_keys_plus(key, seller_id, is_active)`. The connection uses verified TLS by
 default. For a private CA, configure the Node trust store, for example with
 `NODE_EXTRA_CA_CERTS`. For local testing, use `api_key_database.url` and, if needed,
@@ -340,11 +343,30 @@ docker run -p 8001:8001 -p 9001:9001 \
 
 The container runs as non-root (uid/gid 1000); make sure the host `logs/`
 directory is writable by that uid before bind-mounting it. Configure the selected
-v3 wallet provider and mount its required configuration; `wallet_cli` needs its
-optional peer dependency and its own keystore password. The retained 1Password /
-`AGENT_WALLET_PASSWORD` hook does not unlock a v3 provider automatically.
+v3 wallet provider and mount its required configuration. The `wallet_cli`
+provider needs a compatible wallet-cli executable.
 Port `9001` is only
 needed when `monitoring.port` differs from `server.port`.
+
+The built-in dev and prod configs set `onepassword.agent_wallet_password` to
+`wallet/agent_wallet_password` in their respective 1Password vaults. Custom
+configs can select their own reference.
+
+```yaml
+onepassword:
+  agent_wallet_password: "<vault>/<item>/<field>"
+```
+
+In each wallet-cli entry that uses this password, set `params.password` to the
+literal marker `facilitator:1password` in `wallets_config.json`. Agent Wallet
+requires this field to construct the signer. All entries using the marker share
+the configured password cache. Startup loads the password before accepting requests
+and fails if 1Password cannot provide it. Later signing requests use the cache
+without accessing 1Password, even if the startup token has since expired.
+The password stays cached in memory until Facilitator exits, with no expiration
+or automatic refresh. Restart Facilitator after changing the password. Agent
+Wallet passes a one-use copy to wallet-cli over stdin and disposes of the copy
+after signing. Normal shutdown clears the cached password and outstanding copies.
 
 Both `config/facilitator.config.dev.yaml` and
 `config/facilitator.config.prod.yaml` are baked into the image. Select one at
