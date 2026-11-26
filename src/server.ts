@@ -87,6 +87,36 @@ const BatchManagementPayloadSchema = PaymentPayloadV2Schema.extend({
   ),
 });
 
+function isEvmExact(requirements: PaymentRequirements): boolean {
+  return requirements.scheme === "exact" && requirements.network.startsWith("eip155:");
+}
+
+function normalizeEvmExactAuthorization(payload: PaymentPayload, requirements: PaymentRequirements): PaymentPayload {
+  if (!isEvmExact(requirements) || payload.accepted.scheme !== requirements.scheme ||
+      payload.accepted.network !== requirements.network || "permit2Authorization" in payload.payload) {
+    return payload;
+  }
+  const { authorization } = payload.payload;
+  if (typeof authorization !== "object" || authorization === null || Array.isArray(authorization)) return payload;
+
+  // EIP-712 signs the uint256 values, independent of their JSON string encoding.
+  const normalized = { ...authorization } as Record<string, unknown>;
+  let changed = false;
+  for (const field of ["value", "validAfter", "validBefore"]) {
+    const value = normalized[field];
+    const hex = typeof value === "string" ? /^0x0*([0-9a-f]{1,64})$/i.exec(value) : null;
+    if (hex) {
+      normalized[field] = BigInt(`0x${hex[1]}`).toString();
+      changed = true;
+    }
+  }
+  return changed ? { ...payload, payload: { ...payload.payload, authorization: normalized } } : payload;
+}
+
+function isMalformedEvmExact(requirements: PaymentRequirements, reason: string | undefined): boolean {
+  return reason === "invalid_exact_evm_payload" && isEvmExact(requirements);
+}
+
 /** Validate and narrow a request body into typed PaymentPayload/Requirements. */
 function parseSettleBody(raw: unknown):
   | { success: true; paymentPayload: PaymentPayload; paymentRequirements: PaymentRequirements }
@@ -100,12 +130,12 @@ function parseSettleBody(raw: unknown):
     pr = BatchManagementRequirementsSchema.safeParse(obj.paymentRequirements);
   }
   if (!pp.success || !pr.success) return { success: false };
+  // The casts bridge the SDK's slightly looser inferred types (optional extra).
+  const paymentRequirements = pr.data as PaymentRequirements;
   return {
     success: true,
-    // Schemas are runtime-verified to the V2 shape the facilitator accepts;
-    // the cast bridges the SDK's slightly looser inferred types (optional extra).
-    paymentPayload: pp.data as PaymentPayload,
-    paymentRequirements: pr.data as PaymentRequirements,
+    paymentPayload: normalizeEvmExactAuthorization(pp.data as PaymentPayload, paymentRequirements),
+    paymentRequirements,
   };
 }
 
@@ -135,6 +165,21 @@ function toResponse(s: Settlement) {
  */
 function errorResponse(c: Context, status: 400 | 404 | 413 | 503, code: string, message: string): Response {
   return c.json({ code, message }, status);
+}
+
+/** Keep Permit2 guard failures consistent across thrown and structured Core results. */
+function permit2FailureResponse(c: Context, reason: string | undefined, network: string): Response | undefined {
+  switch (reason) {
+    case "permit2_authorization_busy":
+    case "permit2_storage_unavailable":
+    case "permit2_nonce_check_unavailable":
+      c.header("Retry-After", "15");
+      return c.json({ success: false, errorReason: reason, network, transaction: "" }, 503);
+    case "permit2_invalid_authorization":
+      return c.json({ success: false, errorReason: reason, network, transaction: "" }, 400);
+    case "permit2_nonce_consumed":
+      return c.json({ success: false, errorReason: reason, network, transaction: "" }, 200);
+  }
 }
 
 function requireFreshApiKeyCache(
@@ -216,6 +261,9 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         c.header("Retry-After", "15");
         return c.json(result, 503);
       }
+      if (!result.isValid && isMalformedEvmExact(parsed.paymentRequirements, result.invalidReason)) {
+        return c.json({ ...result, invalidReason: "invalid_payload" });
+      }
       return c.json(result);
     } catch (err) {
       logger.error("verify error", { err: String(err) });
@@ -267,18 +315,22 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         result = await facilitator.settle(paymentPayload, paymentRequirements);
       }
     } catch (err) {
-      const reason = permit2ReplayReason(err);
-      if (reason) {
-        const unavailable = ["permit2_authorization_busy", "permit2_storage_unavailable", "permit2_nonce_check_unavailable"].includes(reason);
-        if (unavailable) c.header("Retry-After", "15");
-        return c.json({ success: false, errorReason: reason, network, transaction: "" },
-          unavailable ? 503 : reason === "permit2_invalid_authorization" ? 400 : 200);
-      }
+      const response = permit2FailureResponse(c, permit2ReplayReason(err), network);
+      if (response) return response;
       logger.error("settle error", { err: String(err), network, nonce: payerNonce?.nonce });
       return c.json({ success: false, errorReason: "internal_error" }, 500);
     }
 
+    if (!result.success && isMalformedEvmExact(requirements, result.errorReason)) {
+      result = { ...result, errorReason: "invalid_payload" };
+    }
     const txHash = result.transaction || null;
+    // A preflight abort has no settlement to record. Keep failures with a
+    // transaction hash on the regular audit path.
+    if (!result.success && !txHash) {
+      const response = permit2FailureResponse(c, result.errorReason, network);
+      if (response) return response;
+    }
     if (!result.success) {
       logger.warn("settle failed", { network, nonce: payerNonce?.nonce, txHash, reason: result.errorReason });
     }
