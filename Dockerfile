@@ -1,11 +1,15 @@
 # x402 Facilitator v2 (TypeScript / Node)
 FROM node:24.22.2-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS base
 # CVE-2026-111497: use Bookworm's patched system Brotli in both stages.
+# DLA-4941-1: install the corrected Bookworm PAM build for CVE-2025-6020.
 # Fail the build if the configured Debian repositories do not provide the fix.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libbrotli1 \
+    && apt-get install -y --no-install-recommends libbrotli1 libpam-modules \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge '1.0.9-2+deb12u1' \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpam-modules)" ge '1.5.2-6+deb12u3' \
     && rm -rf /var/lib/apt/lists/*
+# Refresh npm's bundled brace-expansion and Undici in both image stages.
+RUN npm install --global --no-audit --no-fund npm@11.21.3
 
 FROM base AS build
 WORKDIR /app

@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve settlement records when optional addresses or other metadata exceed PostgreSQL column limits. Record those values as NULL and extract batch payer identity from the channel.
 - Use the published stable Agent Wallet 3.0.0 release.
 
+### Security
+
+- Pass PR branch names and audit report paths to the audit workflow as data.
+- Update the image's npm to 11.21.3 for patched bundled dependencies and require the patched Debian PAM package.
+
 ## [2.3.3] - 2026-11-24
 
 ### Changed
