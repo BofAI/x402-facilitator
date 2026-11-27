@@ -31,7 +31,7 @@ describe("Permit2 replay guard", () => {
     }, { network: "tron:3448148188", rpcUrl: "http://127.0.0.1:1" });
     const facilitator = new x402Facilitator();
     registerPermit2ReplayGuard(facilitator, "tron:3448148188", signer);
-    await expect(facilitator.settle(payment(), requirements("tron:3448148188"))).rejects.toThrow("permit2_nonce_consumed");
+    await expect(facilitator.settle(payment(), requirements("tron:3448148188"))).resolves.toMatchObject({ success: false, errorReason: "permit2_nonce_consumed", transaction: "" });
     expect(calls).toEqual([{ endpoint: "wallet/triggerconstantcontract", args: expect.objectContaining({
       contract_address: "41f62f506d1faa02e2354a9886b4a200496ee96f4b", function_selector: "nonceBitmap(address,uint256)",
     }) }]);
@@ -87,7 +87,7 @@ describe("Permit2 replay guard", () => {
         return { success: true, network: network as `${string}:${string}`, transaction: "tx" }; },
     });
     expect((await facilitator.settle(payment(), requirements(network))).success).toBe(true);
-    await expect(facilitator.settle(payment(), requirements(network))).rejects.toThrow("permit2_nonce_consumed");
+    await expect(facilitator.settle(payment(), requirements(network))).resolves.toMatchObject({ success: false, errorReason: "permit2_nonce_consumed", transaction: "" });
     expect(broadcasts).toBe(1);
     expect(reads[0]).toMatchObject({ address: network.startsWith("tron:") ? "TYQuuhGbEMxF7nZxUHV3uHJxAVVAegNU9h" : "0x000000000022D473030F116dDEE9F6B43aC78BA3",
       functionName: "nonceBitmap", args: [owner, 1n] });
@@ -101,7 +101,7 @@ describe("Permit2 replay guard", () => {
     } });
     facilitator.register("eip155:97", { scheme: "exact", caipFamily: "eip155", getSigners: () => [owner],
       verify: async () => ({ isValid: true }), settle: async () => { broadcasts++; return { success: true, network: "eip155:97", transaction: "tx" }; } });
-    await expect(facilitator.settle(payment(), requirements())).rejects.toThrow("permit2_nonce_check_unavailable");
+    await expect(facilitator.settle(payment(), requirements())).resolves.toMatchObject({ success: false, errorReason: "permit2_nonce_check_unavailable", transaction: "" });
     expect(broadcasts).toBe(0);
   });
 });
@@ -173,7 +173,7 @@ describe.skipIf(!url)("PostgreSQL Permit2 authorization lock", () => {
       verify: async () => ({ isValid: true }), settle: async () => { broadcasts++; return { success: true, network: "eip155:97", transaction: "tx" }; } });
     const identity = permit2Identity(payment("98765432109876543212"), requirements())!;
     const first = withPermit2SettlementLock(a, identity, () => facilitator.settle(payment("98765432109876543212"), requirements()));
-    const failure = expect(first).rejects.toThrow("permit2_storage_unavailable");
+    const failure = expect(first).resolves.toMatchObject({ success: false, errorReason: "permit2_storage_unavailable", transaction: "" });
     await started;
     await admin.query("SELECT pg_terminate_backend($1)", [backendPid]);
     await lost;

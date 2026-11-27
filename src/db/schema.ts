@@ -10,6 +10,15 @@
  */
 import { bigserial, boolean, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 
+export const SETTLEMENT_TEXT_LIMITS = {
+  asset: 128,
+  payer: 128,
+  nonce: 80,
+  amount: 80,
+  txHash: 128,
+  errorReason: 128,
+} as const;
+
 export const settlements = pgTable("settlements", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   /** Seller resolved from the request API key (soft FK to sellers.seller_id). */
@@ -17,18 +26,18 @@ export const settlements = pgTable("settlements", {
   network: varchar("network", { length: 32 }).notNull(),
   scheme: varchar("scheme", { length: 32 }).notNull(),
   /** Token contract (TRC-20 / ERC-20). Part of the on-chain authorization identity. */
-  asset: varchar("asset", { length: 128 }),
+  asset: varchar("asset", { length: SETTLEMENT_TEXT_LIMITS.asset }),
   /** Paying address (EIP-3009 `from` / Permit2 `from` / GasFree `user`). */
-  payer: varchar("payer", { length: 128 }),
+  payer: varchar("payer", { length: SETTLEMENT_TEXT_LIMITS.payer }),
   /** Authorization nonce — the on-chain 1:1 anchor. */
-  nonce: varchar("nonce", { length: 80 }),
+  nonce: varchar("nonce", { length: SETTLEMENT_TEXT_LIMITS.nonce }),
   /** Actual settled amount in atomic units (SettleResponse.amount), when present. */
-  amount: varchar("amount", { length: 80 }),
+  amount: varchar("amount", { length: SETTLEMENT_TEXT_LIMITS.amount }),
   /** Settlement tx hash; null on a failed settle. */
-  txHash: varchar("tx_hash", { length: 128 }),
+  txHash: varchar("tx_hash", { length: SETTLEMENT_TEXT_LIMITS.txHash }),
   status: varchar("status", { length: 32 }).notNull(),
   /** Failure reason from SettleResponse.errorReason, for ops/debugging. */
-  errorReason: varchar("error_reason", { length: 128 }),
+  errorReason: varchar("error_reason", { length: SETTLEMENT_TEXT_LIMITS.errorReason }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -54,7 +54,7 @@ jobs:
         id: archive
         shell: bash
         run: |
-          ARCHIVE_NAME="${{ github.event.repository.name }}.zip"
+          ARCHIVE_NAME="${GITHUB_REPOSITORY#*/}.zip"
           if git ls-files -s | awk '$1 == "120000" { found=1 } END { exit !found }'; then
             echo "Refusing to archive tracked symbolic links"
             exit 1
@@ -68,40 +68,47 @@ jobs:
         if: env.AUTO_AUDIT_ENABLED == 'true'
         id: submit
         shell: bash
+        env:
+          AUDIT_SERVICE_URL: ${{ vars.AUDIT_SERVICE_URL }}
+          AUDIT_PR_SKILL: ${{ vars.AUDIT_PR_SKILL }}
+          AUDIT_API_KEY: ${{ secrets.AUDIT_API_KEY }}
+          ARCHIVE_NAME: ${{ steps.archive.outputs.archive_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          RESPONSE=$(curl -s -X POST "${{ vars.AUDIT_SERVICE_URL }}/audit-pr/${{ vars.AUDIT_PR_SKILL }}" \
-            -H "X-API-Key: ${{ secrets.AUDIT_API_KEY }}" \
-            -F "file=@/tmp/${{ steps.archive.outputs.archive_name }}" \
-            -F "from_branch=${{ github.event.pull_request.base.ref }}" \
-            -F "to_branch=${{ github.event.pull_request.head.ref }}")
+          RESPONSE=$(curl -s -X POST "${AUDIT_SERVICE_URL%/}/audit-pr/${AUDIT_PR_SKILL}" \
+            -H "X-API-Key: ${AUDIT_API_KEY}" \
+            -F "file=@/tmp/${ARCHIVE_NAME}" \
+            --form-string "from_branch=${BASE_REF}" \
+            --form-string "to_branch=${HEAD_REF}")
 
           echo "Submit response:"
           echo "$RESPONSE" | jq .
 
-          REPORT_URL=$(echo "$RESPONSE" | jq -r '.report_url // empty')
-
-          if [ -z "$REPORT_URL" ]; then
-            echo "Audit service did not return report_url"
+          if ! REPORT_URL=$(jq -er '.report_url | select(type == "string" and length > 0 and (test("[[:cntrl:]]") | not))' <<< "$RESPONSE"); then
+            echo "Audit service did not return a valid report_url"
             exit 1
           fi
 
-          echo "report_url=$REPORT_URL" >> "$GITHUB_OUTPUT"
+          printf 'report_url=%s\n' "$REPORT_URL" >> "$GITHUB_OUTPUT"
 
       - name: Poll report until ready
         if: env.AUTO_AUDIT_ENABLED == 'true'
         id: poll
         shell: bash
+        env:
+          AUDIT_SERVICE_URL: ${{ vars.AUDIT_SERVICE_URL }}
+          REPORT_PATH: ${{ steps.submit.outputs.report_url }}
         run: |
-          REPORT_PATH="${{ steps.submit.outputs.report_url }}"
           if [ -z "$REPORT_PATH" ]; then
             echo "Missing report_url"
             exit 1
           fi
 
-          echo "Polling report URL: ${{ vars.AUDIT_SERVICE_URL }}${REPORT_PATH}"
+          echo "Polling report URL: ${AUDIT_SERVICE_URL%/}/${REPORT_PATH#/}"
 
           for i in $(seq 1 20); do
-            HTTP_CODE=$(curl -s -o /tmp/audit-report.html -w "%{http_code}" "${{ vars.AUDIT_SERVICE_URL }}${REPORT_PATH}")
+            HTTP_CODE=$(curl -s -o /tmp/audit-report.html -w "%{http_code}" "${AUDIT_SERVICE_URL%/}/${REPORT_PATH#/}")
             echo "Poll #$i HTTP_CODE=$HTTP_CODE"
 
             if [ "$HTTP_CODE" = "200" ] && [ -s /tmp/audit-report.html ]; then
@@ -118,12 +125,14 @@ jobs:
       - name: Fetch markdown report
         if: env.AUTO_AUDIT_ENABLED == 'true'
         shell: bash
+        env:
+          AUDIT_SERVICE_URL: ${{ vars.AUDIT_SERVICE_URL }}
+          REPORT_PATH: ${{ steps.submit.outputs.report_url }}
         run: |
-          REPORT_PATH="${{ steps.submit.outputs.report_url }}"
           MD_PATH="${REPORT_PATH%audit-report.html}audit-report.md"
 
           echo "Markdown path: ${MD_PATH}"
-          HTTP_CODE=$(curl -s -o /tmp/audit-report.md -w "%{http_code}" "${{ vars.AUDIT_SERVICE_URL }}${MD_PATH}")
+          HTTP_CODE=$(curl -s -o /tmp/audit-report.md -w "%{http_code}" "${AUDIT_SERVICE_URL%/}/${MD_PATH#/}")
           echo "Markdown fetch HTTP_CODE=$HTTP_CODE"
 
           if [ "$HTTP_CODE" != "200" ] || [ ! -s /tmp/audit-report.md ]; then
@@ -219,7 +228,7 @@ jobs:
         id: archive
         shell: bash
         run: |
-          ARCHIVE_NAME="${{ github.event.repository.name }}.zip"
+          ARCHIVE_NAME="${GITHUB_REPOSITORY#*/}.zip"
           if git ls-files -s | awk '$1 == "120000" { found=1 } END { exit !found }'; then
             echo "Refusing to archive tracked symbolic links"
             exit 1
@@ -232,39 +241,46 @@ jobs:
       - name: Submit audit job
         id: submit
         shell: bash
+        env:
+          AUDIT_SERVICE_URL: ${{ vars.AUDIT_SERVICE_URL }}
+          AUDIT_PR_SKILL: ${{ vars.AUDIT_PR_SKILL }}
+          AUDIT_API_KEY: ${{ secrets.AUDIT_API_KEY }}
+          ARCHIVE_NAME: ${{ steps.archive.outputs.archive_name }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
         run: |
-          RESPONSE=$(curl -s -X POST "${{ vars.AUDIT_SERVICE_URL }}/audit-pr/${{ vars.AUDIT_PR_SKILL }}" \
-            -H "X-API-Key: ${{ secrets.AUDIT_API_KEY }}" \
-            -F "file=@/tmp/${{ steps.archive.outputs.archive_name }}" \
-            -F "from_branch=${{ steps.pr.outputs.base_ref }}" \
-            -F "to_branch=${{ steps.pr.outputs.head_ref }}")
+          RESPONSE=$(curl -s -X POST "${AUDIT_SERVICE_URL%/}/audit-pr/${AUDIT_PR_SKILL}" \
+            -H "X-API-Key: ${AUDIT_API_KEY}" \
+            -F "file=@/tmp/${ARCHIVE_NAME}" \
+            --form-string "from_branch=${BASE_REF}" \
+            --form-string "to_branch=${HEAD_REF}")
 
           echo "Submit response:"
           echo "$RESPONSE" | jq .
 
-          REPORT_URL=$(echo "$RESPONSE" | jq -r '.report_url // empty')
-
-          if [ -z "$REPORT_URL" ]; then
-            echo "Audit service did not return report_url"
+          if ! REPORT_URL=$(jq -er '.report_url | select(type == "string" and length > 0 and (test("[[:cntrl:]]") | not))' <<< "$RESPONSE"); then
+            echo "Audit service did not return a valid report_url"
             exit 1
           fi
 
-          echo "report_url=$REPORT_URL" >> "$GITHUB_OUTPUT"
+          printf 'report_url=%s\n' "$REPORT_URL" >> "$GITHUB_OUTPUT"
 
       - name: Poll report until ready
         id: poll
         shell: bash
+        env:
+          AUDIT_SERVICE_URL: ${{ vars.AUDIT_SERVICE_URL }}
+          REPORT_PATH: ${{ steps.submit.outputs.report_url }}
         run: |
-          REPORT_PATH="${{ steps.submit.outputs.report_url }}"
           if [ -z "$REPORT_PATH" ]; then
             echo "Missing report_url"
             exit 1
           fi
 
-          echo "Polling report URL: ${{ vars.AUDIT_SERVICE_URL }}${REPORT_PATH}"
+          echo "Polling report URL: ${AUDIT_SERVICE_URL%/}/${REPORT_PATH#/}"
 
           for i in $(seq 1 20); do
-            HTTP_CODE=$(curl -s -o /tmp/audit-report.html -w "%{http_code}" "${{ vars.AUDIT_SERVICE_URL }}${REPORT_PATH}")
+            HTTP_CODE=$(curl -s -o /tmp/audit-report.html -w "%{http_code}" "${AUDIT_SERVICE_URL%/}/${REPORT_PATH#/}")
             echo "Poll #$i HTTP_CODE=$HTTP_CODE"
 
             if [ "$HTTP_CODE" = "200" ] && [ -s /tmp/audit-report.html ]; then
@@ -280,12 +296,14 @@ jobs:
 
       - name: Fetch markdown report
         shell: bash
+        env:
+          AUDIT_SERVICE_URL: ${{ vars.AUDIT_SERVICE_URL }}
+          REPORT_PATH: ${{ steps.submit.outputs.report_url }}
         run: |
-          REPORT_PATH="${{ steps.submit.outputs.report_url }}"
           MD_PATH="${REPORT_PATH%audit-report.html}audit-report.md"
 
           echo "Markdown path: ${MD_PATH}"
-          HTTP_CODE=$(curl -s -o /tmp/audit-report.md -w "%{http_code}" "${{ vars.AUDIT_SERVICE_URL }}${MD_PATH}")
+          HTTP_CODE=$(curl -s -o /tmp/audit-report.md -w "%{http_code}" "${AUDIT_SERVICE_URL%/}/${MD_PATH#/}")
           echo "Markdown fetch HTTP_CODE=$HTTP_CODE"
 
           if [ "$HTTP_CODE" != "200" ] || [ ! -s /tmp/audit-report.md ]; then

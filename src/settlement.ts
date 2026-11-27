@@ -58,43 +58,36 @@ function hasPayer(v: unknown): v is ChannelPayerHolder {
 }
 
 /**
- * Extract the paying address and authorization nonce from a scheme payload.
+ * Extract the payer and nonce for the scheme being settled.
  *
- * @param payload - The `PaymentPayload.payload` (scheme-specific) object.
- * @returns The payer + nonce, or null if the payload matches no known scheme.
+ * @param payload - The scheme-specific payment payload.
+ * @param scheme - The registered payment scheme.
+ * @returns The payer and nonce, or null when the scheme has no usable identity.
  */
-export function extractPayerNonce(payload: Record<string, unknown> | undefined): PayerNonce | null {
+export function extractPayerNonce(
+  payload: Record<string, unknown> | undefined,
+  scheme: string,
+): PayerNonce | null {
   if (!payload) return null;
 
-  const auth = payload.authorization;
-  if (hasFromNonce(auth)) {
-    return { payer: auth.from, nonce: auth.nonce };
+  if (scheme === "exact" && hasFromNonce(payload.authorization)) {
+    return { payer: payload.authorization.from, nonce: payload.authorization.nonce };
   }
 
-  const permit2 = payload.permit2Authorization;
-  if (hasFromNonce(permit2)) {
-    return { payer: permit2.from, nonce: permit2.nonce };
+  if ((scheme === "exact" || scheme === "upto") && hasFromNonce(payload.permit2Authorization)) {
+    return { payer: payload.permit2Authorization.from, nonce: payload.permit2Authorization.nonce };
   }
 
-  const gasfree = payload.gasfree;
-  if (hasUserNonce(gasfree)) {
-    return { payer: gasfree.user, nonce: gasfree.nonce };
+  if (scheme === "exact_gasfree" && hasUserNonce(payload.gasfree)) {
+    return { payer: payload.gasfree.user, nonce: payload.gasfree.nonce };
   }
 
-  // batch-settlement: payer on the channel config, no per-payment nonce.
-  const channelConfig = payload.channelConfig;
-  if (hasPayer(channelConfig)) {
-    return { payer: channelConfig.payer, nonce: null };
-  }
+  if (scheme !== "batch-settlement") return null;
+  if (hasPayer(payload.channelConfig)) return { payer: payload.channelConfig.payer, nonce: null };
 
-  // batch-settlement claim: channel nested under the voucher.
   const voucher = payload.voucher;
   const claimChannel = typeof voucher === "object" && voucher !== null
     ? (voucher as { channel?: unknown }).channel
     : undefined;
-  if (hasPayer(claimChannel)) {
-    return { payer: claimChannel.payer, nonce: null };
-  }
-
-  return null;
+  return hasPayer(claimChannel) ? { payer: claimChannel.payer, nonce: null } : null;
 }

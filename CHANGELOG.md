@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.4] - 2026-11-26
+
+### Changed
+
+- Upgrade the TRON SDK and resource extension to 2.1.5 and official x402 Core, EVM, and extensions to 2.32.0.
+- Preserve existing HTTP error codes, retry headers, and settlement-record behavior for Permit2 preflight failures.
+- Preserve hex-encoded EIP-3009 authorization values for EVM Exact and the `invalid_payload` error on both verification and settlement, including persisted settlement failures.
+- Accept legacy hex-encoded EVM Exact Permit2 authorization integers in verification and settlement and preserve the submitted nonce for settlement lookups.
+- Preserve settlement records when optional addresses or other metadata exceed PostgreSQL column limits. Record those values as NULL and extract batch payer identity from the channel.
+- Use the published stable Agent Wallet 3.0.0 release.
+
+### Security
+
+- Pass PR branch names and audit report paths to the audit workflow as data.
+- Update the image's npm to 11.21.3 for patched bundled dependencies and require the patched Debian PAM package.
+- Use a minimal Debian 13 runtime that omits gzip, `libacl1`, `ncurses-bin`, and `util-linux` and includes the patched `zlib1g` package.
+- Remove the system OpenSSL package from the runtime image to address CVE-2026-107494 and CVE-2026-124709. Node continues to provide TLS through its embedded OpenSSL.
+
 ## [2.3.3] - 2026-11-24
 
 ### Changed

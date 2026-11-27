@@ -35,6 +35,7 @@ import {
   saveSettlement,
   type Settlement,
 } from "./db/index.js";
+import { SETTLEMENT_TEXT_LIMITS } from "./db/schema.js";
 import { logger } from "./logger.js";
 import { sponsoringAccessError } from "./sponsoring/access.js";
 import type { SponsoringService } from "./sponsoring/service.js";
@@ -87,6 +88,49 @@ const BatchManagementPayloadSchema = PaymentPayloadV2Schema.extend({
   ),
 });
 
+function isEvmExact(requirements: PaymentRequirements): boolean {
+  return requirements.scheme === "exact" && requirements.network.startsWith("eip155:");
+}
+
+function normalizeHexUint256Fields(value: unknown, fields: readonly string[]): Record<string, unknown> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const original = value as Record<string, unknown>;
+  // EIP-712 signs the uint256 values, independent of their JSON string encoding.
+  let normalized = original;
+  for (const field of fields) {
+    const text = original[field];
+    const hex = typeof text === "string" ? /^0x0*([0-9a-f]{1,64})$/i.exec(text) : null;
+    if (hex) {
+      if (normalized === original) normalized = { ...original };
+      normalized[field] = BigInt(`0x${hex[1]}`).toString();
+    }
+  }
+  return normalized;
+}
+
+function normalizeEvmExactAuthorization(payload: PaymentPayload, requirements: PaymentRequirements): PaymentPayload {
+  if (!isEvmExact(requirements) || payload.accepted.scheme !== requirements.scheme ||
+      payload.accepted.network !== requirements.network) {
+    return payload;
+  }
+  const { authorization, permit2Authorization } = payload.payload;
+  if ("permit2Authorization" in payload.payload) {
+    const permit2 = normalizeHexUint256Fields(permit2Authorization, ["nonce", "deadline"]);
+    if (!permit2) return payload;
+    const permitted = normalizeHexUint256Fields(permit2.permitted, ["amount"]) ?? permit2.permitted;
+    const witness = normalizeHexUint256Fields(permit2.witness, ["validAfter"]) ?? permit2.witness;
+    if (permit2 === permit2Authorization && permitted === permit2.permitted && witness === permit2.witness) return payload;
+    return { ...payload, payload: { ...payload.payload, permit2Authorization: { ...permit2, permitted, witness } } };
+  }
+  const normalized = normalizeHexUint256Fields(authorization, ["value", "validAfter", "validBefore"]);
+  return normalized && normalized !== authorization
+    ? { ...payload, payload: { ...payload.payload, authorization: normalized } } : payload;
+}
+
+function isMalformedEvmExact(requirements: PaymentRequirements, reason: string | undefined): boolean {
+  return reason === "invalid_exact_evm_payload" && isEvmExact(requirements);
+}
+
 /** Validate and narrow a request body into typed PaymentPayload/Requirements. */
 function parseSettleBody(raw: unknown):
   | { success: true; paymentPayload: PaymentPayload; paymentRequirements: PaymentRequirements }
@@ -100,10 +144,9 @@ function parseSettleBody(raw: unknown):
     pr = BatchManagementRequirementsSchema.safeParse(obj.paymentRequirements);
   }
   if (!pp.success || !pr.success) return { success: false };
+  // The casts bridge the SDK's slightly looser inferred types (optional extra).
   return {
     success: true,
-    // Schemas are runtime-verified to the V2 shape the facilitator accepts;
-    // the cast bridges the SDK's slightly looser inferred types (optional extra).
     paymentPayload: pp.data as PaymentPayload,
     paymentRequirements: pr.data as PaymentRequirements,
   };
@@ -111,6 +154,17 @@ function parseSettleBody(raw: unknown):
 
 const FEED_DEFAULT_LIMIT = 50;
 const FEED_MAX_LIMIT = 200;
+
+/** Omit metadata PostgreSQL cannot store without changing the payment response. */
+function settlementText(value: string | null | undefined, maxLength: number): string | null {
+  return value != null && value.length <= maxLength && !value.includes("\0") ? value : null;
+}
+
+function databaseSqlState(error: unknown): string | undefined {
+  const cause = error instanceof Error ? error.cause ?? error : error;
+  if (typeof cause !== "object" || cause === null || !("code" in cause)) return undefined;
+  return typeof cause.code === "string" && /^[A-Z0-9]{5}$/.test(cause.code) ? cause.code : undefined;
+}
 
 /** Public JSON shape for a settlement row. */
 function toResponse(s: Settlement) {
@@ -135,6 +189,21 @@ function toResponse(s: Settlement) {
  */
 function errorResponse(c: Context, status: 400 | 404 | 413 | 503, code: string, message: string): Response {
   return c.json({ code, message }, status);
+}
+
+/** Keep Permit2 guard failures consistent across thrown and structured Core results. */
+function permit2FailureResponse(c: Context, reason: string | undefined, network: string): Response | undefined {
+  switch (reason) {
+    case "permit2_authorization_busy":
+    case "permit2_storage_unavailable":
+    case "permit2_nonce_check_unavailable":
+      c.header("Retry-After", "15");
+      return c.json({ success: false, errorReason: reason, network, transaction: "" }, 503);
+    case "permit2_invalid_authorization":
+      return c.json({ success: false, errorReason: reason, network, transaction: "" }, 400);
+    case "permit2_nonce_consumed":
+      return c.json({ success: false, errorReason: reason, network, transaction: "" }, 200);
+  }
 }
 
 function requireFreshApiKeyCache(
@@ -210,11 +279,15 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         if (reason === "sponsor_recovery_in_progress") c.header("Retry-After", "15");
         return c.json({ isValid: false, invalidReason: reason }, reason === "sponsor_recovery_in_progress" ? 503 : 403);
       }
-      const result = await facilitator.verify(parsed.paymentPayload, parsed.paymentRequirements);
+      const { paymentPayload, paymentRequirements } = parsed;
+      const result = await facilitator.verify(normalizeEvmExactAuthorization(paymentPayload, paymentRequirements), paymentRequirements);
       if (!result.isValid) logger.warn("verify invalid", { reason: result.invalidReason });
       if (["sponsor_owner_busy", "sponsor_recovery_in_progress", "sponsor_storage_unavailable"].includes(result.invalidReason ?? "")) {
         c.header("Retry-After", "15");
         return c.json(result, 503);
+      }
+      if (!result.isValid && isMalformedEvmExact(parsed.paymentRequirements, result.invalidReason)) {
+        return c.json({ ...result, invalidReason: "invalid_payload" });
       }
       return c.json(result);
     } catch (err) {
@@ -251,8 +324,11 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
     const accepted = paymentPayload.accepted;
     const network = requirements.network ?? accepted?.network ?? "";
     const scheme = requirements.scheme ?? accepted?.scheme ?? "";
-    const asset = requirements.asset ?? accepted?.asset ?? null;
-    const payerNonce = extractPayerNonce(paymentPayload.payload);
+    const asset = settlementText(requirements.asset ?? accepted?.asset, SETTLEMENT_TEXT_LIMITS.asset);
+    const payerNonce = extractPayerNonce(paymentPayload.payload, scheme);
+    const nonce = settlementText(payerNonce?.nonce, SETTLEMENT_TEXT_LIMITS.nonce);
+    // The ledger uses the submitted nonce spelling. The SDK needs decimal uint256 fields.
+    const sdkPayload = normalizeEvmExactAuthorization(paymentPayload, paymentRequirements);
 
     let result;
     try {
@@ -262,25 +338,30 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         try { pool = getPermit2LockPool(); }
         catch { throw new Permit2ReplayError("permit2_storage_unavailable"); }
         result = await withPermit2SettlementLock(pool, identity,
-          () => facilitator.settle(paymentPayload, paymentRequirements));
+          () => facilitator.settle(sdkPayload, paymentRequirements));
       } else {
-        result = await facilitator.settle(paymentPayload, paymentRequirements);
+        result = await facilitator.settle(sdkPayload, paymentRequirements);
       }
     } catch (err) {
-      const reason = permit2ReplayReason(err);
-      if (reason) {
-        const unavailable = ["permit2_authorization_busy", "permit2_storage_unavailable", "permit2_nonce_check_unavailable"].includes(reason);
-        if (unavailable) c.header("Retry-After", "15");
-        return c.json({ success: false, errorReason: reason, network, transaction: "" },
-          unavailable ? 503 : reason === "permit2_invalid_authorization" ? 400 : 200);
-      }
-      logger.error("settle error", { err: String(err), network, nonce: payerNonce?.nonce });
+      const response = permit2FailureResponse(c, permit2ReplayReason(err), network);
+      if (response) return response;
+      logger.error("settle error", { err: String(err), network, nonce });
       return c.json({ success: false, errorReason: "internal_error" }, 500);
     }
 
-    const txHash = result.transaction || null;
+    if (!result.success && isMalformedEvmExact(requirements, result.errorReason)) {
+      result = { ...result, errorReason: "invalid_payload" };
+    }
+    // A preflight abort has no settlement to record. Keep failures with a
+    // transaction hash on the regular audit path.
+    if (!result.success && !result.transaction) {
+      const response = permit2FailureResponse(c, result.errorReason, network);
+      if (response) return response;
+    }
+    const txHash = settlementText(result.transaction || null, SETTLEMENT_TEXT_LIMITS.txHash);
+    const errorReason = settlementText(result.errorReason, SETTLEMENT_TEXT_LIMITS.errorReason);
     if (!result.success) {
-      logger.warn("settle failed", { network, nonce: payerNonce?.nonce, txHash, reason: result.errorReason });
+      logger.warn("settle failed", { network, nonce, txHash, reason: errorReason });
     }
     try {
       const sellerId = c.get("sellerId");
@@ -289,21 +370,23 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         network,
         scheme,
         asset,
-        payer: result.payer ?? payerNonce?.payer ?? null,
-        nonce: payerNonce?.nonce ?? null,
+        payer: settlementText(result.payer ?? payerNonce?.payer, SETTLEMENT_TEXT_LIMITS.payer),
+        nonce,
         // Prefer the actually-settled amount (upto/batch); fall back to the
         // requirements amount (exact, where SettleResponse omits it).
-        amount: result.amount ?? requirements.amount ?? null,
+        amount: settlementText(result.amount ?? requirements.amount, SETTLEMENT_TEXT_LIMITS.amount),
         txHash,
         status: result.success ? "success" : "failed",
-        errorReason: result.errorReason ?? null,
+        errorReason,
       });
-      logger.info("settlement saved", { sellerId, network, nonce: payerNonce?.nonce, txHash });
+      logger.info("settlement saved", { sellerId, network, nonce, txHash });
     } catch (err) {
+      // Drizzle's error message may contain the raw SQL parameters.
       logger.error("failed to save settlement (settle result still returned)", {
-        err: String(err),
+        errorName: err instanceof Error ? err.name : "UnknownError",
+        sqlState: databaseSqlState(err),
         network,
-        nonce: payerNonce?.nonce,
+        nonce,
       });
     }
 
