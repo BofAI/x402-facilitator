@@ -19,11 +19,29 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
-FROM base AS runtime
+FROM base AS production-deps
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev --no-audit --no-fund
+# Preserve the runtime uid, gid and wallet home used by existing deployments.
+RUN groupmod -n ec2-user node \
+    && usermod -l ec2-user -d /home/ec2-user -m node \
+    && mkdir -p /app/logs \
+    && chown -R 1000:1000 /app /home/ec2-user
+
+# Debian 13 glibc runtime with the patched system zlib and without the build
+# image's gzip, ACL, ncurses and util-linux packages.
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:29ee70762214fe8190cea04ef1c0a84a8365879e047ce8f911ae5a5ab2355fa2 AS runtime
+WORKDIR /app
+ENV NODE_ENV=production HOME=/home/ec2-user
+COPY --from=production-deps /usr/local/bin/node /usr/local/bin/node
+# Wallet-cli uses an env-based Node shebang. Keep sh for mounted launch wrappers.
+COPY --from=production-deps /usr/bin/env /usr/bin/env
+COPY --from=production-deps /usr/bin/dash /bin/sh
+COPY --from=production-deps /etc/passwd /etc/group /etc/
+COPY --from=production-deps --chown=1000:1000 /home/ec2-user/ /home/ec2-user/
+COPY --from=production-deps --chown=1000:1000 /app/ /app/
 COPY --from=build /app/dist ./dist
 # Bake the non-secret environment configs into the image. They contain only
 # 1Password references; Connect credentials are injected at runtime.
@@ -31,16 +49,6 @@ COPY --from=build /app/dist ./dist
 COPY config/facilitator.config.dev.yaml ./config/facilitator.config.dev.yaml
 COPY config/facilitator.config.prod.yaml ./config/facilitator.config.prod.yaml
 
-# Non-root runtime user matching legacy v1 exactly: `ec2-user` at uid/gid 1000 with
-# HOME /home/ec2-user. The ops `docker run` bind-mounts the provisioned agent-wallet
-# store at ~/.agent-wallet (agent-wallet's default = homedir()/.agent-wallet), so the
-# runtime user and HOME must match v1 or `resolveWallet` finds no active wallet.
-# The Node image ships uid/gid 1000 as `node`; rename it rather than add a second one.
-RUN groupmod -n ec2-user node \
-    && usermod -l ec2-user -d /home/ec2-user -m node \
-    && mkdir -p /app/logs \
-    && chown -R 1000:1000 /app /home/ec2-user
-ENV HOME=/home/ec2-user
 USER ec2-user
 
 # 8001: HTTP API, 9001: metrics/monitoring (config monitoring.port)
@@ -54,7 +62,7 @@ EXPOSE 8001 9001
 ENV SERVER_PORT=8001
 # /health returns 200 with no auth or rate-limit. Polls every 30s with a 5s
 # timeout; 3 consecutive failures mark the container unhealthy. Uses `node -e`
-# so it works on the slim Node image (which ships neither wget nor curl).
+# so it works in the minimal runtime image.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.SERVER_PORT||'8001')+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
