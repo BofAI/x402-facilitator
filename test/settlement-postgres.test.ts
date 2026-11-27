@@ -1,8 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { x402Facilitator } from "@x402/core/facilitator";
 import type { PaymentRequirements, SettleResponse } from "@x402/core/types";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { ExactPermit2Payload } from "@x402/evm";
+import { ExactEvmScheme as ExactEvmClient } from "@x402/evm/exact/client";
+import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { disposeDatabase, getDatabasePool, initDatabase } from "../src/db/index.js";
+import { registerPermit2ReplayGuard } from "../src/permit2-replay.js";
 import { createApp } from "../src/server.js";
 
 const url = process.env.SPONSORING_TEST_DATABASE_URL;
@@ -20,17 +25,21 @@ const requirements: PaymentRequirements = {
   payTo: "0x3333333333333333333333333333333333333333", extra: {},
 };
 const payer = "0x1111111111111111111111111111111111111111";
-const fixtureHash = () => `0x${randomBytes(32).toString("hex")}`;
+const fixtureHash = () => `0x${randomBytes(32).toString("hex")}` as const;
+
+function buildApp(facilitator: x402Facilitator) {
+  return createApp(facilitator, {
+    rateLimit: { authenticated: "1000/minute", anonymous: "1000/minute" }, gasfreeSettings: () => null,
+    metricsOnMainPort: false, metricsEndpoint: "/metrics", maxRequestBodyBytes: 1024 * 1024,
+  });
+}
 
 function settle(terms: PaymentRequirements, payload: Record<string, unknown>, result: SettleResponse) {
   const facilitator = new x402Facilitator().register(terms.network, {
     scheme: terms.scheme, caipFamily: "eip155", getSigners: () => [payer],
     verify: async () => ({ isValid: result.success }), settle: async () => result,
   });
-  const app = createApp(facilitator, {
-    rateLimit: { authenticated: "1000/minute", anonymous: "1000/minute" }, gasfreeSettings: () => null,
-    metricsOnMainPort: false, metricsEndpoint: "/metrics", maxRequestBodyBytes: 1024 * 1024,
-  });
+  const app = buildApp(facilitator);
   return app.request("/settle", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
       paymentPayload: { x402Version: 2, accepted: terms, payload }, paymentRequirements: terms,
@@ -44,6 +53,61 @@ describe.skipIf(!url)("PostgreSQL settlement records", () => {
       apiKeyDatabase: { url: url!, sslMode: "disable" } });
   });
   afterAll(disposeDatabase);
+
+  it("verifies decimal and hex Permit2 encodings with one signature and settles using the original nonce as the lookup key", async () => {
+    const account = privateKeyToAccount(generatePrivateKey());
+    const terms = { ...requirements, extra: { assetTransferMethod: "permit2" } };
+    const { payload } = await new ExactEvmClient(account).createPaymentPayload(2, terms);
+    const decimal = payload as ExactPermit2Payload;
+    const auth = decimal.permit2Authorization;
+    const toHex = (text: string) => `0x${BigInt(text).toString(16)}`;
+    const nonce = `0x00${BigInt(auth.nonce).toString(16)}`;
+    const hex: ExactPermit2Payload = { ...decimal, permit2Authorization: {
+      ...auth, nonce, deadline: toHex(auth.deadline),
+      permitted: { ...auth.permitted, amount: toHex(auth.permitted.amount) },
+      witness: { ...auth.witness, validAfter: toHex(auth.witness.validAfter) },
+    } };
+    const transaction = fixtureHash();
+    let consumed = false;
+    const writeContract = vi.fn(async () => { consumed = true; return transaction; });
+    const readContract = async ({ functionName }: { functionName: string }) => {
+      if (functionName === "nonceBitmap") return consumed ? 1n << (BigInt(auth.nonce) & 255n) : 0n;
+      if (functionName === "settle") return undefined;
+      throw new Error(`Unexpected contract read: ${functionName}`);
+    };
+    const signer = {
+      getAddresses: () => [payer],
+      getCode: async ({ address }: { address: string }) => address === terms.asset ? "0x01" as const : "0x" as const,
+      readContract, verifyTypedData: async () => false, writeContract,
+      sendTransaction: async () => { throw new Error("Unexpected transaction"); },
+      waitForTransactionReceipt: async () => ({ status: "success" }),
+    };
+    const facilitator = new x402Facilitator().register(terms.network, new ExactEvmScheme(signer));
+    registerPermit2ReplayGuard(facilitator, terms.network, signer);
+    const app = buildApp(facilitator);
+    const request = (path: string, signedPayload: ExactPermit2Payload) => app.request(path, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        paymentPayload: { x402Version: 2, accepted: terms, payload: signedPayload }, paymentRequirements: terms,
+      }),
+    });
+
+    for (const encoding of [decimal, hex]) {
+      const verified = await request("/verify", encoding);
+      expect(verified.status).toBe(200);
+      expect(await verified.json()).toMatchObject({ isValid: true, payer: account.address });
+    }
+    const settled = await request("/settle", hex);
+    expect(settled.status).toBe(200);
+    expect(await settled.json()).toMatchObject({ success: true, transaction });
+
+    const lookup = await app.request(`/payments?${new URLSearchParams({ network: terms.network, nonce })}`);
+    expect(lookup.status).toBe(200);
+    expect(await lookup.json()).toMatchObject([{ nonce, payer: account.address, txHash: transaction, status: "success" }]);
+    const replay = await request("/settle", decimal);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({ success: false, errorReason: "permit2_nonce_consumed" });
+    expect(writeContract).toHaveBeenCalledOnce();
+  });
 
   it("stores a rejected settlement with oversized addresses as NULL and preserves its nonce", async () => {
     const nonce = fixtureHash();

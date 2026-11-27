@@ -92,26 +92,39 @@ function isEvmExact(requirements: PaymentRequirements): boolean {
   return requirements.scheme === "exact" && requirements.network.startsWith("eip155:");
 }
 
-function normalizeEvmExactAuthorization(payload: PaymentPayload, requirements: PaymentRequirements): PaymentPayload {
-  if (!isEvmExact(requirements) || payload.accepted.scheme !== requirements.scheme ||
-      payload.accepted.network !== requirements.network || "permit2Authorization" in payload.payload) {
-    return payload;
-  }
-  const { authorization } = payload.payload;
-  if (typeof authorization !== "object" || authorization === null || Array.isArray(authorization)) return payload;
-
+function normalizeHexUint256Fields(value: unknown, fields: readonly string[]): Record<string, unknown> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const original = value as Record<string, unknown>;
   // EIP-712 signs the uint256 values, independent of their JSON string encoding.
-  const normalized = { ...authorization } as Record<string, unknown>;
-  let changed = false;
-  for (const field of ["value", "validAfter", "validBefore"]) {
-    const value = normalized[field];
-    const hex = typeof value === "string" ? /^0x0*([0-9a-f]{1,64})$/i.exec(value) : null;
+  let normalized = original;
+  for (const field of fields) {
+    const text = original[field];
+    const hex = typeof text === "string" ? /^0x0*([0-9a-f]{1,64})$/i.exec(text) : null;
     if (hex) {
+      if (normalized === original) normalized = { ...original };
       normalized[field] = BigInt(`0x${hex[1]}`).toString();
-      changed = true;
     }
   }
-  return changed ? { ...payload, payload: { ...payload.payload, authorization: normalized } } : payload;
+  return normalized;
+}
+
+function normalizeEvmExactAuthorization(payload: PaymentPayload, requirements: PaymentRequirements): PaymentPayload {
+  if (!isEvmExact(requirements) || payload.accepted.scheme !== requirements.scheme ||
+      payload.accepted.network !== requirements.network) {
+    return payload;
+  }
+  const { authorization, permit2Authorization } = payload.payload;
+  if ("permit2Authorization" in payload.payload) {
+    const permit2 = normalizeHexUint256Fields(permit2Authorization, ["nonce", "deadline"]);
+    if (!permit2) return payload;
+    const permitted = normalizeHexUint256Fields(permit2.permitted, ["amount"]) ?? permit2.permitted;
+    const witness = normalizeHexUint256Fields(permit2.witness, ["validAfter"]) ?? permit2.witness;
+    if (permit2 === permit2Authorization && permitted === permit2.permitted && witness === permit2.witness) return payload;
+    return { ...payload, payload: { ...payload.payload, permit2Authorization: { ...permit2, permitted, witness } } };
+  }
+  const normalized = normalizeHexUint256Fields(authorization, ["value", "validAfter", "validBefore"]);
+  return normalized && normalized !== authorization
+    ? { ...payload, payload: { ...payload.payload, authorization: normalized } } : payload;
 }
 
 function isMalformedEvmExact(requirements: PaymentRequirements, reason: string | undefined): boolean {
@@ -132,11 +145,10 @@ function parseSettleBody(raw: unknown):
   }
   if (!pp.success || !pr.success) return { success: false };
   // The casts bridge the SDK's slightly looser inferred types (optional extra).
-  const paymentRequirements = pr.data as PaymentRequirements;
   return {
     success: true,
-    paymentPayload: normalizeEvmExactAuthorization(pp.data as PaymentPayload, paymentRequirements),
-    paymentRequirements,
+    paymentPayload: pp.data as PaymentPayload,
+    paymentRequirements: pr.data as PaymentRequirements,
   };
 }
 
@@ -267,7 +279,8 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         if (reason === "sponsor_recovery_in_progress") c.header("Retry-After", "15");
         return c.json({ isValid: false, invalidReason: reason }, reason === "sponsor_recovery_in_progress" ? 503 : 403);
       }
-      const result = await facilitator.verify(parsed.paymentPayload, parsed.paymentRequirements);
+      const { paymentPayload, paymentRequirements } = parsed;
+      const result = await facilitator.verify(normalizeEvmExactAuthorization(paymentPayload, paymentRequirements), paymentRequirements);
       if (!result.isValid) logger.warn("verify invalid", { reason: result.invalidReason });
       if (["sponsor_owner_busy", "sponsor_recovery_in_progress", "sponsor_storage_unavailable"].includes(result.invalidReason ?? "")) {
         c.header("Retry-After", "15");
@@ -314,6 +327,8 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
     const asset = settlementText(requirements.asset ?? accepted?.asset, SETTLEMENT_TEXT_LIMITS.asset);
     const payerNonce = extractPayerNonce(paymentPayload.payload, scheme);
     const nonce = settlementText(payerNonce?.nonce, SETTLEMENT_TEXT_LIMITS.nonce);
+    // The ledger uses the submitted nonce spelling. The SDK needs decimal uint256 fields.
+    const sdkPayload = normalizeEvmExactAuthorization(paymentPayload, paymentRequirements);
 
     let result;
     try {
@@ -323,9 +338,9 @@ export function createApp(facilitator: x402Facilitator, deps: AppDeps): Hono<{ V
         try { pool = getPermit2LockPool(); }
         catch { throw new Permit2ReplayError("permit2_storage_unavailable"); }
         result = await withPermit2SettlementLock(pool, identity,
-          () => facilitator.settle(paymentPayload, paymentRequirements));
+          () => facilitator.settle(sdkPayload, paymentRequirements));
       } else {
-        result = await facilitator.settle(paymentPayload, paymentRequirements);
+        result = await facilitator.settle(sdkPayload, paymentRequirements);
       }
     } catch (err) {
       const response = permit2FailureResponse(c, permit2ReplayReason(err), network);
