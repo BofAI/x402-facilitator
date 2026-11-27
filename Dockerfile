@@ -19,6 +19,8 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
 
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:29ee70762214fe8190cea04ef1c0a84a8365879e047ce8f911ae5a5ab2355fa2 AS runtime-library-source
+
 FROM base AS production-deps
 WORKDIR /app
 ENV NODE_ENV=production
@@ -30,11 +32,23 @@ RUN groupmod -n ec2-user node \
     && mkdir -p /app/logs \
     && chown -R 1000:1000 /app /home/ec2-user
 
-# Debian 13 glibc runtime with the patched system zlib and without the build
-# image's gzip, ACL, ncurses and util-linux packages.
-FROM gcr.io/distroless/cc-debian13:nonroot@sha256:29ee70762214fe8190cea04ef1c0a84a8365879e047ce8f911ae5a5ab2355fa2 AS runtime
+# Keep the C++ runtime and patched zlib with their Debian metadata and notices.
+RUN --mount=from=runtime-library-source,target=/distroless,ro \
+    mkdir -p /runtime-libs \
+    && cd /distroless \
+    && cp -a --parents \
+        usr/lib/*/libgcc_s.so.1 usr/lib/*/libstdc++.so.6* usr/lib/*/libz.so.1* \
+        var/lib/dpkg/status.d/gcc-14-base* var/lib/dpkg/status.d/libgcc-s1* \
+        var/lib/dpkg/status.d/libstdc++6* var/lib/dpkg/status.d/zlib1g* \
+        usr/share/doc/gcc-14-base usr/share/doc/libgcc-s1 \
+        usr/share/doc/libstdc++6 usr/share/doc/zlib1g /runtime-libs/
+
+# Node provides TLS through its embedded OpenSSL. Use the Debian 13 base
+# without the system libssl3t64 package (CVE-2026-107494, CVE-2026-124709).
+FROM gcr.io/distroless/base-nossl-debian13:nonroot@sha256:4006ac92504be607b70de01d1f64f38288c69fcd8faa820f6d3aed266ea32ac5 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production HOME=/home/ec2-user
+COPY --from=production-deps /runtime-libs/ /
 COPY --from=production-deps /usr/local/bin/node /usr/local/bin/node
 # Wallet-cli uses an env-based Node shebang. Keep sh for mounted launch wrappers.
 COPY --from=production-deps /usr/bin/env /usr/bin/env
